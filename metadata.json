@@ -1,0 +1,9 @@
+{
+  "name": "INVERT FM",
+  "description": "INVERT FM is a creative app for music lovers and skateboarders. Discover royalty-free music and skateboard related functions.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone"
+  ]
+}
