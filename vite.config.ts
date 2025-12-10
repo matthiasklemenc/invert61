@@ -9,9 +9,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
 
   return {
-    // The 'base' property is for GitHub Pages deployment.
-    // Comment it out for local development to prevent asset path issues.
-    // base: '/invert11/',
+    // Required for GitHub Pages:
+    base: '/invert61/',
 
     build: {
       outDir: 'docs',
