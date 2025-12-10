@@ -40,10 +40,9 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 <span className="font-bold tracking-wider">EXIT</span>
             </button>
 
-            {/* Fixed asset path */}
+            {/* ✅ FIXED: correct path for mobile + GitHub Pages */}
             <img 
-                key="game-logo"
-                src="/assets/game/invert_the_game_transparent_small.png"
+                src="./asstes/game/invert_the_game_transpartent_small.png"
                 alt="INVERT THE GAME"
                 className="w-32 max-w-full h-auto mb-2 object-contain drop-shadow-[0_0_15px_rgba(197,35,35,0.5)]"
             />

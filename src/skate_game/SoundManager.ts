@@ -44,9 +44,8 @@ class SoundManager {
             volume: -12
         }).toDestination();
 
-        // FIX: The 'frequency' property is not a valid constructor option for Tone.MetalSynth.
-        // It must be set on the instance after creation.
         this.hihat = new Tone.MetalSynth({
+            frequency: 200,
             envelope: { attack: 0.001, decay: 0.05, release: 0.01 },
             harmonicity: 5.1,
             modulationIndex: 32,
@@ -54,7 +53,6 @@ class SoundManager {
             octaves: 1.5,
             volume: -14
         }).toDestination();
-        this.hihat.frequency.value = 200;
 
         this.bass = new Tone.MonoSynth({
             oscillator: { type: "square" }, 
@@ -114,9 +112,8 @@ class SoundManager {
         this.sirenLFO = new Tone.LFO(2, 600, 900).start(); 
         this.sirenLFO.connect(this.sirenSynth.frequency);
 
-        // FIX: The 'frequency' property is not a valid constructor option for Tone.MetalSynth.
-        // It must be set on the instance after creation.
         this.metalImpactSynth = new Tone.MetalSynth({
+            frequency: 200,
             envelope: { attack: 0.001, decay: 0.2, release: 0.1 },
             harmonicity: 3.1,
             modulationIndex: 16,
@@ -124,7 +121,6 @@ class SoundManager {
             octaves: 1.5,
             volume: -5
         }).toDestination();
-        this.metalImpactSynth.frequency.value = 200;
 
         this.firecrackerSynth = new Tone.NoiseSynth({
             noise: { type: "white" },

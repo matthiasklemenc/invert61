@@ -1,7 +1,7 @@
 import { ObstacleType } from './GameTypes';
 
-// Intro image for the start page (Fixed for local preview)
-export const KAI_IMAGE_URL = "/assets/kai/kai_intro.png";
+// Intro image for the start page (GitHub Pages correct path)
+export const KAI_IMAGE_URL = "/invert11/assets/kai/kai_intro.png";
 
 export const GRAVITY = 0.6;
 export const JUMP_FORCE = -18;
@@ -22,14 +22,14 @@ export const KAI_SPRITES = {
     ]
 };
 
-// Load sprite PNGs (Fixed for local preview)
-KAI_SPRITES.RIDE[0].src = "/assets/kai/kai_ride_1.png";
-KAI_SPRITES.RIDE[1].src = "/assets/kai/kai_ride_2.png";
-KAI_SPRITES.RIDE[2].src = "/assets/kai/kai_ride_3.png";
-KAI_SPRITES.RIDE[3].src = "/assets/kai/kai_ride_4.png";
+// Load sprite PNGs (GitHub Pages + Vite correct absolute paths)
+KAI_SPRITES.RIDE[0].src = "/invert11/assets/kai/kai_ride_1.png";
+KAI_SPRITES.RIDE[1].src = "/invert11/assets/kai/kai_ride_2.png";
+KAI_SPRITES.RIDE[2].src = "/invert11/assets/kai/kai_ride_3.png";
+KAI_SPRITES.RIDE[3].src = "/invert11/assets/kai/kai_ride_4.png";
 
-KAI_SPRITES.PUSH[0].src = "/assets/kai/kai_push_1.png";
-KAI_SPRITES.PUSH[1].src = "/assets/kai/kai_push_2.png";
+KAI_SPRITES.PUSH[0].src = "/invert11/assets/kai/kai_push_1.png";
+KAI_SPRITES.PUSH[1].src = "/invert11/assets/kai/kai_push_2.png";
 
 // --- OBSTACLES ---
 export const STANDARD_OBSTACLES: {
