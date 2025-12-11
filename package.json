@@ -13,10 +13,12 @@
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@google/genai": "^1.28.0",
+    "@types/three": "^0.182.0",
     "maplibre-gl": "^4.7.1",
     "path": "^0.12.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "three": "^0.182.0",
     "tone": "^15.1.22"
   },
   "devDependencies": {
