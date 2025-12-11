@@ -35,11 +35,12 @@ const RampPicker: React.FC<RampPickerProps> = ({ config, onChange }) => {
                             type="button"
                             onClick={() => handleTypeChange(rt.id)}
                             className={`border rounded-lg p-2 text-xs text-left transition
-    ${isActive ? 'border-[#c52323] bg-white/5' : 'border-white/10 bg-black/20'}`}
-
+${isActive ? 'border-[#c52323] bg-white/5' : 'border-white/10 bg-black/20'}`}
                         >
                             <div className="font-semibold">{rt.label}</div>
-                            <div className="text-[10px] uppercase text-gray-500">{rt.discipline}</div>
+                            <div className="text-[10px] uppercase text-gray-500">
+                                {rt.discipline}
+                            </div>
                         </button>
                     );
                 })}
@@ -75,8 +76,8 @@ const RampPicker: React.FC<RampPickerProps> = ({ config, onChange }) => {
                             key={level}
                             type="button"
                             onClick={() => handleWidthChange(level)}
-                            className={\`px-2 py-1 rounded text-[11px] uppercase tracking-wide
-                                \${config.widthLevel === level ? 'bg-white text-black' : 'bg-white/10 text-gray-300'}\`}
+                            className={`px-2 py-1 rounded text-[11px] uppercase tracking-wide
+${config.widthLevel === level ? 'bg-white text-black' : 'bg-white/10 text-gray-300'}`}
                         >
                             {level}
                         </button>
