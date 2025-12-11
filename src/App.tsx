@@ -1,5 +1,3 @@
-
-
 // C:\Users\user\Desktop\invert\App.tsx
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -21,11 +19,15 @@ import DisclaimerPage from './DisclaimerPage';
 import VideoEditor from './VideoEditor';
 import RollometerPage from './skate_session_review/RollometerPage';
 import SessionReviewPage from './skate_session_review/SessionReviewPage';
-// Updated imports
+
+// NEW — Correct component for Trick Planner
+import TrickTrainerPage from './skate_session_review/TrickTrainerPage';
+
 import SkateQuizPage from './skate_quiz/SkateQuizPage';
 import GeneralQuizPage from './general_quiz/GeneralQuizPage';
 import CapitalsQuizPage from './capitals_quiz/CapitalsQuizPage';
-import SkateGamePage from './skate_game/SkateGamePage'; // Add this import
+import SkateGamePage from './skate_game/SkateGamePage';
+
 import TrickTrainingPage from './TrickTrainingPage';
 import TrickRecordingPage from './TrickRecordingPage';
 
@@ -204,16 +206,13 @@ const App: React.FC = () => {
 
   // ---------- History Navigation ----------
   useEffect(() => {
-    // Initialize history state on load so we can go back to home
     if (!window.history.state) {
       window.history.replaceState({ page: 'home' }, '', '');
     }
-
     const onPopState = (event: PopStateEvent) => {
       const targetPage = event.state?.page || 'home';
       setCurrentPage(targetPage);
     };
-
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -224,6 +223,7 @@ const App: React.FC = () => {
     window.history.pushState({ page }, '', '');
   }, []);
 
+  // ---------- Music Player State ----------
   const [playlist, setPlaylist] = useState<Song[]>([]);
   const [currentSongIndex, setCurrentSongIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -268,7 +268,6 @@ const App: React.FC = () => {
   const [disclaimerTexts, setDisclaimerTexts] = useState<Record<string, string>>({});
   const [isDisclaimerLoading, setIsDisclaimerLoading] = useState(true);
 
-  // Audio params
   const [volume, setVolume] = useState(0.5);
   const [videoVolume, setVideoVolume] =
     useLocalStorage<number>('mooseek-video-volume', 1.0);
@@ -284,7 +283,6 @@ const App: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // UI templates
   const [activeTemplate, setActiveTemplate] = useLocalStorage<ActiveTemplate>(
     'ui.activeTemplate',
     { type: 'predefined', id: 'invert-white' },
@@ -337,7 +335,6 @@ const App: React.FC = () => {
   const [reviewingSession, setReviewingSession] = useState<SkateSession | null>(null);
   const [trickToRecord, setTrickToRecord] = useState<string>('');
 
-  // audio graph refs
   const audioRef = useRef<HTMLAudioElement>(null);
   const preloaderRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -400,9 +397,7 @@ const App: React.FC = () => {
     console.warn('Audio playback error', { code: errorCode, src, raw: e });
   }, []);
 
-  /* ------------------------------------------------------------------------ */
-  /*            Audio setup: EQ + parallel PlateReverb                        */
-  /* ------------------------------------------------------------------------ */
+  /* --------------------- AUDIO ENGINE SETUP --------------------- */
 
   const setupAudioEngine = useCallback(async () => {
     if (sourceNodeRef.current && audioCtxRef.current?.state === 'running') return true;
@@ -953,7 +948,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // preloader
   useEffect(() => {
     if (!preloaderRef.current) {
       preloaderRef.current = new Audio();
@@ -990,11 +984,12 @@ const App: React.FC = () => {
     setEqPresets((prev) => prev.filter((p) => p.id !== id));
   };
 
-  // Data for EqualizerModal
   const eqModalBands = EQ_BANDS.map(({ f, label }) => {
     const key = String(f) as EqKey;
     return { freq: f, key, label, gain: eqGains[key] ?? 0 };
   });
+
+  /* --------------------------- PAGE ROUTING --------------------------- */
 
   const renderPage = () => {
     switch (currentPage) {
@@ -1006,6 +1001,7 @@ const App: React.FC = () => {
             onSetYouTubeSlots={setYouTubeSlots}
           />
         );
+
       case 'music':
         return (
           <MusicPage
@@ -1031,10 +1027,19 @@ const App: React.FC = () => {
             onToggleRollometer={() => setShowRollometer((p) => !p)}
           />
         );
+
       case 'games':
         return <GamesPage onSetPage={navigateTo} />;
+
       case 'player':
-        if (!currentSong) return <HomePage onSetPage={navigateTo} youTubeSlots={youTubeSlots} onSetYouTubeSlots={setYouTubeSlots} />;
+        if (!currentSong)
+          return (
+            <HomePage
+              onSetPage={navigateTo}
+              youTubeSlots={youTubeSlots}
+              onSetYouTubeSlots={setYouTubeSlots}
+            />
+          );
         return (
           <PlayerPage
             song={currentSong}
@@ -1067,6 +1072,7 @@ const App: React.FC = () => {
             onToggleRepeat={toggleRepeat}
           />
         );
+
       case 'my-music':
         return (
           <MyMusicPage
@@ -1086,6 +1092,7 @@ const App: React.FC = () => {
             onPlayPause={handlePlayPause}
           />
         );
+
       case 'disclaimer':
         return (
           <DisclaimerPage
@@ -1096,6 +1103,7 @@ const App: React.FC = () => {
             onSetLang={setDisclaimerLang}
           />
         );
+
       case 'editor':
         return (
           <VideoEditor
@@ -1106,6 +1114,7 @@ const App: React.FC = () => {
             onVideoVolumeChange={setVideoVolume}
           />
         );
+
       case 'rollometer':
         return (
           <RollometerPage
@@ -1117,6 +1126,7 @@ const App: React.FC = () => {
             onSetPage={navigateTo}
           />
         );
+
       case 'session-review':
         if (!reviewingSession)
           return (
@@ -1135,32 +1145,47 @@ const App: React.FC = () => {
             onClose={() => navigateTo('rollometer')}
           />
         );
+
       case 'skate-quiz':
         return <SkateQuizPage onClose={() => navigateTo('games')} />;
+
       case 'general-quiz':
         return <GeneralQuizPage onClose={() => navigateTo('games')} />;
-      case 'capitals-quiz': 
+
+      case 'capitals-quiz':
         return <CapitalsQuizPage onClose={() => navigateTo('games')} />;
+
       case 'skate-game':
         return <SkateGamePage onClose={() => navigateTo('games')} />;
+
+      /* --------------------------------------------------------------- */
+      /* 🔥 FIXED — Trick Planner Routing                                */
+      /* --------------------------------------------------------------- */
+
       case 'trick-training':
         return (
-            <TrickTrainingPage
-                onSelectTrick={handleSelectTrickToTrain}
-                onClose={() => navigateTo('rollometer')}
-            />
+          <TrickTrainerPage
+            onClose={() => navigateTo('rollometer')}
+          />
         );
+
       case 'trick-recording':
-          if (!trickToRecord) return <TrickTrainingPage onSelectTrick={handleSelectTrickToTrain} onClose={() => navigateTo('rollometer')} />;
+        if (!trickToRecord)
           return (
-              <TrickRecordingPage
-                  trickName={trickToRecord}
-                  onClose={() => navigateTo('trick-training')}
-              />
+            <TrickTrainerPage
+              onClose={() => navigateTo('rollometer')}
+            />
           );
+        return (
+          <TrickRecordingPage
+            trickName={trickToRecord}
+            onClose={() => navigateTo('trick-training')}
+          />
+        );
+
       default:
         return (
-           <HomePage
+          <HomePage
             onSetPage={navigateTo}
             youTubeSlots={youTubeSlots}
             onSetYouTubeSlots={setYouTubeSlots}
@@ -1180,7 +1205,16 @@ const App: React.FC = () => {
       {renderPage()}
 
       {currentSong &&
-        !['player', 'editor', 'rollometer', 'session-review', 'skate-quiz', 'general-quiz', 'capitals-quiz', 'skate-game'].includes(currentPage) && (
+        ![
+          'player',
+          'editor',
+          'rollometer',
+          'session-review',
+          'skate-quiz',
+          'general-quiz',
+          'capitals-quiz',
+          'skate-game',
+        ].includes(currentPage) && (
           <MiniPlayer
             song={currentSong}
             isPlaying={isPlaying}
@@ -1189,7 +1223,6 @@ const App: React.FC = () => {
           />
         )}
 
-      {/* Playlist selection when hearting a song */}
       {showPlaylistModal && playlistSong && (
         <AnyPlaylistModal
           song={playlistSong}
@@ -1200,12 +1233,10 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* License details for current song */}
       {showLicenseModal && currentSong && (
         <AnyLicenseModal song={currentSong} onClose={() => setShowLicenseModal(false)} />
       )}
 
-      {/* Global settings (opens from settings buttons) */}
       {showSettingsModal && (
         <AnySettingsModal
           onClose={() => setShowSettingsModal(false)}
@@ -1220,7 +1251,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Visual / template adjustments — COGWHEEL TARGET */}
       {adjustmentsOpen && (
         <AnyAdjustmentsModal
           isOpen={adjustmentsOpen}
@@ -1237,7 +1267,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Equalizer modal */}
       {showEqModal && (
         <AnyEqualizerModal
           bands={eqModalBands}
