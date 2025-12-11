@@ -34,8 +34,9 @@ const RampPicker: React.FC<RampPickerProps> = ({ config, onChange }) => {
                             key={rt.id}
                             type="button"
                             onClick={() => handleTypeChange(rt.id)}
-                            className={\`border rounded-lg p-2 text-xs text-left transition
-                                \${isActive ? 'border-[#c52323] bg-white/5' : 'border-white/10 bg-black/20'}\`}
+                            className={`border rounded-lg p-2 text-xs text-left transition
+    ${isActive ? 'border-[#c52323] bg-white/5' : 'border-white/10 bg-black/20'}`}
+
                         >
                             <div className="font-semibold">{rt.label}</div>
                             <div className="text-[10px] uppercase text-gray-500">{rt.discipline}</div>
