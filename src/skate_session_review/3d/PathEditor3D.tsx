@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import type { RampConfig } from '../planner/rampTypes';
+import { RAMP_TYPES } from '../planner/rampTypes';
 import { buildRampGroup } from './rampMeshes';
 
 export interface PathPoint3D {
@@ -17,6 +18,9 @@ interface PathEditor3DProps {
     onPathChange?: (strokes: PathPoint3D[][]) => void;
 }
 
+type Mode = 'rotate' | 'draw';
+type SnapMode = 'off' | 'coping' | 'deck' | 'center';
+
 const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -29,17 +33,25 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const currentStrokeRef = useRef<THREE.Vector3[] | null>(null);
     const linesGroupRef = useRef<THREE.Group | null>(null);
     const groundRef = useRef<THREE.Mesh | null>(null);
+    const ghostRef = useRef<THREE.Mesh | null>(null);
 
     const raycaster = useRef(new THREE.Raycaster());
     const pointer = useRef(new THREE.Vector2());
 
-    const [mode, setMode] = useState<'rotate' | 'draw'>('draw');
+    const [mode, setMode] = useState<Mode>('draw');
+    const [snapMode, setSnapMode] = useState<SnapMode>('off');
+
+    // discipline info (transition / street) – kept for future tweaks
+    const rampDiscipline: 'transition' | 'street' | 'unknown' = (() => {
+        const t = RAMP_TYPES.find(r => r.id === config.typeId);
+        return t?.discipline ?? 'unknown';
+    })();
 
     // Notify parent about updated strokes
     const emitPathChange = () => {
         if (!onPathChange) return;
         const out = strokesRef.current.map(st =>
-            st.map(v => ({ x: v.x, y: v.y, z: v.z }))
+            st.map(v => ({ x: v.x, y: v.y, z: v.z })),
         );
         onPathChange(out);
     };
@@ -81,6 +93,12 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         dir.position.set(6, 10, 4);
         dir.castShadow = true;
         dir.shadow.mapSize.set(1024, 1024);
+        dir.shadow.camera.near = 1;
+        dir.shadow.camera.far = 30;
+        dir.shadow.camera.left = -10;
+        dir.shadow.camera.right = 10;
+        dir.shadow.camera.top = 10;
+        dir.shadow.camera.bottom = -10;
         scene.add(dir);
 
         // Ground
@@ -102,6 +120,20 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         scene.add(linesGroup);
         linesGroupRef.current = linesGroup;
 
+        // Ghost preview point (small glowing sphere)
+        const ghostGeo = new THREE.SphereGeometry(0.04, 16, 16);
+        const ghostMat = new THREE.MeshStandardMaterial({
+            color: 0xff8080,
+            emissive: 0xff4747,
+            emissiveIntensity: 0.9,
+            metalness: 0.1,
+            roughness: 0.3,
+        });
+        const ghost = new THREE.Mesh(ghostGeo, ghostMat);
+        ghost.visible = false;
+        scene.add(ghost);
+        ghostRef.current = ghost;
+
         // Orbit controls
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
@@ -109,6 +141,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         controls.enablePan = false;
         controls.minPolarAngle = Math.PI / 6;
         controls.maxPolarAngle = Math.PI / 2;
+        controls.enabled = false; // start in draw mode
         controlsRef.current = controls;
 
         // Resize handler
@@ -143,6 +176,17 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         };
     }, []);
 
+    // Keep OrbitControls enabled only in rotate mode
+    useEffect(() => {
+        if (controlsRef.current) {
+            controlsRef.current.enabled = mode === 'rotate';
+        }
+        // Hide ghost point when rotating
+        if (ghostRef.current && mode !== 'draw') {
+            ghostRef.current.visible = false;
+        }
+    }, [mode]);
+
     // -----------------------
     //  BUILD / REBUILD RAMP
     // -----------------------
@@ -168,9 +212,48 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     }, [config]);
 
     // -----------------------
-    //  DRAWING HELPERS
+    //  HELPERS
     // -----------------------
 
+    // Simple Catmull-Rom curve smoothing for nicer strokes
+    const smoothStroke = (points: THREE.Vector3[]): THREE.Vector3[] => {
+        if (points.length < 3) return points;
+        const curve = new THREE.CatmullRomCurve3(points);
+        const segments = Math.min(points.length * 4, 200);
+        return curve.getPoints(segments);
+    };
+
+    // Snapping helper
+    const applySnapping = (point: THREE.Vector3): THREE.Vector3 => {
+        if (snapMode === 'off') return point;
+
+        const snapped = point.clone();
+
+        // Rough world height of ramp top (matches rampMeshes scaling: ft * 0.15)
+        const copingHeight = config.heightFt * 0.15;
+        const deckHeight = copingHeight + 0.08;
+
+        switch (snapMode) {
+            case 'coping':
+                snapped.y = copingHeight;
+                break;
+            case 'deck':
+                snapped.y = deckHeight;
+                break;
+            case 'center':
+                snapped.z = 0;
+                break;
+            default:
+                break;
+        }
+
+        // reserved for discipline-specific tweaks later
+        void rampDiscipline;
+
+        return snapped;
+    };
+
+    // Raycast into ramp / ground and optionally snap result
     const pickOnSurface = (event: PointerEvent): THREE.Vector3 | null => {
         const renderer = rendererRef.current;
         const camera = cameraRef.current;
@@ -190,7 +273,8 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const hits = raycaster.current.intersectObjects(targets, true);
         if (!hits.length) return null;
 
-        return hits[0].point.clone();
+        const hitPoint = hits[0].point.clone();
+        return applySnapping(hitPoint);
     };
 
     const startStroke = (event: PointerEvent) => {
@@ -216,7 +300,8 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const pts = currentStrokeRef.current;
         const last = pts[pts.length - 1];
 
-        if (last.distanceTo(p) < 0.04) return;
+        // Skip very tiny movements to avoid insane vertex counts
+        if (last.distanceTo(p) < 0.03) return;
 
         pts.push(p);
 
@@ -226,8 +311,9 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
 
         if (!line) return;
 
+        const smoothed = smoothStroke(pts);
         line.geometry.dispose();
-        line.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+        line.geometry = new THREE.BufferGeometry().setFromPoints(smoothed);
     };
 
     const endStroke = () => {
@@ -238,41 +324,59 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         emitPathChange();
     };
 
-    // Pointer event handlers
+    // -----------------------
+    //  POINTER EVENTS
+    // -----------------------
     useEffect(() => {
         const renderer = rendererRef.current;
         if (!renderer) return;
         const dom = renderer.domElement;
 
-        const down = (ev: PointerEvent) => {
+        const handlePointerDown = (ev: PointerEvent) => {
             if (mode !== 'draw') return;
             dom.setPointerCapture(ev.pointerId);
             startStroke(ev);
         };
 
-        const move = (ev: PointerEvent) => {
+        const handlePointerMove = (ev: PointerEvent) => {
             if (mode !== 'draw') return;
-            if (currentStrokeRef.current) continueStroke(ev);
+
+            // Update ghost cursor
+            const p = pickOnSurface(ev);
+            if (ghostRef.current) {
+                if (p) {
+                    ghostRef.current.position.copy(p);
+                    ghostRef.current.visible = true;
+                } else {
+                    ghostRef.current.visible = false;
+                }
+            }
+
+            if (currentStrokeRef.current) {
+                continueStroke(ev);
+            }
         };
 
-        const up = (ev: PointerEvent) => {
+        const handlePointerUp = (ev: PointerEvent) => {
             if (mode !== 'draw') return;
-            if (dom.hasPointerCapture(ev.pointerId)) dom.releasePointerCapture(ev.pointerId);
+            if (dom.hasPointerCapture(ev.pointerId)) {
+                dom.releasePointerCapture(ev.pointerId);
+            }
             endStroke();
         };
 
-        dom.addEventListener('pointerdown', down);
-        dom.addEventListener('pointermove', move);
-        dom.addEventListener('pointerup', up);
-        dom.addEventListener('pointerleave', up);
+        dom.addEventListener('pointerdown', handlePointerDown);
+        dom.addEventListener('pointermove', handlePointerMove);
+        dom.addEventListener('pointerup', handlePointerUp);
+        dom.addEventListener('pointerleave', handlePointerUp);
 
         return () => {
-            dom.removeEventListener('pointerdown', down);
-            dom.removeEventListener('pointermove', move);
-            dom.removeEventListener('pointerup', up);
-            dom.removeEventListener('pointerleave', up);
+            dom.removeEventListener('pointerdown', handlePointerDown);
+            dom.removeEventListener('pointermove', handlePointerMove);
+            dom.removeEventListener('pointerup', handlePointerUp);
+            dom.removeEventListener('pointerleave', handlePointerUp);
         };
-    }, [mode]);
+    }, [mode, snapMode]);
 
     // -----------------------
     //  UNDO / RESET
@@ -304,6 +408,9 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                 }
             });
         }
+        if (ghostRef.current) {
+            ghostRef.current.visible = false;
+        }
         emitPathChange();
     };
 
@@ -317,7 +424,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                 className="w-full h-full rounded-lg overflow-hidden bg-slate-950 border border-white/10"
             />
 
-            <div className="absolute top-2 left-2 flex gap-2">
+            <div className="absolute top-2 left-2 flex flex-wrap gap-2">
                 <button
                     type="button"
                     onClick={() => setMode('draw')}
@@ -343,6 +450,33 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                 >
                     Rotate View
                 </button>
+
+                <div className="ml-2 flex items-center gap-1 bg-black/40 border border-white/20 rounded-full px-2 py-1">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-300">
+                        Snap
+                    </span>
+                    {(['off', 'coping', 'deck', 'center'] as SnapMode[]).map(modeKey => (
+                        <button
+                            key={modeKey}
+                            type="button"
+                            onClick={() => setSnapMode(modeKey)}
+                            className={
+                                'px-2 py-0.5 text-[10px] rounded-full ' +
+                                (snapMode === modeKey
+                                    ? 'bg-white text-black'
+                                    : 'bg-transparent text-gray-300')
+                            }
+                        >
+                            {modeKey === 'off'
+                                ? 'Off'
+                                : modeKey === 'coping'
+                                ? 'Coping'
+                                : modeKey === 'deck'
+                                ? 'Deck'
+                                : 'Center'}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             <div className="absolute bottom-2 right-2 flex gap-2">
