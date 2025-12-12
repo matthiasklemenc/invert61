@@ -21,6 +21,9 @@ interface PathEditor3DProps {
 type Mode = 'rotate' | 'draw';
 type SnapMode = 'off' | 'coping' | 'deck' | 'center';
 
+const MIN_WIDTH = 320;
+const MIN_HEIGHT = 240;
+
 const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -57,6 +60,37 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     };
 
     // -----------------------
+    //  CAMERA RECENTER HELPER
+    // -----------------------
+    const recenterCamera = () => {
+        const camera = cameraRef.current;
+        const controls = controlsRef.current;
+        if (!camera || !controls) return;
+
+        const center = new THREE.Vector3(0, 1, 0);
+        let radius = 4;
+
+        if (rampRef.current) {
+            const box = new THREE.Box3().setFromObject(rampRef.current);
+            if (!box.isEmpty()) {
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                box.getCenter(center);
+                radius = Math.max(size.x, size.y, size.z) * 1.8 || radius;
+            }
+        }
+
+        const dir = new THREE.Vector3(1, 0.7, 1).normalize();
+        const dist = radius * 2.2;
+
+        controls.target.copy(center);
+        camera.position.copy(center).add(dir.multiplyScalar(dist));
+        camera.near = Math.max(radius / 50, 0.05);
+        camera.far = Math.max(radius * 20, 50);
+        camera.updateProjectionMatrix();
+    };
+
+    // -----------------------
     //  INITIALIZE 3D SCENE
     // -----------------------
     useEffect(() => {
@@ -68,8 +102,8 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         sceneRef.current = scene;
 
         // Camera
-        const width = container.clientWidth || 640;
-        const height = container.clientHeight || 360;
+        const width = Math.max(container.clientWidth || MIN_WIDTH, MIN_WIDTH);
+        const height = Math.max(container.clientHeight || MIN_HEIGHT, MIN_HEIGHT);
 
         const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
         camera.position.set(5, 3.5, 6);
@@ -148,11 +182,15 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const handleResize = () => {
             if (!rendererRef.current || !cameraRef.current || !containerRef.current)
                 return;
-            const w = containerRef.current.clientWidth || 640;
-            const h = containerRef.current.clientHeight || 360;
+            const w = Math.max(containerRef.current.clientWidth || MIN_WIDTH, MIN_WIDTH);
+            const h = Math.max(containerRef.current.clientHeight || MIN_HEIGHT, MIN_HEIGHT);
             rendererRef.current.setSize(w, h);
+            rendererRef.current.setPixelRatio(window.devicePixelRatio || 1);
             cameraRef.current.aspect = w / h;
             cameraRef.current.updateProjectionMatrix();
+
+            // make sure scene stays in view after brutal layout changes
+            recenterCamera();
         };
         window.addEventListener('resize', handleResize);
 
@@ -165,6 +203,9 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         };
         animate();
 
+        // initial recenter
+        recenterCamera();
+
         return () => {
             window.removeEventListener('resize', handleResize);
             cancelAnimationFrame(frameId);
@@ -174,6 +215,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                 container.removeChild(renderer.domElement);
             }
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Keep OrbitControls enabled only in rotate mode
@@ -209,6 +251,10 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         ramp.position.y = 0;
         sceneRef.current.add(ramp);
         rampRef.current = ramp;
+
+        // whenever ramp changes (height, type, etc.), recenter camera
+        recenterCamera();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [config]);
 
     // -----------------------
@@ -277,13 +323,45 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         return applySnapping(hitPoint);
     };
 
+    // -----------------------
+    //  STROKE HANDLING (with reconnect)
+    // -----------------------
     const startStroke = (event: PointerEvent) => {
         const p = pickOnSurface(event);
         if (!p) return;
 
-        currentStrokeRef.current = [p];
+        // Try to continue the last stroke instead of starting a disconnected one
+        const existing = strokesRef.current[strokesRef.current.length - 1];
+        let pts: THREE.Vector3[];
 
-        const geom = new THREE.BufferGeometry().setFromPoints([p]);
+        if (existing && existing.length) {
+            const last = existing[existing.length - 1];
+            const dist = last.distanceTo(p);
+
+            // if we start reasonably close to the last end point, treat it as continuation
+            if (dist < 1.0) {
+                pts = [...existing];
+                // remove old line geometry – we will re-create it extended
+                strokesRef.current.pop();
+                if (linesGroupRef.current) {
+                    for (let i = linesGroupRef.current.children.length - 1; i >= 0; i--) {
+                        const child = linesGroupRef.current.children[i];
+                        if ((child as any).userData?.__isStroke) {
+                            linesGroupRef.current.remove(child);
+                            break;
+                        }
+                    }
+                }
+            } else {
+                pts = [p];
+            }
+        } else {
+            pts = [p];
+        }
+
+        currentStrokeRef.current = pts;
+
+        const geom = new THREE.BufferGeometry().setFromPoints(pts);
         const mat = new THREE.LineBasicMaterial({ color: 0xff4747, linewidth: 2 });
         const line = new THREE.Line(geom, mat);
         line.userData.__isStroke = true;
