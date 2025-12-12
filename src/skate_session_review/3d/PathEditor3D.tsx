@@ -1,4 +1,4 @@
-console.log(">>> PathEditor3D CONFIG RECEIVED:", config);
+
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -25,6 +25,10 @@ const MIN_WIDTH = 320;
 const MIN_HEIGHT = 240;
 
 const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => {
+
+console.log(">>> PathEditor3D CONFIG RECEIVED:", config);
+
+
     const containerRef = useRef<HTMLDivElement | null>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
     const sceneRef = useRef<THREE.Scene | null>(null);
