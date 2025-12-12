@@ -24,8 +24,10 @@ type SnapMode = 'off' | 'coping';
 const MIN_WIDTH = 320;
 const MIN_HEIGHT = 240;
 
+// logical ground height for the line system (ramps sit above/below visually)
+const GROUND_Y = 0;
+
 const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => {
-    // Optional, but SAFE debug log (inside component, no undefined vars)
     console.log('>>> PathEditor3D CONFIG RECEIVED:', config);
 
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -41,8 +43,13 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const groundRef = useRef<THREE.Mesh | null>(null);
     const ghostRef = useRef<THREE.Mesh | null>(null);
 
+    // one raycaster for screen → world picking
     const raycaster = useRef(new THREE.Raycaster());
+    // one raycaster only for vertical height projection onto ramps
+    const heightRaycaster = useRef(new THREE.Raycaster());
     const pointer = useRef(new THREE.Vector2());
+    // infinite ground plane at y = GROUND_Y
+    const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), -GROUND_Y));
 
     const [mode, setMode] = useState<Mode>('draw');
     const [snapMode, setSnapMode] = useState<SnapMode>('off');
@@ -145,7 +152,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         dirLight.shadow.camera.bottom = -10;
         scene.add(dirLight);
 
-        // Ground
+        // Ground (visual only – logical ground is the plane at y = GROUND_Y)
         const groundGeom = new THREE.PlaneGeometry(40, 40);
         const groundMat = new THREE.MeshStandardMaterial({
             color: 0x020617,
@@ -154,7 +161,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         });
         const ground = new THREE.Mesh(groundGeom, groundMat);
         ground.rotation.x = -Math.PI / 2;
-        ground.position.y = -0.1;
+        ground.position.y = GROUND_Y - 0.1;
         ground.receiveShadow = true;
         scene.add(ground);
         groundRef.current = ground;
@@ -275,23 +282,12 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         return curve.getPoints(segments);
     };
 
-    const applySnapping = (point: THREE.Vector3): THREE.Vector3 => {
-        if (snapMode === 'off') return point;
-        const snapped = point.clone();
-
-        if (snapMode === 'coping' && rampRef.current) {
-            const box = new THREE.Box3().setFromObject(rampRef.current);
-            if (!box.isEmpty()) {
-                const topY = box.max.y;
-                snapped.y = topY + 0.01; // just above the top
-            }
-        }
-
-        void rampDiscipline; // reserved for future tweaks
-
-        return snapped;
-    };
-
+    /**
+     * Core of OPTION 1 + 2:
+     * - Always compute X/Z on an infinite ground plane (y = GROUND_Y).
+     * - Then optionally project vertically onto the ramp to get the correct height.
+     * - If snapMode === 'coping', we snap to the top of the ramp instead.
+     */
     const pickOnSurface = (event: PointerEvent): THREE.Vector3 | null => {
         const renderer = rendererRef.current;
         const camera = cameraRef.current;
@@ -301,17 +297,71 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         pointer.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         pointer.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
+        // Ray from camera through pointer
         raycaster.current.setFromCamera(pointer.current, camera);
 
-        const targets: THREE.Object3D[] = [];
-        if (rampRef.current) targets.push(rampRef.current);
-        if (groundRef.current) targets.push(groundRef.current);
+        // 1) Intersect with infinite ground plane (world Y constant)
+        const planePoint = new THREE.Vector3();
+        const hasPlaneHit = raycaster.current.ray.intersectPlane(
+            groundPlane.current,
+            planePoint
+        );
 
-        const hits = raycaster.current.intersectObjects(targets, true);
-        if (!hits.length) return null;
+        // 2) Also check if the screen ray hits the ramp at all (only for proximity)
+        let rampScreenHit: THREE.Intersection | null = null;
+        if (rampRef.current) {
+            const hits = raycaster.current.intersectObject(rampRef.current, true);
+            if (hits.length > 0) {
+                rampScreenHit = hits[0];
+            }
+        }
 
-        const hitPoint = hits[0].point.clone();
-        return applySnapping(hitPoint);
+        if (!hasPlaneHit && !rampScreenHit) return null;
+
+        // BASE X/Z: coming from the ground plane if possible, otherwise from the ramp hit
+        const baseXZ = hasPlaneHit
+            ? new THREE.Vector3(planePoint.x, GROUND_Y, planePoint.z)
+            : new THREE.Vector3(
+                  rampScreenHit!.point.x,
+                  GROUND_Y,
+                  rampScreenHit!.point.z
+              );
+
+        let finalY = GROUND_Y + 0.02; // slightly above ground by default
+
+        // 3) Option 2: project vertically onto ramp if one is under this X/Z
+        if (rampRef.current) {
+            const origin = new THREE.Vector3(baseXZ.x, GROUND_Y + 5, baseXZ.z);
+            const dir = new THREE.Vector3(0, -1, 0);
+            heightRaycaster.current.set(origin, dir);
+            const verticalHits = heightRaycaster.current.intersectObject(
+                rampRef.current,
+                true
+            );
+
+            if (verticalHits.length > 0) {
+                const hit = verticalHits[0];
+
+                if (snapMode === 'coping') {
+                    // snap to global top of ramp
+                    const box = new THREE.Box3().setFromObject(rampRef.current);
+                    if (!box.isEmpty()) {
+                        finalY = box.max.y + 0.01;
+                    } else {
+                        finalY = hit.point.y + 0.01;
+                    }
+                } else {
+                    // ride surface height
+                    finalY = hit.point.y + 0.01;
+                }
+            }
+        }
+
+        const result = new THREE.Vector3(baseXZ.x, finalY, baseXZ.z);
+
+        void rampDiscipline; // reserved for discipline-specific tweaks later
+
+        return result;
     };
 
     // -----------------------
