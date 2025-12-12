@@ -38,27 +38,58 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     /* ---------------------------------------------------
        CAMERA FIT (CRITICAL FIX)
     ----------------------------------------------------*/
-    const fitCameraToRamp = () => {
-        if (!cameraRef.current || !rampRef.current) return;
+    const fitCameraToObject = (obj: THREE.Object3D | null) => {
+        const camera = cameraRef.current;
+        const renderer = rendererRef.current;
+        if (!camera || !renderer) return;
 
-        const box = new THREE.Box3().setFromObject(rampRef.current);
-        if (box.isEmpty()) return;
+        // Fallback if object is missing / empty
+        if (!obj) {
+            camera.position.set(6, 4, 6);
+            camera.lookAt(0, 1, 0);
+            camera.near = 0.05;
+            camera.far = 200;
+            camera.updateProjectionMatrix();
+            return;
+        }
+
+        const box = new THREE.Box3().setFromObject(obj);
+        if (box.isEmpty()) {
+            camera.position.set(6, 4, 6);
+            camera.lookAt(0, 1, 0);
+            camera.near = 0.05;
+            camera.far = 200;
+            camera.updateProjectionMatrix();
+            return;
+        }
 
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
 
         const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 1.8;
+        const distance = Math.max(2.5, maxDim * 1.8);
 
-        cameraRef.current.position.set(
+        camera.position.set(
             center.x + distance,
             center.y + distance * 0.6,
             center.z + distance
         );
-        cameraRef.current.lookAt(center);
-        cameraRef.current.near = 0.05;
-        cameraRef.current.far = 200;
-        cameraRef.current.updateProjectionMatrix();
+        camera.lookAt(center);
+        camera.near = 0.05;
+        camera.far = 400;
+        camera.updateProjectionMatrix();
+    };
+
+    const disposeObject = (obj: THREE.Object3D) => {
+        obj.traverse(o => {
+            const m = o as THREE.Mesh;
+            if (m.isMesh) {
+                if (m.geometry) m.geometry.dispose();
+                const mat: any = m.material;
+                if (Array.isArray(mat)) mat.forEach(x => x?.dispose?.());
+                else mat?.dispose?.();
+            }
+        });
     };
 
     /* ---------------------------------------------------
@@ -72,38 +103,63 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         scene.background = new THREE.Color(0x020617);
         sceneRef.current = scene;
 
-        const w = Math.max(container.clientWidth, MIN_WIDTH);
-        const h = Math.max(container.clientHeight, MIN_HEIGHT);
+        const w = Math.max(container.clientWidth || MIN_WIDTH, MIN_WIDTH);
+        const h = Math.max(container.clientHeight || MIN_HEIGHT, MIN_HEIGHT);
 
         const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 200);
+        camera.position.set(6, 4, 6);
+        camera.lookAt(0, 1, 0);
         cameraRef.current = camera;
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(w, h);
         renderer.setPixelRatio(window.devicePixelRatio || 1);
         renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(renderer.domElement);
         rendererRef.current = renderer;
 
-        scene.add(new THREE.HemisphereLight(0xdbeafe, 0x020617, 0.7));
+        // Lights
+        scene.add(new THREE.HemisphereLight(0xdbeafe, 0x020617, 0.75));
 
         const dir = new THREE.DirectionalLight(0xffffff, 0.9);
         dir.position.set(8, 12, 6);
         dir.castShadow = true;
+        dir.shadow.mapSize.set(1024, 1024);
         scene.add(dir);
 
+        // Ground (visual only)
         const ground = new THREE.Mesh(
-            new THREE.PlaneGeometry(60, 60),
-            new THREE.MeshStandardMaterial({ color: 0x020617 })
+            new THREE.PlaneGeometry(80, 80),
+            new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 1, metalness: 0 })
         );
         ground.rotation.x = -Math.PI / 2;
-        ground.position.y = -0.1;
+        ground.position.y = GROUND_Y - 0.1;
+        ground.receiveShadow = true;
         scene.add(ground);
 
+        // Lines group
         const linesGroup = new THREE.Group();
         scene.add(linesGroup);
         linesGroupRef.current = linesGroup;
 
+        // Resize
+        const handleResize = () => {
+            const rr = rendererRef.current;
+            const cc = cameraRef.current;
+            const cont = containerRef.current;
+            if (!rr || !cc || !cont) return;
+
+            const nw = Math.max(cont.clientWidth || MIN_WIDTH, MIN_WIDTH);
+            const nh = Math.max(cont.clientHeight || MIN_HEIGHT, MIN_HEIGHT);
+            rr.setSize(nw, nh);
+            rr.setPixelRatio(window.devicePixelRatio || 1);
+            cc.aspect = nw / nh;
+            cc.updateProjectionMatrix();
+        };
+        window.addEventListener('resize', handleResize);
+
+        // Render loop
         let raf = 0;
         const loop = () => {
             raf = requestAnimationFrame(loop);
@@ -111,51 +167,90 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         };
         loop();
 
+        // Initial fit even before ramp exists
+        fitCameraToObject(null);
+
         return () => {
+            window.removeEventListener('resize', handleResize);
             cancelAnimationFrame(raf);
+
+            // cleanup ramp
+            if (rampRef.current) {
+                scene.remove(rampRef.current);
+                disposeObject(rampRef.current);
+                rampRef.current = null;
+            }
+
+            // cleanup lines
+            if (linesGroupRef.current) {
+                linesGroupRef.current.traverse(o => {
+                    const line = o as THREE.Line;
+                    if ((line as any).isLine && line.geometry) line.geometry.dispose();
+                    const mat: any = (line as any).material;
+                    mat?.dispose?.();
+                });
+            }
+
             renderer.dispose();
-            container.removeChild(renderer.domElement);
+            if (renderer.domElement.parentElement === container) {
+                container.removeChild(renderer.domElement);
+            }
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     /* ---------------------------------------------------
        BUILD RAMP
     ----------------------------------------------------*/
     useEffect(() => {
-        if (!sceneRef.current) return;
+        const scene = sceneRef.current;
+        if (!scene) return;
 
         if (rampRef.current) {
-            sceneRef.current.remove(rampRef.current);
+            scene.remove(rampRef.current);
+            disposeObject(rampRef.current);
+            rampRef.current = null;
         }
 
         const ramp = buildRampGroup(config);
+
+        // Force visibility & shadows
         ramp.traverse(o => {
-            if ((o as THREE.Mesh).isMesh) {
-                o.castShadow = true;
-                o.receiveShadow = true;
+            const m = o as THREE.Mesh;
+            if (m.isMesh) {
+                m.castShadow = true;
+                m.receiveShadow = true;
+                m.frustumCulled = false;
             }
         });
 
-        sceneRef.current.add(ramp);
+        ramp.position.y = 0;
+        scene.add(ramp);
         rampRef.current = ramp;
 
-        fitCameraToRamp();
+        fitCameraToObject(ramp);
     }, [config]);
 
     /* ---------------------------------------------------
        DRAWING
     ----------------------------------------------------*/
     const pickPoint = (e: PointerEvent): THREE.Vector3 | null => {
-        if (!cameraRef.current || !rendererRef.current) return null;
+        const camera = cameraRef.current;
+        const renderer = rendererRef.current;
+        if (!camera || !renderer) return null;
 
-        const rect = rendererRef.current.domElement.getBoundingClientRect();
+        const rect = renderer.domElement.getBoundingClientRect();
         pointer.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         pointer.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-        raycaster.current.setFromCamera(pointer.current, cameraRef.current);
+        raycaster.current.setFromCamera(pointer.current, camera);
 
         const p = new THREE.Vector3();
-        raycaster.current.ray.intersectPlane(groundPlane.current, p);
+        const hit = raycaster.current.ray.intersectPlane(groundPlane.current, p);
+        if (!hit) return null;
+
+        // keep line slightly above ground so it doesn't z-fight
+        p.y = GROUND_Y + 0.02;
         return p;
     };
 
@@ -163,28 +258,48 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const p = pickPoint(e);
         if (!p) return;
 
-        currentStrokeRef.current = [p];
-        strokesRef.current.push(currentStrokeRef.current);
+        currentStrokeRef.current = [p.clone()];
 
-        const geom = new THREE.BufferGeometry().setFromPoints([p]);
+        const geom = new THREE.BufferGeometry().setFromPoints(currentStrokeRef.current);
         const mat = new THREE.LineBasicMaterial({ color: 0xff4747 });
         const line = new THREE.Line(geom, mat);
+        (line as any).userData.__isStroke = true;
         linesGroupRef.current?.add(line);
     };
 
     const continueStroke = (e: PointerEvent) => {
-        if (!currentStrokeRef.current) return;
+        const stroke = currentStrokeRef.current;
+        if (!stroke) return;
+
         const p = pickPoint(e);
         if (!p) return;
 
-        currentStrokeRef.current.push(p);
-        const line = linesGroupRef.current?.children.at(-1) as THREE.Line;
+        const last = stroke[stroke.length - 1];
+        if (last && last.distanceTo(p) < 0.03) return;
+
+        stroke.push(p.clone());
+
+        const group = linesGroupRef.current;
+        if (!group || group.children.length === 0) return;
+
+        const line = group.children[group.children.length - 1] as THREE.Line;
+        if (!line || !(line as any).isLine) return;
+
         line.geometry.dispose();
-        line.geometry = new THREE.BufferGeometry().setFromPoints(currentStrokeRef.current);
+        line.geometry = new THREE.BufferGeometry().setFromPoints(stroke);
     };
 
     const endStroke = () => {
+        const stroke = currentStrokeRef.current;
+        if (!stroke || stroke.length === 0) {
+            currentStrokeRef.current = null;
+            return;
+        }
+
+        // Commit stroke
+        strokesRef.current.push(stroke);
         currentStrokeRef.current = null;
+
         onPathChange?.(
             strokesRef.current.map(st => st.map(v => ({ x: v.x, y: v.y, z: v.z })))
         );
@@ -194,14 +309,31 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const dom = rendererRef.current?.domElement;
         if (!dom) return;
 
-        dom.addEventListener('pointerdown', startStroke);
-        dom.addEventListener('pointermove', continueStroke);
-        dom.addEventListener('pointerup', endStroke);
+        const onDown = (e: PointerEvent) => {
+            dom.setPointerCapture(e.pointerId);
+            startStroke(e);
+        };
+        const onMove = (e: PointerEvent) => {
+            if (!currentStrokeRef.current) return;
+            continueStroke(e);
+        };
+        const onUp = (e: PointerEvent) => {
+            if (dom.hasPointerCapture(e.pointerId)) dom.releasePointerCapture(e.pointerId);
+            endStroke();
+        };
+
+        dom.addEventListener('pointerdown', onDown);
+        dom.addEventListener('pointermove', onMove);
+        dom.addEventListener('pointerup', onUp);
+        dom.addEventListener('pointercancel', onUp);
+        dom.addEventListener('pointerleave', onUp);
 
         return () => {
-            dom.removeEventListener('pointerdown', startStroke);
-            dom.removeEventListener('pointermove', continueStroke);
-            dom.removeEventListener('pointerup', endStroke);
+            dom.removeEventListener('pointerdown', onDown);
+            dom.removeEventListener('pointermove', onMove);
+            dom.removeEventListener('pointerup', onUp);
+            dom.removeEventListener('pointercancel', onUp);
+            dom.removeEventListener('pointerleave', onUp);
         };
     }, []);
 
