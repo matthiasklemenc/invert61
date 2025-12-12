@@ -14,23 +14,28 @@ function createWoodTexture(): THREE.Texture {
 
     // wood “grain”
     for (let y = 0; y < canvas.height; y += 6) {
-        const alpha = 0.15 + Math.random() * 0.1;
-        ctx.fillStyle = `rgba(60,38,20,${alpha})`;
+        const light = Math.random() * 20;
+        ctx.fillStyle = `rgb(${120 + light}, ${90 + light / 2}, ${60})`;
         ctx.fillRect(0, y, canvas.width, 3);
     }
-    for (let i = 0; i < 40; i++) {
+
+    // some knots
+    for (let i = 0; i < 6; i++) {
         const x = Math.random() * canvas.width;
-        const w = 10 + Math.random() * 30;
-        const h = 2 + Math.random() * 4;
-        const alpha = 0.1 + Math.random() * 0.15;
-        ctx.fillStyle = `rgba(90,60,30,${alpha})`;
-        ctx.fillRect(x, Math.random() * canvas.height, w, h);
+        const y = Math.random() * canvas.height;
+        const r = 4 + Math.random() * 6;
+        const grd = ctx.createRadialGradient(x, y, r * 0.2, x, y, r);
+        grd.addColorStop(0, 'rgba(60, 35, 20, 0.8)');
+        grd.addColorStop(1, 'rgba(60, 35, 20, 0)');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
     }
 
     const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(4, 1);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 4);
     return tex;
 }
 
@@ -39,526 +44,344 @@ function createConcreteTexture(): THREE.Texture {
     canvas.width = 256;
     canvas.height = 256;
     const ctx = canvas.getContext('2d')!;
-    // base grey
-    ctx.fillStyle = '#4b5563';
+
+    ctx.fillStyle = '#111827';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // noise
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-        const n = 120 + Math.random() * 40; // greyish
-        data[i] = n;
-        data[i + 1] = n;
-        data[i + 2] = n;
-        // alpha stays
+
+    // subtle speckles
+    for (let i = 0; i < 8000; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        const v = 140 + Math.random() * 80;
+        ctx.fillStyle = `rgba(${v},${v},${v},${Math.random() * 0.4})`;
+        ctx.fillRect(x, y, 1, 1);
     }
-    ctx.putImageData(imageData, 0, 0);
+
     const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(2, 2);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 3);
     return tex;
 }
 
-const woodTexture = createWoodTexture();
-const concreteTexture = createConcreteTexture();
-
-// Basic materials (PBR-ish)
-const rampMat = new THREE.MeshStandardMaterial({
-    map: concreteTexture,
-    color: 0xffffff,
-    roughness: 0.75,
-    metalness: 0.05,
-});
-
-const copingMat = new THREE.MeshStandardMaterial({
-    color: 0xd1d5db,
-    metalness: 0.9,
-    roughness: 0.2,
-});
-
-const deckMat = new THREE.MeshStandardMaterial({
-    map: woodTexture,
-    roughness: 0.6,
-    metalness: 0.05,
-});
-
-const streetMat = new THREE.MeshStandardMaterial({
-    map: concreteTexture,
-    color: 0xbfc3c9,
-    roughness: 0.85,
-    metalness: 0.0,
-});
-
-const railMat = new THREE.MeshStandardMaterial({
-    color: 0xe5e7eb,
-    metalness: 1.0,
-    roughness: 0.25,
-});
-
-const stairRiserMat = new THREE.MeshStandardMaterial({
-    color: 0x111827,
-    roughness: 0.9,
-    metalness: 0.0,
-});
-
-// Helper: approximate transition radius from height in meters
-function transitionRadiusFromHeight(heightM: number): number {
-    // very rough: typical mini ~1.5× height radius
-    return heightM * 1.5;
+/**
+ * Convert slider “heightFt” into a scaled world height.
+ * We keep everything skate-park sized (1 Three.js unit ≈ 1 m).
+ */
+function heightInMetersFromFt(heightFt: number): number {
+    const rawMeters = heightFt * 0.3048; // 1 ft = 0.3048 m
+    // For the mini-ramp we tame extremes a bit so it looks nice in the view.
+    if (rawMeters < 0.5) return 0.5;
+    if (rawMeters > 2.4) return 2.4;
+    return rawMeters;
 }
 
-// Helper: width from config widthLevel
-function widthFromLevel(level: RampConfig['widthLevel']): number {
-    switch (level) {
+/**
+ * Width helper based on config.widthLevel.
+ */
+function widthFromLevel(config: RampConfig): number {
+    const baseWidth = 2.4; // 8 ft base width
+
+    switch (config.widthLevel) {
         case 'narrow':
-            return 2.2;
-        case 'wide':
-            return 4.0;
+            return baseWidth * 0.6; // ca. 1.5 m
         case 'medium':
+            return baseWidth; // 2.4 m
+        case 'wide':
+            return baseWidth * 1.6; // ca. 3.8 m
         default:
-            return 3.0;
+            return 3.6;
     }
 }
 
-function createMiniramp(config: RampConfig): THREE.Group {
+/**
+ * Generic mini-ramp: two opposing transitions + flat in the middle.
+ * Low-poly but shaped & textured so it feels like a real park object.
+ */
+function buildMiniRamp(config: RampConfig): THREE.Group {
+    const woodTex = createWoodTexture();
+    const concreteTex = createConcreteTexture();
+
+    const deckMat = new THREE.MeshStandardMaterial({
+        map: woodTex,
+        roughness: 0.6,
+        metalness: 0.05,
+    });
+
+    const concreteMat = new THREE.MeshStandardMaterial({
+        map: concreteTex,
+        roughness: 0.95,
+        metalness: 0.05,
+        color: 0xbfc7d1,
+    });
+
     const group = new THREE.Group();
 
-    const h = config.heightFt * 0.3048; // meters
-    const w = widthFromLevel(config.widthLevel);
-    const flat = h * 1.6; // flat bottom length
-    const radius = transitionRadiusFromHeight(h);
+    const rampWidth = widthFromLevel(config);
+    const rampHeight = heightInMetersFromFt(config.heightFt);
+    const transitionRadius = rampHeight * 0.9;
+    const flatBottom = 2.0; // 2 m flat in the middle
+    const deckLength = 0.6; // fast in / out
 
-    const halfSpan = radius + flat / 2;
+    const totalLength = deckLength + transitionRadius + flatBottom + transitionRadius + deckLength;
 
-    const geom = new THREE.CylinderGeometry(
-        radius,
-        radius,
-        w,
-        32,
-        1,
-        false,
-        Math.PI / 2,
-        Math.PI
-    );
-    geom.rotateZ(Math.PI / 2);
-    const rampMesh = new THREE.Mesh(geom, rampMat);
-    rampMesh.castShadow = true;
-    rampMesh.receiveShadow = true;
-    group.add(rampMesh);
+    // helper function: create quarter-pipe section via lathe
+    function createQuarterPipe(sign: 1 | -1) {
+        const pts: THREE.Vector2[] = [];
+        const steps = 8;
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const angle = (Math.PI / 2) * t;
+            const x = rampHeight - transitionRadius * Math.cos(angle);
+            const y = transitionRadius * Math.sin(angle);
+            pts.push(new THREE.Vector2(x, y));
+        }
+
+        const geometry = new THREE.LatheGeometry(pts, 1);
+        geometry.rotateZ(-Math.PI / 2);
+        const mesh = new THREE.Mesh(geometry, concreteMat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        // position in world
+        const offsetZ =
+            sign > 0
+                ? -totalLength / 2 + deckLength + transitionRadius / 2
+                : totalLength / 2 - deckLength - transitionRadius / 2;
+
+        mesh.position.set(0, 0, offsetZ);
+        mesh.scale.set(rampWidth / 2, 1, 1);
+        mesh.rotation.y = sign > 0 ? 0 : Math.PI;
+        return mesh;
+    }
+
+    // left transition
+    const q1 = createQuarterPipe(1);
+    // right transition
+    const q2 = createQuarterPipe(-1);
+
+    // flat bottom
+    const flatGeom = new THREE.BoxGeometry(rampWidth, 0.12, flatBottom);
+    const flatMesh = new THREE.Mesh(flatGeom, concreteMat);
+    flatMesh.position.set(0, 0.06, 0);
+    flatMesh.receiveShadow = true;
 
     // decks
-    const deckDepth = 0.6;
-    const deckThickness = 0.06;
-
-    const deckGeom = new THREE.BoxGeometry(deckDepth, deckThickness, w);
+    const deckGeom = new THREE.BoxGeometry(rampWidth, 0.08, deckLength);
     const deck1 = new THREE.Mesh(deckGeom, deckMat);
-    deck1.position.set(-halfSpan - deckDepth / 2, h, 0);
-    deck1.castShadow = true;
-    deck1.receiveShadow = true;
+    deck1.position.set(0, rampHeight, -totalLength / 2 + deckLength / 2);
+    deck1.castShadow = deck1.receiveShadow = true;
 
     const deck2 = deck1.clone();
-    deck2.position.set(halfSpan + deckDepth / 2, h, 0);
-
-    group.add(deck1, deck2);
-
-    // coping
-    const copingRadius = 0.04;
-    const copingGeom = new THREE.CylinderGeometry(copingRadius, copingRadius, w, 16);
-    const coping1 = new THREE.Mesh(copingGeom, copingMat);
-    coping1.rotation.z = Math.PI / 2;
-    coping1.position.set(-halfSpan, h, 0);
-
-    const coping2 = coping1.clone();
-    coping2.position.set(halfSpan, h, 0);
-
-    group.add(coping1, coping2);
-
-    return group;
-}
-
-function createQuarter(config: RampConfig, vertical = false, medium = false): THREE.Group {
-    const group = new THREE.Group();
-
-    const h = config.heightFt * 0.3048;
-    const w = widthFromLevel(config.widthLevel);
-
-    const radius = transitionRadiusFromHeight(h);
-    const arc = vertical ? Math.PI / 2 : (medium ? Math.PI / 3 : Math.PI / 4);
-    const geom = new THREE.CylinderGeometry(
-        radius,
-        radius,
-        w,
-        32,
-        1,
-        false,
-        Math.PI,
-        arc
-    );
-    geom.rotateZ(Math.PI / 2);
-    const rampMesh = new THREE.Mesh(geom, rampMat);
-    rampMesh.castShadow = true;
-    rampMesh.receiveShadow = true;
-    group.add(rampMesh);
-
-    // deck
-    const deckDepth = 0.7;
-    const deckThickness = 0.06;
-    const deckGeom = new THREE.BoxGeometry(deckDepth, deckThickness, w);
-    const deck = new THREE.Mesh(deckGeom, deckMat);
-    deck.position.set(-radius - deckDepth / 2, h, 0);
-    deck.castShadow = true;
-    deck.receiveShadow = true;
-    group.add(deck);
-
-    // coping
-    const copingRadius = 0.045;
-    const copingGeom = new THREE.CylinderGeometry(copingRadius, copingRadius, w, 16);
-    const coping = new THREE.Mesh(copingGeom, copingMat);
-    coping.rotation.z = Math.PI / 2;
-    coping.position.set(-radius, h, 0);
-    group.add(coping);
-
-    return group;
-}
-
-function createHalfpipe(config: RampConfig): THREE.Group {
-    const group = new THREE.Group();
-
-    const h = config.heightFt * 0.3048;
-    const w = widthFromLevel(config.widthLevel);
-    const radius = transitionRadiusFromHeight(h);
-
-    const geom = new THREE.CylinderGeometry(
-        radius,
-        radius,
-        w,
-        40,
-        1,
-        false,
-        Math.PI / 2.4,
-        Math.PI * (1.0) // big chunk
-    );
-    geom.rotateZ(Math.PI / 2);
-    const rampMesh = new THREE.Mesh(geom, rampMat);
-    rampMesh.castShadow = true;
-    rampMesh.receiveShadow = true;
-    group.add(rampMesh);
-
-    // decks both sides
-    const deckDepth = 0.8;
-    const deckThickness = 0.06;
-    const deckGeom = new THREE.BoxGeometry(deckDepth, deckThickness, w);
-
-    const deck1 = new THREE.Mesh(deckGeom, deckMat);
-    deck1.position.set(-radius - deckDepth / 2, h, 0);
-    deck1.castShadow = true;
-    deck1.receiveShadow = true;
-
-    const deck2 = deck1.clone();
-    deck2.position.set(radius + deckDepth / 2, h, 0);
-
-    group.add(deck1, deck2);
-
-    // coping
-    const copingRadius = 0.045;
-    const copingGeom = new THREE.CylinderGeometry(copingRadius, copingRadius, w, 16);
-    const coping1 = new THREE.Mesh(copingGeom, copingMat);
-    coping1.rotation.z = Math.PI / 2;
-    coping1.position.set(-radius, h, 0);
-    const coping2 = coping1.clone();
-    coping2.position.set(radius, h, 0);
-    group.add(coping1, coping2);
-
-    return group;
-}
-
-function createRoundBowl(config: RampConfig): THREE.Group {
-    const group = new THREE.Group();
-
-    const h = config.heightFt * 0.3048;
-    const radius = transitionRadiusFromHeight(h);
-    const w = widthFromLevel(config.widthLevel);
-
-    const bowlGeom = new THREE.SphereGeometry(radius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    bowlGeom.rotateX(-Math.PI / 2);
-    const bowl = new THREE.Mesh(bowlGeom, rampMat);
-    bowl.position.y = h - radius;
-    bowl.castShadow = true;
-    bowl.receiveShadow = true;
-    group.add(bowl);
-
-    // lip / coping ring
-    const torusGeom = new THREE.TorusGeometry(radius, 0.05, 16, 64);
-    const torus = new THREE.Mesh(torusGeom, copingMat);
-    torus.position.y = h;
-    group.add(torus);
-
-    return group;
-}
-
-function createOvalBowl(config: RampConfig): THREE.Group {
-    const group = new THREE.Group();
-    const h = config.heightFt * 0.3048;
-
-    const long = transitionRadiusFromHeight(h) * 1.4;
-    const short = transitionRadiusFromHeight(h);
-
-    const geom = new THREE.SphereGeometry(short, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    geom.scale(long / short, 1, 1);
-    geom.rotateX(-Math.PI / 2);
-    const bowl = new THREE.Mesh(geom, rampMat);
-    bowl.position.y = h - short;
-    bowl.castShadow = true;
-    bowl.receiveShadow = true;
-    group.add(bowl);
-
-    const torusGeom = new THREE.TorusGeometry(short, 0.05, 16, 64);
-    torusGeom.scale(long / short, 1, 1);
-    const torus = new THREE.Mesh(torusGeom, copingMat);
-    torus.position.y = h;
-    group.add(torus);
-
-    return group;
-}
-
-function createKidneyBowl(config: RampConfig): THREE.Group {
-    const group = new THREE.Group();
-    const h = config.heightFt * 0.3048;
-    const rSmall = transitionRadiusFromHeight(h) * 0.8;
-    const rBig = transitionRadiusFromHeight(h) * 1.2;
-
-    const small = new THREE.SphereGeometry(rSmall, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    small.rotateX(-Math.PI / 2);
-    const smallMesh = new THREE.Mesh(small, rampMat);
-    smallMesh.position.set(-rSmall * 0.7, h - rSmall, 0);
-
-    const big = new THREE.SphereGeometry(rBig, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    big.rotateX(-Math.PI / 2);
-    const bigMesh = new THREE.Mesh(big, rampMat);
-    bigMesh.position.set(rBig * 0.6, h - rBig, 0);
-
-    smallMesh.castShadow = smallMesh.receiveShadow = true;
-    bigMesh.castShadow = bigMesh.receiveShadow = true;
-
-    group.add(smallMesh, bigMesh);
-
-    // simple coping spline (not perfect kidney, but looks good)
-    const path = new THREE.CurvePath<THREE.Vector3>();
-    path.add(new THREE.EllipseCurve(
-        -rSmall * 0.7, 0,
-        rSmall, rSmall * 0.9,
-        Math.PI * 0.2, Math.PI * 1.2,
-        false,
-        0
-    ) as any);
-    path.add(new THREE.EllipseCurve(
-        rBig * 0.6, 0,
-        rBig, rBig * 0.8,
-        Math.PI * 1.2, Math.PI * 0.2,
-        false,
-        0
-    ) as any);
-
-    const pts2 = path.getPoints(80);
-    const pts3 = pts2.map(p => new THREE.Vector3(p.x, h, p.y));
-    const tubeGeom = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts3), 200, 0.05, 12, true);
-    const coping = new THREE.Mesh(tubeGeom, copingMat);
-    group.add(coping);
-
-    return group;
-}
-
-function createStairs(config: RampConfig, withRail: boolean): THREE.Group {
-    const group = new THREE.Group();
-
-    const h = config.heightFt * 0.3048;
-    const w = widthFromLevel(config.widthLevel);
-    const steps = 6;
-    const stepRise = h / steps;
-    const stepDepth = 0.35;
-
-    for (let i = 0; i < steps; i++) {
-        const stepGeom = new THREE.BoxGeometry(stepDepth, stepRise, w);
-        const step = new THREE.Mesh(stepGeom, streetMat);
-        step.position.set(
-            -((steps - 1) * stepDepth) / 2 + i * stepDepth,
-            stepRise / 2 + i * stepRise,
-            0
-        );
-        step.castShadow = true;
-        step.receiveShadow = true;
-        group.add(step);
-
-        const riserGeom = new THREE.BoxGeometry(0.02, stepRise, w);
-        const riser = new THREE.Mesh(riserGeom, stairRiserMat);
-        riser.position.set(
-            step.position.x - stepDepth / 2 + 0.01,
-            step.position.y,
-            0
-        );
-        riser.castShadow = true;
-        riser.receiveShadow = true;
-        group.add(riser);
-    }
-
-    if (withRail) {
-        const railHeight = h * 0.8;
-        const railLen = steps * stepDepth * 1.3;
-
-        const postGeom = new THREE.CylinderGeometry(0.04, 0.04, railHeight, 16);
-        const post1 = new THREE.Mesh(postGeom, railMat);
-        const post2 = post1.clone();
-
-        post1.position.set(-railLen / 2, railHeight / 2, -w * 0.15);
-        post2.position.set(railLen / 2, railHeight / 2, -w * 0.15);
-        post1.castShadow = post2.castShadow = true;
-        post1.receiveShadow = post2.receiveShadow = true;
-        group.add(post1, post2);
-
-        const railGeom = new THREE.CylinderGeometry(0.035, 0.035, railLen, 16);
-        const rail = new THREE.Mesh(railGeom, railMat);
-        rail.rotation.z = Math.PI / 2;
-        rail.position.set(0, railHeight, -w * 0.15);
-        rail.castShadow = rail.receiveShadow = true;
-        group.add(rail);
-    }
-
-    return group;
-}
-
-function createFlatbar(config: RampConfig): THREE.Group {
-    const group = new THREE.Group();
-
-    const w = widthFromLevel(config.widthLevel);
-    const length = 3.0 + (config.heightFt - 2) * 0.3;
-    const height = 0.4 + (config.heightFt - 2) * 0.05;
-
-    const barGeom = new THREE.BoxGeometry(length, 0.06, 0.06);
-    const bar = new THREE.Mesh(barGeom, railMat);
-    bar.position.y = height;
-    bar.castShadow = bar.receiveShadow = true;
-    group.add(bar);
-
-    const footGeom = new THREE.BoxGeometry(0.4, 0.06, 0.3);
-    const foot1 = new THREE.Mesh(footGeom, streetMat);
-    const foot2 = foot1.clone();
-    foot1.position.set(-length / 3, 0.03, 0);
-    foot2.position.set(length / 3, 0.03, 0);
-    foot1.castShadow = foot2.castShadow = true;
-    foot1.receiveShadow = foot2.receiveShadow = true;
-    group.add(foot1, foot2);
-
-    return group;
-}
-
-function createLedge(config: RampConfig): THREE.Group {
-    const group = new THREE.Group();
-
-    const h = config.heightFt * 0.3048 * 0.7; // street ledges meist ~0.3–0.6 m
-    const length = 2.4 + (config.heightFt - 2) * 0.2;
-    const depth = 0.4;
-
-    const bodyGeom = new THREE.BoxGeometry(length, h, depth);
-    const body = new THREE.Mesh(bodyGeom, streetMat);
-    body.position.y = h / 2;
-    body.castShadow = body.receiveShadow = true;
-    group.add(body);
-
-    // coped edge
-    const edgeGeom = new THREE.BoxGeometry(length, 0.05, 0.08);
-    const edge = new THREE.Mesh(edgeGeom, copingMat);
-    edge.position.set(0, h + 0.025, depth / 2 - 0.04);
-    edge.castShadow = edge.receiveShadow = true;
-    group.add(edge);
-
-    return group;
-}
-
-function createManualPad(config: RampConfig): THREE.Group {
-    const group = new THREE.Group();
-
-    const h = 0.25 + (config.heightFt - 2) * 0.04;
-    const length = 1.8 + (config.heightFt - 2) * 0.2;
-    const depth = 1.0;
-
-    const geo = new THREE.BoxGeometry(length, h, depth);
-    const pad = new THREE.Mesh(geo, streetMat);
-    pad.position.y = h / 2;
-    pad.castShadow = pad.receiveShadow = true;
-    group.add(pad);
-
-    // subtle top edge
-    const edgeGeom = new THREE.BoxGeometry(length, 0.02, depth);
-    const edge = new THREE.Mesh(edgeGeom, copingMat);
-    edge.position.y = h + 0.01;
-    group.add(edge);
-
-    return group;
-}
-
-function createKicker(config: RampConfig): THREE.Group {
-    const group = new THREE.Group();
-
-    const h = config.heightFt * 0.3048 * 0.6;
-    const length = 1.6 + (config.heightFt - 2) * 0.25;
-    const w = widthFromLevel(config.widthLevel);
-
-    const shape = new THREE.Shape();
-    shape.moveTo(0, 0);
-    shape.lineTo(length, 0);
-    shape.lineTo(length, h);
-    shape.quadraticCurveTo(length * 0.4, h * 0.9, 0, 0);
-
-    const extrude = new THREE.ExtrudeGeometry(shape, {
-        depth: w,
-        bevelEnabled: false,
+    deck2.position.set(0, rampHeight, totalLength / 2 - deckLength / 2);
+
+    // coping (simple metallic cylinders)
+    const copingMat = new THREE.MeshStandardMaterial({
+        color: 0xd1d5db,
+        roughness: 0.5,
+        metalness: 0.9,
     });
-    extrude.rotateX(-Math.PI / 2);
-    const ramp = new THREE.Mesh(extrude, streetMat);
-    ramp.castShadow = ramp.receiveShadow = true;
-    group.add(ramp);
+    const copingGeom = new THREE.CylinderGeometry(0.03, 0.03, rampWidth, 16);
+
+    const coping1 = new THREE.Mesh(copingGeom, copingMat);
+    coping1.rotation.z = Math.PI / 2;
+    coping1.position.set(0, rampHeight + 0.03, -totalLength / 2 + deckLength);
+    coping1.castShadow = coping1.receiveShadow = true;
+
+    const coping2 = coping1.clone();
+    coping2.position.set(0, rampHeight + 0.03, totalLength / 2 - deckLength);
+
+    // assemble
+    group.add(q1, q2, flatMesh, deck1, deck2, coping1, coping2);
+
+    // “concrete pad” under everything
+    const padGeom = new THREE.BoxGeometry(rampWidth + 0.6, 0.06, totalLength + 0.6);
+    const padMesh = new THREE.Mesh(padGeom, concreteMat);
+    padMesh.position.y = -0.03;
+    padMesh.receiveShadow = true;
+    group.add(padMesh);
+
+    // center in scene
+    group.position.set(0, 0, 0);
+
+    return group;
+}
+
+/**
+ * BANK (simple wedge) – dedicated geometry, fixed height 0.4 m.
+ * Uses the same width logic as other street obstacles.
+ */
+function buildBank(config: RampConfig): THREE.Group {
+    const concreteTex = createConcreteTexture();
+
+    // Basic bank dimensions (in meters)
+    const width = widthFromLevel(config.widthLevel); // e.g. ~2–3 m
+    const height = 0.4; // 40 cm, as requested
+    const length = 3.0; // 3 m run-up
+
+    // Wedge (prism) so it actually looks like a bank
+    const positions = new Float32Array([
+        // bottom rectangle (z forward)
+        -width / 2, 0, 0,          // 0
+         width / 2, 0, 0,          // 1
+        -width / 2, 0, length,     // 2
+         width / 2, 0, length,     // 3
+
+        // top back edge
+        -width / 2, height, length, // 4
+         width / 2, height, length, // 5
+    ]);
+
+    const indices = [
+        // bottom
+        0, 2, 1,
+        2, 3, 1,
+
+        // back vertical face
+        2, 4, 3,
+        3, 4, 5,
+
+        // left side
+        0, 2, 4,
+
+        // right side
+        1, 5, 3,
+
+        // front sloped face
+        0, 1, 5,
+        0, 5, 4,
+    ];
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({
+        map: concreteTex,
+        roughness: 0.9,
+        metalness: 0.05,
+        color: 0xbfc7d1,
+    });
+
+    const bankMesh = new THREE.Mesh(geom, mat);
+    bankMesh.castShadow = true;
+    bankMesh.receiveShadow = true;
+
+    const group = new THREE.Group();
+    group.add(bankMesh);
+
+    return group;
+}
+
+/**
+ * Ledge / manual pad style block.
+ */
+function buildLedge(config: RampConfig): THREE.Group {
+    const concreteTex = createConcreteTexture();
+    const woodTex = createWoodTexture();
+
+    const group = new THREE.Group();
+
+    const baseWidth = 0.6; // depth in z
+    const height = 0.4; // 40 cm ledge
+    const length = 2.4; // 8 ft
+
+    const width =
+        config.widthLevel === 'wide'
+            ? 3.0
+            : config.widthLevel === 'narrow'
+            ? 1.6
+            : 2.2;
+
+    const baseGeom = new THREE.BoxGeometry(width, 0.1, length + 0.4);
+    const baseMat = new THREE.MeshStandardMaterial({
+        map: concreteTex,
+        roughness: 0.95,
+        metalness: 0.05,
+        color: 0x9ca3af,
+    });
+    const base = new THREE.Mesh(baseGeom, baseMat);
+    base.position.y = 0.05;
+    base.receiveShadow = true;
+
+    const blockGeom = new THREE.BoxGeometry(width - 0.1, height, length);
+    const blockMat = new THREE.MeshStandardMaterial({
+        map: concreteTex,
+        roughness: 0.9,
+        metalness: 0.02,
+        color: 0xbfc7d1,
+    });
+    const block = new THREE.Mesh(blockGeom, blockMat);
+    block.position.y = 0.05 + height / 2;
+    block.castShadow = block.receiveShadow = true;
+
+    const copingGeom = new THREE.BoxGeometry(width - 0.08, 0.04, length + 0.02);
+    const copingMat = new THREE.MeshStandardMaterial({
+        color: 0xe5e7eb,
+        roughness: 0.4,
+        metalness: 0.8,
+    });
+    const coping = new THREE.Mesh(copingGeom, copingMat);
+    coping.position.y = 0.05 + height + 0.02;
+    coping.castShadow = coping.receiveShadow = true;
+
+    group.add(base, block, coping);
+
+    return group;
+}
+
+function buildFlatbar(config: RampConfig): THREE.Group {
+    const group = new THREE.Group();
+
+    const railLength = 3.0;
+    const height = 0.4;
+
+    const supportMat = new THREE.MeshStandardMaterial({
+        color: 0x4b5563,
+        roughness: 0.8,
+        metalness: 0.2,
+    });
+
+    const railMat = new THREE.MeshStandardMaterial({
+        color: 0xe5e7eb,
+        roughness: 0.4,
+        metalness: 0.9,
+    });
+
+    const railGeom = new THREE.CylinderGeometry(0.03, 0.03, railLength, 16);
+    const rail = new THREE.Mesh(railGeom, railMat);
+    rail.rotation.z = Math.PI / 2;
+    rail.position.y = height;
+    rail.castShadow = rail.receiveShadow = true;
+
+    const baseGeom = new THREE.BoxGeometry(0.4, 0.05, 0.5);
+    const base1 = new THREE.Mesh(baseGeom, supportMat);
+    base1.position.set(-railLength / 2 + 0.4, 0.025, 0);
+    const base2 = base1.clone();
+    base2.position.x = railLength / 2 - 0.4;
+    base1.receiveShadow = base2.receiveShadow = true;
+
+    const postGeom = new THREE.BoxGeometry(0.09, height, 0.09);
+    const post1 = new THREE.Mesh(postGeom, supportMat);
+    const post2 = post1.clone();
+    post1.position.set(base1.position.x, height / 2, 0);
+    post2.position.set(base2.position.x, height / 2, 0);
+    post1.castShadow = post1.receiveShadow = true;
+    post2.castShadow = post2.receiveShadow = true;
+
+    group.add(base1, base2, post1, post2, rail);
 
     return group;
 }
 
 export function buildRampGroup(config: RampConfig): THREE.Group {
-    switch (config.typeId) {
-        case 'miniramp':
-            return createMiniramp(config);
-        case 'quarter_low':
-            return createQuarter(config, false, false);
-        case 'quarter_medium':
-            return createQuarter(config, false, true);
-        case 'quarter_vert':
-            return createQuarter(config, true, false);
-        case 'halfpipe':
-            return createHalfpipe(config);
-        case 'bowl_round':
-            return createRoundBowl(config);
-        case 'bowl_oval':
-            return createOvalBowl(config);
-        case 'bowl_kidney':
-            return createKidneyBowl(config);
-        case 'stairs':
-            return createStairs(config, false);
-        case 'stairs_rail':
-            return createStairs(config, true);
-        case 'flatbar':
-            return createFlatbar(config);
-        case 'ledge':
-            return createLedge(config);
-        case 'manual_pad':
-            return createManualPad(config);
-        case 'kicker':
-            return createKicker(config);
-        default: {
-            const g = new THREE.Group();
-            const placeholder = new THREE.BoxGeometry(2, 0.2, 2);
-            const m = new THREE.Mesh(placeholder, rampMat);
-            m.position.y = 0.1;
-            g.add(m);
-            return g;
-        }
-    }
+    const id = config.typeId;
+
+    // street obstacles
+    if (id.includes('ledge')) return buildLedge(config);
+    if (id.includes('bank')) return buildBank(config);
+    if (id.includes('flatbar') || id.includes('rail')) return buildFlatbar(config);
+
+    // default / mini ramp / bowl-ish: use curved mini ramp
+    return buildMiniRamp(config);
 }
