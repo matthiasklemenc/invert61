@@ -1,5 +1,3 @@
-// C:\Users\user\Desktop\invert61\src\skate_session_review\3d\PathEditor3D.tsx
-
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
@@ -324,38 +322,34 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     };
 
     // -----------------------
-    //  STROKE HANDLING (with reconnect)
+    //  STROKE HANDLING (always reconnect)
     // -----------------------
     const startStroke = (event: PointerEvent) => {
         const p = pickOnSurface(event);
         if (!p) return;
 
-        // Try to continue the last stroke instead of starting a disconnected one
         const existing = strokesRef.current[strokesRef.current.length - 1];
         let pts: THREE.Vector3[];
 
         if (existing && existing.length) {
-            const last = existing[existing.length - 1];
-            const dist = last.distanceTo(p);
+            // ALWAYS continue the last stroke – no distance check.
+            pts = [...existing];
 
-            // if we start reasonably close to the last end point, treat it as continuation
-            if (dist < 1.0) {
-                pts = [...existing];
-                // remove old line geometry – we will re-create it extended
-                strokesRef.current.pop();
-                if (linesGroupRef.current) {
-                    for (let i = linesGroupRef.current.children.length - 1; i >= 0; i--) {
-                        const child = linesGroupRef.current.children[i];
-                        if ((child as any).userData?.__isStroke) {
-                            linesGroupRef.current.remove(child);
-                            break;
-                        }
+            // remove last stored stroke
+            strokesRef.current.pop();
+
+            // remove last stroke line from scene
+            if (linesGroupRef.current) {
+                for (let i = linesGroupRef.current.children.length - 1; i >= 0; i--) {
+                    const child = linesGroupRef.current.children[i];
+                    if ((child as any).userData?.__isStroke) {
+                        linesGroupRef.current.remove(child);
+                        break;
                     }
                 }
-            } else {
-                pts = [p];
             }
         } else {
+            // no previous stroke – start a new one
             pts = [p];
         }
 
@@ -364,7 +358,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const geom = new THREE.BufferGeometry().setFromPoints(pts);
         const mat = new THREE.LineBasicMaterial({ color: 0xff4747, linewidth: 2 });
         const line = new THREE.Line(geom, mat);
-        line.userData.__isStroke = true;
+        (line as any).userData.__isStroke = true;
 
         linesGroupRef.current?.add(line);
     };
@@ -496,7 +490,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     //  RENDER UI
     // -----------------------
     return (
-        <div className="relative w-full h-full">
+        <div className="relative w-full aspect-[4/3] max-h-[540px] min-h-[260px]">
             <div
                 ref={containerRef}
                 className="w-full h-full rounded-lg overflow-hidden bg-slate-950 border border-white/10"
