@@ -1,3 +1,5 @@
+// C:\Users\user\Desktop\invert61\src\skate_session_review\3d\TrickBlocksPanel.tsx
+
 import React from 'react';
 import { FLAT_TRICK_BLOCKS, TRANSITION_TRICK_BLOCKS, type TrickBlock } from '../planner/trickBlocks';
 
