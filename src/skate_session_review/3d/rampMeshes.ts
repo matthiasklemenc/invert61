@@ -71,20 +71,24 @@ const woodTex = createWoodTexture();
 const concreteMat = new THREE.MeshStandardMaterial({
     map: concreteTex,
     roughness: 0.92,
-    metalness: 0.05
+    metalness: 0.05,
+    side: THREE.DoubleSide
 });
 
 const woodMat = new THREE.MeshStandardMaterial({
     map: woodTex,
     roughness: 0.6,
-    metalness: 0.05
+    metalness: 0.05,
+    side: THREE.DoubleSide
 });
 
 const metalMat = new THREE.MeshStandardMaterial({
     color: 0xe5e7eb,
     metalness: 0.9,
-    roughness: 0.35
+    roughness: 0.35,
+    side: THREE.DoubleSide
 });
+
 
 /* ---------------------------------------------------
    QUARTER PIPE PROFILE (EXTRUDED)
