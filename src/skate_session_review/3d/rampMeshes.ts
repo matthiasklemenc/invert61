@@ -50,7 +50,6 @@ function createConcreteTexture(): THREE.Texture {
 /* ---------------------------------------------------
    SCALING HELPERS
 ----------------------------------------------------*/
-
 function heightInMetersFromFt(ft: number): number {
     const m = ft * 0.3048;
     // keep things sane in editor
@@ -103,15 +102,13 @@ function groundGroup(group: THREE.Group, groundY = 0): THREE.Group {
     const lift = groundY - box.min.y;
     group.position.y += lift;
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return group; // ✅ RETURN ONCE, NO RECURSION
 }
 
 /* ---------------------------------------------------
    QUARTER PIPE PROFILE (EXTRUDED)
 ----------------------------------------------------*/
-
 function createQuarterGeometry(height: number, length: number, width: number): THREE.BufferGeometry {
     // Side profile in (X,Y): X = length direction, Y = height
     const shape = new THREE.Shape();
@@ -142,34 +139,39 @@ function createQuarterGeometry(height: number, length: number, width: number): T
     shape.lineTo(length, 0);
     shape.lineTo(0, 0);
 
-    const extrudeSettings = {
+    const extrudeSettings: THREE.ExtrudeGeometryOptions = {
         depth: width,
         bevelEnabled: false,
         steps: 1
     };
 
-const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
 
-// Put the "floor" at y=0 and center only across width (Z)
-geom.computeBoundingBox();
-if (geom.boundingBox) {
-    const minY = geom.boundingBox.min.y;
-    const minZ = geom.boundingBox.min.z;
-    const maxZ = geom.boundingBox.max.z;
-    const centerZ = (minZ + maxZ) * 0.5;
+    // IMPORTANT: In Three.js, ExtrudeGeometry uses:
+    // - Shape in XY plane
+    // - Depth along +Z
+    // That already matches: X=forward, Y=up, Z=width (what our editor expects).
+    // So do NOT rotate here (rotation was the cause of "ramps not showing" in your viewport setup).
 
-    // Lift so bottom touches y=0, and center across width
-    geom.translate(0, -minY, -centerZ);
-}
+    // Put the "floor" at y=0 and center only across width (Z)
+    geom.computeBoundingBox();
+    if (geom.boundingBox) {
+        const minY = geom.boundingBox.min.y;
+        const minZ = geom.boundingBox.min.z;
+        const maxZ = geom.boundingBox.max.z;
+        const centerZ = (minZ + maxZ) * 0.5;
 
-return geom;
+        // Lift so bottom touches y=0, and center across width
+        geom.translate(0, -minY, -centerZ);
+    }
 
+    geom.computeVertexNormals();
+    return geom;
 }
 
 /* ---------------------------------------------------
    MINIRAMP / HALFPIPE
 ----------------------------------------------------*/
-
 function buildMiniRamp(config: RampConfig): THREE.Group {
     const group = new THREE.Group();
 
@@ -236,9 +238,8 @@ function buildMiniRamp(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 /* Halfpipe: just wider + no long flat (short flat only) */
@@ -258,10 +259,12 @@ function buildHalfpipe(config: RampConfig): THREE.Group {
     q1.rotation.y = Math.PI;
     q1.position.set(-(flat / 2), 0, 0);
     q1.castShadow = q1.receiveShadow = true;
+
     const q2 = new THREE.Mesh(qGeom.clone(), concreteMat);
     q2.rotation.y = 0;
     q2.position.set(flat / 2, 0, 0);
     q2.castShadow = q2.receiveShadow = true;
+
     group.add(q1, q2);
 
     const flatBox = new THREE.Mesh(
@@ -275,8 +278,10 @@ function buildHalfpipe(config: RampConfig): THREE.Group {
     const deckGeom = new THREE.BoxGeometry(deck, 0.06, width);
     const deck1 = new THREE.Mesh(deckGeom, woodMat);
     deck1.position.set(-flat / 2 - radius / 2, height + 0.03, 0);
+
     const deck2 = deck1.clone();
     deck2.position.x = flat / 2 + radius / 2;
+
     deck1.castShadow = deck1.receiveShadow = true;
     deck2.castShadow = deck2.receiveShadow = true;
     group.add(deck1, deck2);
@@ -285,8 +290,10 @@ function buildHalfpipe(config: RampConfig): THREE.Group {
     const cp1 = new THREE.Mesh(copingGeom, metalMat);
     cp1.rotation.z = Math.PI / 2;
     cp1.position.set(-flat / 2 - radius / 2 + 0.05, height + 0.09, 0);
+
     const cp2 = cp1.clone();
     cp2.position.x = flat / 2 + radius / 2 - 0.05;
+
     cp1.castShadow = cp2.castShadow = true;
     cp1.receiveShadow = cp2.receiveShadow = true;
     group.add(cp1, cp2);
@@ -299,15 +306,13 @@ function buildHalfpipe(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 /* ---------------------------------------------------
    SINGLE QUARTERS
 ----------------------------------------------------*/
-
 function buildSingleQuarter(config: RampConfig, variant: "low" | "medium" | "vert"): THREE.Group {
     const group = new THREE.Group();
     const width = widthFromLevel(config);
@@ -351,18 +356,15 @@ function buildSingleQuarter(config: RampConfig, variant: "low" | "medium" | "ver
     pad.receiveShadow = true;
     group.add(pad);
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 /* ---------------------------------------------------
    BOWLS
 ----------------------------------------------------*/
-
 function buildBowlRound(config: RampConfig): THREE.Group {
     const group = new THREE.Group();
-    const width = widthFromLevel(config);
     const height = heightInMetersFromFt(config.heightFt) * 0.9;
 
     const radius = height * 1.1;
@@ -370,6 +372,7 @@ function buildBowlRound(config: RampConfig): THREE.Group {
     // Use a sphere section as bowl
     const geom = new THREE.SphereGeometry(radius, 32, 24, 0, Math.PI * 2, 0, Math.PI / 2);
     geom.scale(1, 0.8, 1);
+
     const bowl = new THREE.Mesh(geom, concreteMat);
     bowl.position.y = height - radius * 0.8;
     bowl.castShadow = bowl.receiveShadow = true;
@@ -400,18 +403,16 @@ function buildBowlRound(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 function buildBowlOval(config: RampConfig): THREE.Group {
     const group = buildBowlRound(config);
     // squash / stretch in X to make oval
     group.scale.x = 1.6;
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 function buildBowlKidney(config: RampConfig): THREE.Group {
@@ -452,15 +453,13 @@ function buildBowlKidney(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 /* ---------------------------------------------------
    STREET: BANK, KICKER, LEDGE, MANUAL, FLATBAR, STAIRS
 ----------------------------------------------------*/
-
 function buildBank(config: RampConfig): THREE.Group {
     const group = new THREE.Group();
     const width = widthFromLevel(config);
@@ -482,9 +481,8 @@ function buildBank(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 function buildKicker(config: RampConfig): THREE.Group {
@@ -508,9 +506,8 @@ function buildKicker(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 function buildLedge(config: RampConfig): THREE.Group {
@@ -542,9 +539,8 @@ function buildLedge(config: RampConfig): THREE.Group {
     coping.castShadow = coping.receiveShadow = true;
 
     group.add(base, block, coping);
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 function buildManualPad(config: RampConfig): THREE.Group {
@@ -569,9 +565,8 @@ function buildManualPad(config: RampConfig): THREE.Group {
     pad.castShadow = pad.receiveShadow = true;
 
     group.add(base, pad);
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 function buildFlatbar(): THREE.Group {
@@ -595,12 +590,14 @@ function buildFlatbar(): THREE.Group {
     const baseGeom = new THREE.BoxGeometry(0.5, 0.06, 0.5);
     const base1 = new THREE.Mesh(baseGeom, postMat);
     base1.position.set(-railLen / 2 + 0.5, 0.03, 0);
+
     const base2 = base1.clone();
     base2.position.x = railLen / 2 - 0.5;
 
     const postGeom = new THREE.BoxGeometry(0.1, height, 0.1);
     const p1 = new THREE.Mesh(postGeom, postMat);
     p1.position.set(base1.position.x, height / 2, 0);
+
     const p2 = new THREE.Mesh(postGeom, postMat);
     p2.position.set(base2.position.x, height / 2, 0);
 
@@ -609,9 +606,8 @@ function buildFlatbar(): THREE.Group {
     });
 
     group.add(base1, base2, p1, p2, rail);
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 function buildStairs(config: RampConfig, withRail: boolean): THREE.Group {
@@ -645,11 +641,13 @@ function buildStairs(config: RampConfig, withRail: boolean): THREE.Group {
         concreteMat
     );
     topDeck.position.set(run / 2 + stepDepth, totalHeight + 0.04, 0);
+
     const bottom = new THREE.Mesh(
         new THREE.BoxGeometry(stepDepth * 2, 0.08, width + 0.4),
         concreteMat
     );
     bottom.position.set(-run / 2 - stepDepth, 0.04, 0);
+
     topDeck.castShadow = bottom.castShadow = true;
     topDeck.receiveShadow = bottom.receiveShadow = true;
     group.add(topDeck, bottom);
@@ -667,14 +665,15 @@ function buildStairs(config: RampConfig, withRail: boolean): THREE.Group {
         rail.castShadow = rail.receiveShadow = true;
 
         const postGeom = new THREE.BoxGeometry(0.08, railHeight, 0.08);
-        const postMat = new THREE.MeshStandardMaterial({
+        const railPostMat = new THREE.MeshStandardMaterial({
             color: 0x4b5563,
             roughness: 0.8
         });
 
-        const p1 = new THREE.Mesh(postGeom, postMat);
+        const p1 = new THREE.Mesh(postGeom, railPostMat);
         p1.position.set(-railLen / 2, railHeight / 2, -width / 2 + 0.15);
-        const p2 = new THREE.Mesh(postGeom, postMat);
+
+        const p2 = new THREE.Mesh(postGeom, railPostMat);
         p2.position.set(railLen / 2, railHeight / 2, -width / 2 + 0.15);
 
         [p1, p2].forEach(p => {
@@ -684,15 +683,13 @@ function buildStairs(config: RampConfig, withRail: boolean): THREE.Group {
         group.add(rail, p1, p2);
     }
 
-group.updateMatrixWorld(true);
-return groundGroup(group);
-
+    group.updateMatrixWorld(true);
+    return groundGroup(group);
 }
 
 /* ---------------------------------------------------
    MAIN ROUTER
 ----------------------------------------------------*/
-
 export function buildRampGroup(config: RampConfig): THREE.Group {
     const id = config.typeId.toUpperCase();
 
