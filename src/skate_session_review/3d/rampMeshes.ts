@@ -89,7 +89,24 @@ const metalMat = new THREE.MeshStandardMaterial({
     side: THREE.DoubleSide
 });
 
+/* ---------------------------------------------------
+   🔥 CRITICAL FIX: FORCE RAMPS TO SIT ON GROUND (Y=0)
+   This prevents "invisible ramps" when geometry gets centered/shifted.
+----------------------------------------------------*/
+function groundGroup(group: THREE.Group, groundY = 0): THREE.Group {
+    group.updateMatrixWorld(true);
 
+    const box = new THREE.Box3().setFromObject(group);
+    if (box.isEmpty()) return group;
+
+    // Lift entire group so its lowest point touches groundY
+    const lift = groundY - box.min.y;
+    group.position.y += lift;
+
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
+}
 
 /* ---------------------------------------------------
    QUARTER PIPE PROFILE (EXTRUDED)
@@ -131,9 +148,22 @@ function createQuarterGeometry(height: number, length: number, width: number): T
         steps: 1
     };
 
-    const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    geom.center();
-    return geom;
+const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+
+// Put the "floor" at y=0 and center only across width (Z)
+geom.computeBoundingBox();
+if (geom.boundingBox) {
+    const minY = geom.boundingBox.min.y;
+    const minZ = geom.boundingBox.min.z;
+    const maxZ = geom.boundingBox.max.z;
+    const centerZ = (minZ + maxZ) * 0.5;
+
+    // Lift so bottom touches y=0, and center across width
+    geom.translate(0, -minY, -centerZ);
+}
+
+return geom;
+
 }
 
 /* ---------------------------------------------------
@@ -206,8 +236,9 @@ function buildMiniRamp(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 /* Halfpipe: just wider + no long flat (short flat only) */
@@ -268,8 +299,9 @@ function buildHalfpipe(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 /* ---------------------------------------------------
@@ -319,8 +351,9 @@ function buildSingleQuarter(config: RampConfig, variant: "low" | "medium" | "ver
     pad.receiveShadow = true;
     group.add(pad);
 
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 /* ---------------------------------------------------
@@ -367,16 +400,18 @@ function buildBowlRound(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 function buildBowlOval(config: RampConfig): THREE.Group {
     const group = buildBowlRound(config);
     // squash / stretch in X to make oval
     group.scale.x = 1.6;
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 function buildBowlKidney(config: RampConfig): THREE.Group {
@@ -417,8 +452,9 @@ function buildBowlKidney(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 /* ---------------------------------------------------
@@ -446,8 +482,9 @@ function buildBank(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 function buildKicker(config: RampConfig): THREE.Group {
@@ -471,8 +508,9 @@ function buildKicker(config: RampConfig): THREE.Group {
     pad.receiveShadow = true;
     group.add(pad);
 
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 function buildLedge(config: RampConfig): THREE.Group {
@@ -504,8 +542,9 @@ function buildLedge(config: RampConfig): THREE.Group {
     coping.castShadow = coping.receiveShadow = true;
 
     group.add(base, block, coping);
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 function buildManualPad(config: RampConfig): THREE.Group {
@@ -530,8 +569,9 @@ function buildManualPad(config: RampConfig): THREE.Group {
     pad.castShadow = pad.receiveShadow = true;
 
     group.add(base, pad);
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 function buildFlatbar(): THREE.Group {
@@ -569,8 +609,9 @@ function buildFlatbar(): THREE.Group {
     });
 
     group.add(base1, base2, p1, p2, rail);
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 function buildStairs(config: RampConfig, withRail: boolean): THREE.Group {
@@ -643,8 +684,9 @@ function buildStairs(config: RampConfig, withRail: boolean): THREE.Group {
         group.add(rail, p1, p2);
     }
 
-    group.updateMatrixWorld(true);
-    return group;
+group.updateMatrixWorld(true);
+return groundGroup(group);
+
 }
 
 /* ---------------------------------------------------
