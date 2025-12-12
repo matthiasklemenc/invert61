@@ -1,3 +1,5 @@
+console.log(">>> USING rampMeshes.ts BUILD VERSION 7 <<<");
+
 // --- CORRECTED + STABLE RAMP GEOMETRY FOR EDITOR ---
 // C:\Users\user\Desktop\invert61\src\skate_session_review\3d\rampMeshes.ts
 
