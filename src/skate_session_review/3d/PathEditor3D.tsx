@@ -17,7 +17,7 @@ interface PathEditor3DProps {
 }
 
 type Mode = 'rotate' | 'draw';
-type SnapMode = 'off' | 'coping' | 'deck' | 'center';
+type SnapMode = 'off' | 'coping';
 
 const MIN_WIDTH = 320;
 const MIN_HEIGHT = 240;
@@ -42,13 +42,11 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const [mode, setMode] = useState<Mode>('draw');
     const [snapMode, setSnapMode] = useState<SnapMode>('off');
 
-    // discipline info (transition / street) – kept for future tweaks
     const rampDiscipline: 'transition' | 'street' | 'unknown' = (() => {
         const t = RAMP_TYPES.find(r => r.id === config.typeId);
         return t?.discipline ?? 'unknown';
     })();
 
-    // Notify parent about updated strokes
     const emitPathChange = () => {
         if (!onPathChange) return;
         const out = strokesRef.current.map(st =>
@@ -58,7 +56,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     };
 
     // -----------------------
-    //  CAMERA RECENTER HELPER
+    // CAMERA RECENTER HELPER
     // -----------------------
     const recenterCamera = () => {
         const camera = cameraRef.current;
@@ -73,23 +71,32 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             if (!box.isEmpty()) {
                 const size = new THREE.Vector3();
                 box.getSize(size);
-                box.getCenter(center);
-                radius = Math.max(size.x, size.y, size.z) * 1.8 || radius;
+
+                if (
+                    Number.isFinite(size.x) &&
+                    Number.isFinite(size.y) &&
+                    Number.isFinite(size.z)
+                ) {
+                    box.getCenter(center);
+                    radius = Math.max(size.x, size.y, size.z) * 0.8 + 1;
+                }
             }
         }
 
-        const dir = new THREE.Vector3(1, 0.7, 1).normalize();
-        const dist = radius * 2.2;
+        radius = THREE.MathUtils.clamp(radius, 2, 20);
+
+        const dir = new THREE.Vector3(1, 0.5, 1).normalize();
+        const dist = radius * 1.8;
 
         controls.target.copy(center);
         camera.position.copy(center).add(dir.multiplyScalar(dist));
-        camera.near = Math.max(radius / 50, 0.05);
-        camera.far = Math.max(radius * 20, 50);
+        camera.near = 0.05;
+        camera.far = 100;
         camera.updateProjectionMatrix();
     };
 
     // -----------------------
-    //  INITIALIZE 3D SCENE
+    // INITIALIZE 3D SCENE
     // -----------------------
     useEffect(() => {
         const container = containerRef.current;
@@ -121,17 +128,17 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const hemi = new THREE.HemisphereLight(0xdbeafe, 0x020617, 0.6);
         scene.add(hemi);
 
-        const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-        dir.position.set(6, 10, 4);
-        dir.castShadow = true;
-        dir.shadow.mapSize.set(1024, 1024);
-        dir.shadow.camera.near = 1;
-        dir.shadow.camera.far = 30;
-        dir.shadow.camera.left = -10;
-        dir.shadow.camera.right = 10;
-        dir.shadow.camera.top = 10;
-        dir.shadow.camera.bottom = -10;
-        scene.add(dir);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+        dirLight.position.set(6, 10, 4);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.set(1024, 1024);
+        dirLight.shadow.camera.near = 1;
+        dirLight.shadow.camera.far = 30;
+        dirLight.shadow.camera.left = -10;
+        dirLight.shadow.camera.right = 10;
+        dirLight.shadow.camera.top = 10;
+        dirLight.shadow.camera.bottom = -10;
+        scene.add(dirLight);
 
         // Ground
         const groundGeom = new THREE.PlaneGeometry(40, 40);
@@ -147,12 +154,12 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         scene.add(ground);
         groundRef.current = ground;
 
-        // Group for strokes
+        // Strokes group
         const linesGroup = new THREE.Group();
         scene.add(linesGroup);
         linesGroupRef.current = linesGroup;
 
-        // Ghost preview point (small glowing sphere)
+        // Ghost sphere
         const ghostGeo = new THREE.SphereGeometry(0.04, 16, 16);
         const ghostMat = new THREE.MeshStandardMaterial({
             color: 0xff8080,
@@ -172,11 +179,11 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         controls.dampingFactor = 0.08;
         controls.enablePan = false;
         controls.minPolarAngle = Math.PI / 6;
-        controls.maxPolarAngle = Math.PI / 2;
+        controls.maxPolarAngle = Math.PI / 2; // horizon-ish
         controls.enabled = false; // start in draw mode
         controlsRef.current = controls;
 
-        // Resize handler
+        // Resize handler (NO recenter here to avoid weird jumps)
         const handleResize = () => {
             if (!rendererRef.current || !cameraRef.current || !containerRef.current)
                 return;
@@ -186,9 +193,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             rendererRef.current.setPixelRatio(window.devicePixelRatio || 1);
             cameraRef.current.aspect = w / h;
             cameraRef.current.updateProjectionMatrix();
-
-            // make sure scene stays in view after brutal layout changes
-            recenterCamera();
         };
         window.addEventListener('resize', handleResize);
 
@@ -201,7 +205,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         };
         animate();
 
-        // initial recenter
+        // Initial camera
         recenterCamera();
 
         return () => {
@@ -216,25 +220,25 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Keep OrbitControls enabled only in rotate mode
+    // Orbit enabled only in rotate mode
     useEffect(() => {
         if (controlsRef.current) {
             controlsRef.current.enabled = mode === 'rotate';
         }
-        // Hide ghost point when rotating
         if (ghostRef.current && mode !== 'draw') {
             ghostRef.current.visible = false;
         }
     }, [mode]);
 
     // -----------------------
-    //  BUILD / REBUILD RAMP
+    // BUILD / REBUILD RAMP
     // -----------------------
     useEffect(() => {
         if (!sceneRef.current) return;
 
         if (rampRef.current) {
             sceneRef.current.remove(rampRef.current);
+            rampRef.current = null;
         }
 
         const ramp = buildRampGroup(config);
@@ -250,16 +254,15 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         sceneRef.current.add(ramp);
         rampRef.current = ramp;
 
-        // whenever ramp changes (height, type, etc.), recenter camera
+        // recenter camera once ramp is ready
         recenterCamera();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [config]);
 
     // -----------------------
-    //  HELPERS
+    // HELPERS
     // -----------------------
 
-    // Simple Catmull-Rom curve smoothing for nicer strokes
     const smoothStroke = (points: THREE.Vector3[]): THREE.Vector3[] => {
         if (points.length < 3) return points;
         const curve = new THREE.CatmullRomCurve3(points);
@@ -267,41 +270,26 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         return curve.getPoints(segments);
     };
 
-    // Snapping helper
     const applySnapping = (point: THREE.Vector3): THREE.Vector3 => {
         if (snapMode === 'off') return point;
-
         const snapped = point.clone();
 
-        // Rough world height of ramp top (matches rampMeshes scaling: ft * 0.15)
-        const copingHeight = config.heightFt * 0.15;
-        const deckHeight = copingHeight + 0.08;
-
-        switch (snapMode) {
-            case 'coping':
-                snapped.y = copingHeight;
-                break;
-            case 'deck':
-                snapped.y = deckHeight;
-                break;
-            case 'center':
-                snapped.z = 0;
-                break;
-            default:
-                break;
+        if (snapMode === 'coping' && rampRef.current) {
+            const box = new THREE.Box3().setFromObject(rampRef.current);
+            if (!box.isEmpty()) {
+                const topY = box.max.y;
+                snapped.y = topY + 0.01; // just above the top
+            }
         }
 
-        // reserved for discipline-specific tweaks later
-        void rampDiscipline;
+        void rampDiscipline; // reserved for future tweaks
 
         return snapped;
     };
 
-    // Raycast into ramp / ground and optionally snap result
     const pickOnSurface = (event: PointerEvent): THREE.Vector3 | null => {
         const renderer = rendererRef.current;
         const camera = cameraRef.current;
-
         if (!renderer || !camera) return null;
 
         const rect = renderer.domElement.getBoundingClientRect();
@@ -322,7 +310,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     };
 
     // -----------------------
-    //  STROKE HANDLING (always reconnect)
+    // STROKE HANDLING
     // -----------------------
     const startStroke = (event: PointerEvent) => {
         const p = pickOnSurface(event);
@@ -332,13 +320,10 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         let pts: THREE.Vector3[];
 
         if (existing && existing.length) {
-            // ALWAYS continue the last stroke – no distance check.
+            // always continue last stroke when starting near it
             pts = [...existing];
-
-            // remove last stored stroke
             strokesRef.current.pop();
 
-            // remove last stroke line from scene
             if (linesGroupRef.current) {
                 for (let i = linesGroupRef.current.children.length - 1; i >= 0; i--) {
                     const child = linesGroupRef.current.children[i];
@@ -349,7 +334,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                 }
             }
         } else {
-            // no previous stroke – start a new one
             pts = [p];
         }
 
@@ -372,7 +356,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const pts = currentStrokeRef.current;
         const last = pts[pts.length - 1];
 
-        // Skip very tiny movements to avoid insane vertex counts
         if (last.distanceTo(p) < 0.03) return;
 
         pts.push(p);
@@ -397,7 +380,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     };
 
     // -----------------------
-    //  POINTER EVENTS
+    // POINTER EVENTS
     // -----------------------
     useEffect(() => {
         const renderer = rendererRef.current;
@@ -413,7 +396,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const handlePointerMove = (ev: PointerEvent) => {
             if (mode !== 'draw') return;
 
-            // Update ghost cursor
             const p = pickOnSurface(ev);
             if (ghostRef.current) {
                 if (p) {
@@ -451,7 +433,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     }, [mode, snapMode]);
 
     // -----------------------
-    //  UNDO / RESET
+    // UNDO / RESET
     // -----------------------
     const handleUndo = () => {
         if (!strokesRef.current.length) return;
@@ -487,10 +469,10 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     };
 
     // -----------------------
-    //  RENDER UI
+    // RENDER UI
     // -----------------------
     return (
-        <div className="relative w-full aspect-[4/3] max-h-[540px] min-h-[260px]">
+        <div className="relative w-full h-[320px] md:h-[420px]">
             <div
                 ref={containerRef}
                 className="w-full h-full rounded-lg overflow-hidden bg-slate-950 border border-white/10"
@@ -527,7 +509,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                     <span className="text-[10px] uppercase tracking-wide text-gray-300">
                         Snap
                     </span>
-                    {(['off', 'coping', 'deck', 'center'] as SnapMode[]).map(modeKey => (
+                    {(['off', 'coping'] as SnapMode[]).map(modeKey => (
                         <button
                             key={modeKey}
                             type="button"
@@ -539,13 +521,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                                     : 'bg-transparent text-gray-300')
                             }
                         >
-                            {modeKey === 'off'
-                                ? 'Off'
-                                : modeKey === 'coping'
-                                ? 'Coping'
-                                : modeKey === 'deck'
-                                ? 'Deck'
-                                : 'Center'}
+                            {modeKey === 'off' ? 'Off' : 'Coping'}
                         </button>
                     ))}
                 </div>

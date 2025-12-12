@@ -1,3 +1,5 @@
+// C:\Users\user\Desktop\invert61\src\skate_session_review\TrickTrainerPage.tsx
+
 import React, { useMemo, useState, useEffect } from 'react';
 import Logo from '../Logo';
 import type { SkateSession } from './types';
@@ -5,10 +7,7 @@ import { useSkateTracker } from './useSkateTracker';
 import { LineProvider, useLine } from './planner/LineContext';
 import RampPicker from './3d/RampPicker';
 
-// ❌ OLD — remove
-// import PathEditor from './3d/PathEditor';
-
-// ✅ NEW 3D EDITOR
+// NEW 3D EDITOR (correct)
 import PathEditor3D from './3d/PathEditor3D';
 
 import TrickBlocksPanel from './3d/TrickBlocksPanel';
@@ -68,11 +67,6 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
 
     const isTracking = trackerState.status === 'tracking';
 
-    const handleAddMarker = (t: number, trickId: string) => {
-        const id = 'marker_' + Math.random().toString(36).slice(2);
-        setMarkers([...markers, { id, trickId, t }]);
-    };
-
     const ensureBasicsBeforeRun = () => {
         if (path.length < 5) {
             alert('Bitte zeichne zuerst deine Line auf der Rampe.');
@@ -91,9 +85,7 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
             if (navAny.wakeLock && typeof navAny.wakeLock.request === 'function') {
                 const sentinel = await navAny.wakeLock.request('system');
                 setWakeLockSentinel(sentinel);
-                sentinel.addEventListener('release', () => {
-                    setWakeLockSentinel(null);
-                });
+                sentinel.addEventListener('release', () => setWakeLockSentinel(null));
             }
         } catch (err) {
             console.warn('WakeLock request failed', err);
@@ -136,7 +128,7 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
 
     return (
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 flex flex-col relative">
-            {/* BLACK SCREEN DURING RECORDING */}
+
             {isTracking && (
                 <div className="fixed inset-0 bg-black z-40 flex flex-col items-center justify-center">
                     <div className="text-center mb-6">
@@ -165,22 +157,14 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
                         onClick={onBack}
                         className="text-gray-300 hover:text-white transition-colors flex items-center gap-1"
                     >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                            className="w-5 h-5" fill="none" stroke="currentColor"
+                            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M15 18l-6-6 6-6" />
                         </svg>
-                        <span className="text-xs font-semibold uppercase tracking-wide">
-                            Back
-                        </span>
+                        <span className="text-xs font-semibold uppercase tracking-wide">Back</span>
                     </button>
+
                     <div className="text-right">
                         <Logo variant="sk8" className="text-[40px] sm:text-[56px]" />
                         <div className="text-[10px] uppercase tracking-[0.25em] text-gray-400">
@@ -191,48 +175,48 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
             </header>
 
             <main className="w-full max-w-5xl mx-auto flex-1 flex flex-col gap-4">
+
                 <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)_minmax(0,0.9fr)] gap-6">
+
+                    {/* LEFT COLUMN */}
                     <div>
                         <RampPicker config={ramp} onChange={setRamp} />
                         <LoopSelector />
 
                         <div className="mt-6">
-                            <h3 className="text-xs font-semibold uppercase text-gray-400 mb-1">
-                                Stance
-                            </h3>
+                            <h3 className="text-xs font-semibold uppercase text-gray-400 mb-1">Stance</h3>
                             <div className="flex gap-2">
                                 <button
                                     type="button"
                                     onClick={() => setStance('REGULAR')}
-                                    className={`px-3 py-1 rounded-full text-xs font-semibold border 
-                                        ${stance === 'REGULAR'
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                                        stance === 'REGULAR'
                                             ? 'bg-white text-black border-white'
-                                            : 'bg-transparent text-gray-300 border-gray-600'}`}
+                                            : 'bg-transparent text-gray-300 border-gray-600'
+                                    }`}
                                 >
                                     REGULAR
                                 </button>
+
                                 <button
                                     type="button"
                                     onClick={() => setStance('GOOFY')}
-                                    className={`px-3 py-1 rounded-full text-xs font-semibold border 
-                                        ${stance === 'GOOFY'
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                                        stance === 'GOOFY'
                                             ? 'bg-white text-black border-white'
-                                            : 'bg-transparent text-gray-300 border-gray-600'}`}
+                                            : 'bg-transparent text-gray-300 border-gray-600'
+                                    }`}
                                 >
                                     GOOFY
                                 </button>
                             </div>
 
-                            {error && (
-                                <div className="mt-3 text-xs text-red-400">
-                                    {error}
-                                </div>
-                            )}
+                            {error && <div className="mt-3 text-xs text-red-400">{error}</div>}
                         </div>
                     </div>
 
-                    {/* 🔥 3D EDITOR REPLACEMENT */}
-                    <div>
+                    {/* CENTER COLUMN — FIXED HEIGHT ADDED */}
+                    <div className="h-[60vh] min-h-[380px]">
                         <PathEditor3D
                             config={ramp}
                             onPathChange={setPath}
@@ -243,8 +227,11 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
                                 type="button"
                                 onClick={() => handleStartRun('training')}
                                 disabled={isTracking}
-                                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide
-                                    ${isTracking ? 'bg-indigo-900 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide ${
+                                    isTracking
+                                        ? 'bg-indigo-900 text-gray-500 cursor-not-allowed'
+                                        : 'bg-indigo-600 hover:bg-indigo-700'
+                                }`}
                             >
                                 Training Run
                             </button>
@@ -253,41 +240,37 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
                                 type="button"
                                 onClick={() => handleStartRun('live')}
                                 disabled={isTracking}
-                                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide
-                                    ${isTracking ? 'bg-red-900 text-gray-500 cursor-not-allowed' : 'bg-[#c52323] hover:bg-red-700'}`}
+                                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide ${
+                                    isTracking
+                                        ? 'bg-red-900 text-gray-500 cursor-not-allowed'
+                                        : 'bg-[#c52323] hover:bg-red-700'
+                                }`}
                             >
                                 Live Recording
                             </button>
                         </div>
                     </div>
 
+                    {/* RIGHT COLUMN */}
                     <div>
                         <TrickBlocksPanel />
+
                         <div className="mt-6 text-[11px] text-gray-500 space-y-2">
-                            <p>
-                                Zieh deine Tricks auf die Line. Sie snappen magnetisch auf die Fahrspur
-                                (gelber Glow mit kleinem Bounce).
-                            </p>
-                            <p>
-                                In dieser Version laufen Training-Run und Live-Recording bereits über den echten
-                                Motion-Tracker im Hintergrund (Gyro + GPS). Die geplanten Tricks und die Line werden
-                                im Frontend gehalten und können in einem nächsten Schritt direkt in den Worker für
-                                Auto-Stop und Template-Learning integriert werden.
-                            </p>
+                            <p>Zieh deine Tricks auf die Line. Sie snappen automatisch magnetisch auf die Fahrspur.</p>
+                            <p>Training und Live-Recording nutzen bereits den Motion-Tracker im Hintergrund.</p>
                         </div>
                     </div>
+
                 </section>
             </main>
         </div>
     );
 };
 
-const TrickTrainerPage: React.FC<TrickTrainerPageProps> = (props) => {
-    return (
-        <LineProvider>
-            <TrainerContent {...props} />
-        </LineProvider>
-    );
-};
+const TrickTrainerPage: React.FC<TrickTrainerPageProps> = (props) => (
+    <LineProvider>
+        <TrainerContent {...props} />
+    </LineProvider>
+);
 
 export default TrickTrainerPage;
