@@ -1,6 +1,6 @@
 // C:\Users\user\Desktop\invert61\src\skate_session_review\3d\PathEditor3D.tsx
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { RampConfig } from '../planner/rampTypes';
 import { buildRampGroup } from './rampMeshes';
@@ -20,6 +20,8 @@ const MIN_WIDTH = 320;
 const MIN_HEIGHT = 240;
 const GROUND_Y = 0;
 
+type ViewMode = 'front' | 'top';
+
 const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -35,20 +37,21 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const pointer = useRef(new THREE.Vector2());
     const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), -GROUND_Y));
 
+    const [view, setView] = useState<ViewMode>('front');
+
     /* ---------------------------------------------------
-       CAMERA FIT (CRITICAL FIX)
+       CAMERA FIT (CRITICAL FIX) + VIEW MODE
     ----------------------------------------------------*/
-    const fitCameraToObject = (obj: THREE.Object3D | null) => {
+    const frameObject = (obj: THREE.Object3D | null, mode: ViewMode) => {
         const camera = cameraRef.current;
-        const renderer = rendererRef.current;
-        if (!camera || !renderer) return;
+        if (!camera) return;
 
         // Fallback if object is missing / empty
         if (!obj) {
             camera.position.set(6, 4, 6);
             camera.lookAt(0, 1, 0);
             camera.near = 0.05;
-            camera.far = 200;
+            camera.far = 500;
             camera.updateProjectionMatrix();
             return;
         }
@@ -58,7 +61,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             camera.position.set(6, 4, 6);
             camera.lookAt(0, 1, 0);
             camera.near = 0.05;
-            camera.far = 200;
+            camera.far = 500;
             camera.updateProjectionMatrix();
             return;
         }
@@ -67,16 +70,24 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const center = box.getCenter(new THREE.Vector3());
 
         const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = Math.max(2.5, maxDim * 1.8);
+        const baseDist = Math.max(2.5, maxDim * 2.2);
 
-        camera.position.set(
-            center.x + distance,
-            center.y + distance * 0.6,
-            center.z + distance
-        );
+        if (mode === 'top') {
+            // Top-down: high Y, centered XZ
+            const topDist = Math.max(size.x, size.z) * 2.4;
+            camera.position.set(center.x, center.y + topDist, center.z);
+        } else {
+            // Front-ish: angled view
+            camera.position.set(
+                center.x + baseDist,
+                center.y + baseDist * 0.6,
+                center.z + baseDist
+            );
+        }
+
         camera.lookAt(center);
         camera.near = 0.05;
-        camera.far = 400;
+        camera.far = 500;
         camera.updateProjectionMatrix();
     };
 
@@ -106,7 +117,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const w = Math.max(container.clientWidth || MIN_WIDTH, MIN_WIDTH);
         const h = Math.max(container.clientHeight || MIN_HEIGHT, MIN_HEIGHT);
 
-        const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 200);
+        const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 500);
         camera.position.set(6, 4, 6);
         camera.lookAt(0, 1, 0);
         cameraRef.current = camera;
@@ -156,6 +167,9 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             rr.setPixelRatio(window.devicePixelRatio || 1);
             cc.aspect = nw / nh;
             cc.updateProjectionMatrix();
+
+            // keep ramp in view after resize
+            if (rampRef.current) frameObject(rampRef.current, view);
         };
         window.addEventListener('resize', handleResize);
 
@@ -167,8 +181,8 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         };
         loop();
 
-        // Initial fit even before ramp exists
-        fitCameraToObject(null);
+        // Initial frame even before ramp exists
+        frameObject(null, view);
 
         return () => {
             window.removeEventListener('resize', handleResize);
@@ -185,7 +199,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             if (linesGroupRef.current) {
                 linesGroupRef.current.traverse(o => {
                     const line = o as THREE.Line;
-                    if ((line as any).isLine && line.geometry) line.geometry.dispose();
+                    if ((line as any).isLine && (line as any).geometry) (line as any).geometry.dispose();
                     const mat: any = (line as any).material;
                     mat?.dispose?.();
                 });
@@ -228,8 +242,18 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         scene.add(ramp);
         rampRef.current = ramp;
 
-        fitCameraToObject(ramp);
-    }, [config]);
+        // CRITICAL: frame after adding ramp
+        frameObject(ramp, view);
+    }, [config]); // keep as-is (view changes handled below)
+
+    /* ---------------------------------------------------
+       VIEW TOGGLE (re-frame camera)
+    ----------------------------------------------------*/
+    useEffect(() => {
+        if (!rampRef.current) return;
+        frameObject(rampRef.current, view);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [view]);
 
     /* ---------------------------------------------------
        DRAWING
@@ -346,6 +370,35 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                 ref={containerRef}
                 className="w-full h-full rounded-lg overflow-hidden bg-slate-950 border border-white/10"
             />
+
+            {/* View toggle (Front / Top) */}
+            <div className="absolute top-2 right-2 flex gap-2">
+                <button
+                    type="button"
+                    onClick={() => setView('front')}
+                    className={
+                        'px-3 py-1 text-[11px] rounded-full border ' +
+                        (view === 'front'
+                            ? 'bg-white text-black border-white'
+                            : 'bg-black/60 text-gray-100 border-white/20 hover:bg-black/80')
+                    }
+                >
+                    Front
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setView('top')}
+                    className={
+                        'px-3 py-1 text-[11px] rounded-full border ' +
+                        (view === 'top'
+                            ? 'bg-white text-black border-white'
+                            : 'bg-black/60 text-gray-100 border-white/20 hover:bg-black/80')
+                    }
+                >
+                    Top
+                </button>
+            </div>
         </div>
     );
 };
