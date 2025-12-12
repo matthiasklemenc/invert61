@@ -4,7 +4,13 @@ import type { SkateSession } from './types';
 import { useSkateTracker } from './useSkateTracker';
 import { LineProvider, useLine } from './planner/LineContext';
 import RampPicker from './3d/RampPicker';
-import PathEditor from './3d/PathEditor';
+
+// ❌ OLD — remove
+// import PathEditor from './3d/PathEditor';
+
+// ✅ NEW 3D EDITOR
+import PathEditor3D from './3d/PathEditor3D';
+
 import TrickBlocksPanel from './3d/TrickBlocksPanel';
 
 interface TrickTrainerPageProps {
@@ -120,11 +126,9 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
     };
 
     useEffect(() => {
-        // Cleanup on unmount
         return () => {
             stopTracking();
             if (wakeLockSentinel) {
-                // fire and forget
                 (wakeLockSentinel.release?.() ?? Promise.resolve());
             }
         };
@@ -132,7 +136,7 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
 
     return (
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 flex flex-col relative">
-            {/* Schwarzer Screen wenn Tracking aktiv (User kann mit Power-Button zusätzlich den Hardware-Screen ausmachen) */}
+            {/* BLACK SCREEN DURING RECORDING */}
             {isTracking && (
                 <div className="fixed inset-0 bg-black z-40 flex flex-col items-center justify-center">
                     <div className="text-center mb-6">
@@ -141,8 +145,8 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
                         </div>
                         <div className="text-xl font-bold mb-2">Recording…</div>
                         <p className="text-xs text-gray-400 max-w-xs mx-auto">
-                            Handy in die Tasche, fahren. Wenn du fertig bist oder eine Pause brauchst, entsperre dein Handy
-                            und tipp auf STOP.
+                            Handy in die Tasche, fahren. Wenn du fertig bist oder eine Pause brauchst,
+                            entsperre dein Handy und tipp auf STOP.
                         </p>
                     </div>
                     <button
@@ -227,13 +231,13 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
                         </div>
                     </div>
 
+                    {/* 🔥 3D EDITOR REPLACEMENT */}
                     <div>
-                        <PathEditor
-                            path={path}
+                        <PathEditor3D
+                            config={ramp}
                             onPathChange={setPath}
-                            markers={markers}
-                            onAddMarker={handleAddMarker}
                         />
+
                         <div className="mt-3 flex flex-wrap gap-3 justify-end">
                             <button
                                 type="button"
@@ -244,6 +248,7 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
                             >
                                 Training Run
                             </button>
+
                             <button
                                 type="button"
                                 onClick={() => handleStartRun('live')}
@@ -267,8 +272,7 @@ const TrainerContent: React.FC<TrickTrainerPageProps> = ({ onBack, onAddSession 
                                 In dieser Version laufen Training-Run und Live-Recording bereits über den echten
                                 Motion-Tracker im Hintergrund (Gyro + GPS). Die geplanten Tricks und die Line werden
                                 im Frontend gehalten und können in einem nächsten Schritt direkt in den Worker für
-                                Auto-Stop und Template-Learning integriert werden, ohne dass dein bestehender
-                                Session-Flow kaputtgeht.
+                                Auto-Stop und Template-Learning integriert werden.
                             </p>
                         </div>
                     </div>
