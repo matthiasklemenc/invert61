@@ -28,7 +28,6 @@ import GeneralQuizPage from './general_quiz/GeneralQuizPage';
 import CapitalsQuizPage from './capitals_quiz/CapitalsQuizPage';
 import SkateGamePage from './skate_game/SkateGamePage';
 
-import TrickTrainingPage from './TrickTrainingPage';
 import TrickRecordingPage from './TrickRecordingPage';
 
 import MiniPlayer from './MiniPlayer';
@@ -1162,26 +1161,30 @@ const App: React.FC = () => {
       /* 🔥 FIXED — Trick Planner Routing                                */
       /* --------------------------------------------------------------- */
 
-      case 'trick-training':
-        return (
-          <TrickTrainerPage
-            onClose={() => navigateTo('rollometer')}
-          />
-        );
+case 'trick-training':
+  return (
+    <TrickTrainerPage
+      onBack={() => navigateTo('rollometer')}
+      onAddSession={handleAddSession}
+    />
+  );
 
-      case 'trick-recording':
-        if (!trickToRecord)
-          return (
-            <TrickTrainerPage
-              onClose={() => navigateTo('rollometer')}
-            />
-          );
-        return (
-          <TrickRecordingPage
-            trickName={trickToRecord}
-            onClose={() => navigateTo('trick-training')}
-          />
-        );
+case 'trick-recording':
+  if (!trickToRecord)
+    return (
+      <TrickTrainerPage
+        onBack={() => navigateTo('rollometer')}
+        onAddSession={handleAddSession}
+      />
+    );
+
+  return (
+    <TrickRecordingPage
+      trickName={trickToRecord}
+      onBack={() => navigateTo('trick-training')}
+    />
+  );
+
 
       default:
         return (

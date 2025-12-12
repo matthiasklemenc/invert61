@@ -31,7 +31,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const rampRef = useRef<THREE.Group | null>(null);
 
     const strokesRef = useRef<THREE.Vector3[][]>([]);
-    const currentStrokeRef = useRef<THREE.Vector3[] | null>(null);
+       const currentStrokeRef = useRef<THREE.Vector3[] | null>(null);
     const linesGroupRef = useRef<THREE.Group | null>(null);
     const groundRef = useRef<THREE.Mesh | null>(null);
     const ghostRef = useRef<THREE.Mesh | null>(null);
@@ -50,7 +50,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const emitPathChange = () => {
         if (!onPathChange) return;
         const out = strokesRef.current.map(st =>
-            st.map(v => ({ x: v.x, y: v.y, z: v.z })),
+            st.map(v => ({ x: v.x, y: v.y, z: v.z }))
         );
         onPathChange(out);
     };
@@ -71,15 +71,8 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             if (!box.isEmpty()) {
                 const size = new THREE.Vector3();
                 box.getSize(size);
-
-                if (
-                    Number.isFinite(size.x) &&
-                    Number.isFinite(size.y) &&
-                    Number.isFinite(size.z)
-                ) {
-                    box.getCenter(center);
-                    radius = Math.max(size.x, size.y, size.z) * 0.8 + 1;
-                }
+                box.getCenter(center);
+                radius = Math.max(size.x, size.y, size.z) * 0.8 + 1;
             }
         }
 
@@ -131,23 +124,13 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
         dirLight.position.set(6, 10, 4);
         dirLight.castShadow = true;
-        dirLight.shadow.mapSize.set(1024, 1024);
-        dirLight.shadow.camera.near = 1;
-        dirLight.shadow.camera.far = 30;
-        dirLight.shadow.camera.left = -10;
-        dirLight.shadow.camera.right = 10;
-        dirLight.shadow.camera.top = 10;
-        dirLight.shadow.camera.bottom = -10;
         scene.add(dirLight);
 
         // Ground
-        const groundGeom = new THREE.PlaneGeometry(40, 40);
-        const groundMat = new THREE.MeshStandardMaterial({
-            color: 0x020617,
-            roughness: 1.0,
-            metalness: 0.0,
-        });
-        const ground = new THREE.Mesh(groundGeom, groundMat);
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(40, 40),
+            new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 1 })
+        );
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = -0.1;
         ground.receiveShadow = true;
@@ -160,15 +143,14 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         linesGroupRef.current = linesGroup;
 
         // Ghost sphere
-        const ghostGeo = new THREE.SphereGeometry(0.04, 16, 16);
-        const ghostMat = new THREE.MeshStandardMaterial({
-            color: 0xff8080,
-            emissive: 0xff4747,
-            emissiveIntensity: 0.9,
-            metalness: 0.1,
-            roughness: 0.3,
-        });
-        const ghost = new THREE.Mesh(ghostGeo, ghostMat);
+        const ghost = new THREE.Mesh(
+            new THREE.SphereGeometry(0.04, 16, 16),
+            new THREE.MeshStandardMaterial({
+                color: 0xff8080,
+                emissive: 0xff4747,
+                emissiveIntensity: 0.9
+            })
+        );
         ghost.visible = false;
         scene.add(ghost);
         ghostRef.current = ghost;
@@ -176,21 +158,19 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         // Orbit controls
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.dampingFactor = 0.08;
         controls.enablePan = false;
-        controls.minPolarAngle = Math.PI / 6;
-        controls.maxPolarAngle = Math.PI / 2; // horizon-ish
-        controls.enabled = false; // start in draw mode
+        controls.enabled = false; // draw mode default
         controlsRef.current = controls;
 
-        // Resize handler (NO recenter here to avoid weird jumps)
+        // Resize handler
         const handleResize = () => {
             if (!rendererRef.current || !cameraRef.current || !containerRef.current)
                 return;
+
             const w = Math.max(containerRef.current.clientWidth || MIN_WIDTH, MIN_WIDTH);
             const h = Math.max(containerRef.current.clientHeight || MIN_HEIGHT, MIN_HEIGHT);
+
             rendererRef.current.setSize(w, h);
-            rendererRef.current.setPixelRatio(window.devicePixelRatio || 1);
             cameraRef.current.aspect = w / h;
             cameraRef.current.updateProjectionMatrix();
         };
@@ -205,7 +185,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         };
         animate();
 
-        // Initial camera
         recenterCamera();
 
         return () => {
@@ -213,21 +192,13 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             cancelAnimationFrame(frameId);
             controls.dispose();
             renderer.dispose();
-            if (renderer.domElement.parentElement === container) {
-                container.removeChild(renderer.domElement);
-            }
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Orbit enabled only in rotate mode
+    // Orbit toggle
     useEffect(() => {
-        if (controlsRef.current) {
-            controlsRef.current.enabled = mode === 'rotate';
-        }
-        if (ghostRef.current && mode !== 'draw') {
-            ghostRef.current.visible = false;
-        }
+        if (controlsRef.current) controlsRef.current.enabled = mode === 'rotate';
+        if (ghostRef.current && mode !== 'draw') ghostRef.current.visible = false;
     }, [mode]);
 
     // -----------------------
@@ -244,50 +215,38 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const ramp = buildRampGroup(config);
         ramp.traverse(obj => {
             if ((obj as THREE.Mesh).isMesh) {
-                const m = obj as THREE.Mesh;
-                m.castShadow = true;
-                m.receiveShadow = true;
+                obj.castShadow = true;
+                obj.receiveShadow = true;
             }
         });
 
-        ramp.position.y = 0;
         sceneRef.current.add(ramp);
         rampRef.current = ramp;
 
-        // recenter camera once ramp is ready
         recenterCamera();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [config]);
 
     // -----------------------
     // HELPERS
     // -----------------------
-
-    const smoothStroke = (points: THREE.Vector3[]): THREE.Vector3[] => {
+    const smoothStroke = (points: THREE.Vector3[]) => {
         if (points.length < 3) return points;
         const curve = new THREE.CatmullRomCurve3(points);
-        const segments = Math.min(points.length * 4, 200);
-        return curve.getPoints(segments);
+        return curve.getPoints(Math.min(points.length * 4, 200));
     };
 
-    const applySnapping = (point: THREE.Vector3): THREE.Vector3 => {
+    const applySnapping = (point: THREE.Vector3) => {
         if (snapMode === 'off') return point;
-        const snapped = point.clone();
 
+        const snapped = point.clone();
         if (snapMode === 'coping' && rampRef.current) {
             const box = new THREE.Box3().setFromObject(rampRef.current);
-            if (!box.isEmpty()) {
-                const topY = box.max.y;
-                snapped.y = topY + 0.01; // just above the top
-            }
+            snapped.y = box.max.y + 0.01;
         }
-
-        void rampDiscipline; // reserved for future tweaks
-
         return snapped;
     };
 
-    const pickOnSurface = (event: PointerEvent): THREE.Vector3 | null => {
+    const pickOnSurface = (event: PointerEvent) => {
         const renderer = rendererRef.current;
         const camera = cameraRef.current;
         if (!renderer || !camera) return null;
@@ -298,15 +257,14 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
 
         raycaster.current.setFromCamera(pointer.current, camera);
 
-        const targets: THREE.Object3D[] = [];
+        const targets = [];
         if (rampRef.current) targets.push(rampRef.current);
         if (groundRef.current) targets.push(groundRef.current);
 
         const hits = raycaster.current.intersectObjects(targets, true);
         if (!hits.length) return null;
 
-        const hitPoint = hits[0].point.clone();
-        return applySnapping(hitPoint);
+        return applySnapping(hits[0].point.clone());
     };
 
     // -----------------------
@@ -320,7 +278,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         let pts: THREE.Vector3[];
 
         if (existing && existing.length) {
-            // always continue last stroke when starting near it
             pts = [...existing];
             strokesRef.current.pop();
 
@@ -339,9 +296,10 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
 
         currentStrokeRef.current = pts;
 
-        const geom = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color: 0xff4747, linewidth: 2 });
-        const line = new THREE.Line(geom, mat);
+        const line = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(pts),
+            new THREE.LineBasicMaterial({ color: 0xff4747 })
+        );
         (line as any).userData.__isStroke = true;
 
         linesGroupRef.current?.add(line);
@@ -355,16 +313,13 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
 
         const pts = currentStrokeRef.current;
         const last = pts[pts.length - 1];
-
         if (last.distanceTo(p) < 0.03) return;
 
         pts.push(p);
 
         const line = linesGroupRef.current?.children[
             linesGroupRef.current.children.length - 1
-        ] as THREE.Line | undefined;
-
-        if (!line) return;
+        ] as THREE.Line;
 
         const smoothed = smoothStroke(pts);
         line.geometry.dispose();
@@ -385,6 +340,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     useEffect(() => {
         const renderer = rendererRef.current;
         if (!renderer) return;
+
         const dom = renderer.domElement;
 
         const handlePointerDown = (ev: PointerEvent) => {
@@ -406,16 +362,12 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                 }
             }
 
-            if (currentStrokeRef.current) {
-                continueStroke(ev);
-            }
+            if (currentStrokeRef.current) continueStroke(ev);
         };
 
         const handlePointerUp = (ev: PointerEvent) => {
             if (mode !== 'draw') return;
-            if (dom.hasPointerCapture(ev.pointerId)) {
-                dom.releasePointerCapture(ev.pointerId);
-            }
+            if (dom.hasPointerCapture(ev.pointerId)) dom.releasePointerCapture(ev.pointerId);
             endStroke();
         };
 
@@ -462,9 +414,8 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
                 }
             });
         }
-        if (ghostRef.current) {
-            ghostRef.current.visible = false;
-        }
+        if (ghostRef.current) ghostRef.current.visible = false;
+
         emitPathChange();
     };
 
@@ -472,12 +423,11 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     // RENDER UI
     // -----------------------
     return (
-        <div className="relative w-full h-[320px] md:h-[420px]">
-            <div
-                ref={containerRef}
-                className="w-full h-full rounded-lg overflow-hidden bg-slate-950 border border-white/10"
-            />
-
+        <div
+            ref={containerRef}
+            className="relative w-full min-h-[320px] md:min-h-[420px] rounded-lg overflow-hidden bg-slate-950 border border-white/10"
+        >
+            {/* UI BUTTONS */}
             <div className="absolute top-2 left-2 flex flex-wrap gap-2">
                 <button
                     type="button"
