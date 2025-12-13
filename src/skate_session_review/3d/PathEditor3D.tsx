@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import type { RampConfig } from '../planner/rampTypes';
 import { buildRampGroup } from './rampMeshes';
 
@@ -25,6 +26,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
     const sceneRef = useRef<THREE.Scene | null>(null);
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+    const controlsRef = useRef<OrbitControls | null>(null);
     const rampRef = useRef<THREE.Group | null>(null);
 
     const strokesRef = useRef<THREE.Vector3[][]>([]);
@@ -36,17 +38,25 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), -GROUND_Y));
 
     const [view, setView] = useState<ViewMode>('front');
+    const viewRef = useRef<ViewMode>('front');
+    useEffect(() => {
+        viewRef.current = view;
+    }, [view]);
 
     /* ---------------------------------------------------
        CAMERA FRAMING
     ---------------------------------------------------- */
     const frameObject = (obj: THREE.Object3D | null, mode: ViewMode) => {
         const camera = cameraRef.current;
-        if (!camera) return;
+        const controls = controlsRef.current;
+        if (!camera || !controls) return;
 
         if (!obj) {
             camera.position.set(6, 4, 6);
             camera.lookAt(0, 1, 0);
+            controls.target.set(0, 1, 0);
+            controls.update();
+
             camera.near = 0.05;
             camera.far = 500;
             camera.updateProjectionMatrix();
@@ -63,7 +73,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const dist = Math.max(2.5, maxDim * 2.2);
 
         if (mode === 'top') {
-            camera.position.set(center.x, center.y + dist * 1.6, center.z);
+            camera.position.set(center.x, center.y + dist * 1.8, center.z + 0.001);
         } else {
             camera.position.set(
                 center.x + dist,
@@ -73,9 +83,44 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         }
 
         camera.lookAt(center);
+        controls.target.copy(center);
+
+        // keep controls usable (pinch/wheel)
+        controls.update();
+
         camera.near = 0.05;
         camera.far = 500;
         camera.updateProjectionMatrix();
+    };
+
+    const applyViewConstraints = (mode: ViewMode) => {
+        const controls = controlsRef.current;
+        if (!controls) return;
+
+        // Always allow zoom (pinch / wheel)
+        controls.enableZoom = true;
+        controls.zoomSpeed = 1.0;
+
+        // Make touch gestures do the right thing:
+        // 1-finger = rotate/pan (depending on enableRotate), 2-finger = pinch zoom
+        controls.enablePan = false;
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+
+        // Touch mapping (pinch zoom works)
+        controls.touches = {
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_PAN
+        };
+
+        if (mode === 'top') {
+            // top view: lock rotation so it stays a "map-like" top-down editor
+            controls.enableRotate = false;
+        } else {
+            controls.enableRotate = true;
+        }
+
+        controls.update();
     };
 
     const disposeObject = (obj: THREE.Object3D) => {
@@ -117,6 +162,11 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         container.appendChild(renderer.domElement);
         rendererRef.current = renderer;
 
+        // ✅ OrbitControls (pinch zoom + wheel zoom)
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controlsRef.current = controls;
+        applyViewConstraints(viewRef.current);
+
         scene.add(new THREE.HemisphereLight(0xdbeafe, 0x020617, 0.75));
 
         const dir = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -145,7 +195,9 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             rendererRef.current.setSize(nw, nh);
             cameraRef.current.aspect = nw / nh;
             cameraRef.current.updateProjectionMatrix();
-            if (rampRef.current) frameObject(rampRef.current, view);
+
+            // ✅ use current view, not stale
+            if (rampRef.current) frameObject(rampRef.current, viewRef.current);
         };
 
         window.addEventListener('resize', handleResize);
@@ -153,16 +205,20 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         let raf = 0;
         const loop = () => {
             raf = requestAnimationFrame(loop);
+            controls.update();
             renderer.render(scene, camera);
         };
         loop();
 
-        frameObject(null, view);
+        frameObject(null, viewRef.current);
 
         return () => {
             window.removeEventListener('resize', handleResize);
             cancelAnimationFrame(raf);
+
+            controls.dispose();
             renderer.dispose();
+
             container.removeChild(renderer.domElement);
         };
     }, []);
@@ -193,18 +249,20 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         scene.add(ramp);
         rampRef.current = ramp;
 
-        frameObject(ramp, view);
+        // ✅ use current view, not stale
+        frameObject(ramp, viewRef.current);
     }, [config]);
 
     /* ---------------------------------------------------
        VIEW SWITCH
     ---------------------------------------------------- */
     useEffect(() => {
+        applyViewConstraints(view);
         if (rampRef.current) frameObject(rampRef.current, view);
     }, [view]);
 
     /* ---------------------------------------------------
-       DRAWING
+       DRAWING (mouse only; touch is reserved for pinch/orbit)
     ---------------------------------------------------- */
     const pickPoint = (e: PointerEvent): THREE.Vector3 | null => {
         if (!cameraRef.current || !rendererRef.current) return null;
@@ -265,11 +323,19 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         if (!dom) return;
 
         const down = (e: PointerEvent) => {
+            // ✅ Touch = OrbitControls / pinch zoom (no drawing)
+            if (e.pointerType === 'touch') return;
+
             dom.setPointerCapture(e.pointerId);
             startStroke(e);
         };
-        const move = (e: PointerEvent) => currentStrokeRef.current && continueStroke(e);
+        const move = (e: PointerEvent) => {
+            if (e.pointerType === 'touch') return;
+            if (currentStrokeRef.current) continueStroke(e);
+        };
         const up = (e: PointerEvent) => {
+            if (e.pointerType === 'touch') return;
+
             dom.releasePointerCapture(e.pointerId);
             endStroke();
         };
