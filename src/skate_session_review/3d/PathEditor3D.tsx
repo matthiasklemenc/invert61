@@ -44,6 +44,36 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     }, [view]);
 
     /* ---------------------------------------------------
+       CONTROLS: ZOOM ONLY (NO ROTATE, NO PAN)
+    ---------------------------------------------------- */
+    const forceZoomOnlyControls = () => {
+        const controls = controlsRef.current;
+        if (!controls) return;
+
+        controls.enableRotate = false;
+        controls.enablePan = false;
+        controls.enableZoom = true;
+
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+
+        // Mouse: always dolly (prevents rotate even if enableRotate ever flips)
+        controls.mouseButtons = {
+            LEFT: THREE.MOUSE.DOLLY,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.DOLLY
+        };
+
+        // Touch: pinch/drag = dolly only
+        controls.touches = {
+            ONE: THREE.TOUCH.DOLLY,
+            TWO: THREE.TOUCH.DOLLY
+        };
+
+        controls.update();
+    };
+
+    /* ---------------------------------------------------
        CAMERA FRAMING (robust)
     ---------------------------------------------------- */
     const frameObject = (obj: THREE.Object3D | null, mode: ViewMode) => {
@@ -51,45 +81,42 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const controls = controlsRef.current;
         if (!camera || !controls) return;
 
-        if (!obj) {
+        const fallback = () => {
             camera.position.set(6, 4, 6);
             camera.lookAt(0, 1, 0);
             controls.target.set(0, 1, 0);
             controls.update();
-
             camera.near = 0.05;
             camera.far = 500;
             camera.updateProjectionMatrix();
+        };
+
+        if (!obj) {
+            fallback();
             return;
         }
 
-        // ✅ robust world update + safety fallback
-        const box = new THREE.Box3();
         obj.updateWorldMatrix(true, true);
-        box.setFromObject(obj);
 
-        // If Box3 comes back "empty" (Infinity), force a sane fallback box
+        const box = new THREE.Box3().setFromObject(obj);
+
+        // If empty, don’t pretend everything is fine — fallback.
         if (box.min.y === Infinity || box.max.y === -Infinity) {
-            box.min.set(-2, 0, -2);
-            box.max.set(2, 2, 2);
+            console.warn('[PathEditor3D] Ramp Box3 empty -> fallback camera. (Ramp may be invalid)');
+            fallback();
+            return;
         }
 
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
-
         const maxDim = Math.max(size.x, size.y, size.z);
         const dist = Math.max(2.5, maxDim * 2.2);
 
         if (mode === 'top') {
-            // Map-like top-down
             camera.position.set(center.x, center.y + dist * 1.8, center.z + 0.001);
         } else {
-            // Slight 3D but static
-            camera.position.set(
-                center.x + dist,
-                center.y + dist * 0.6,
-                center.z + dist
-            );
+            // Slight 3D angle (static)
+            camera.position.set(center.x + dist, center.y + dist * 0.6, center.z + dist);
         }
 
         camera.lookAt(center);
@@ -99,32 +126,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         camera.near = 0.05;
         camera.far = 500;
         camera.updateProjectionMatrix();
-    };
-
-    const applyViewConstraints = (_mode: ViewMode) => {
-        const controls = controlsRef.current;
-        if (!controls) return;
-
-        // ✅ NO ROTATION EVER (both views)
-        controls.enableRotate = false;
-
-        // ✅ No panning (keeps editor stable)
-        controls.enablePan = false;
-
-        // ✅ Zoom only (wheel + pinch)
-        controls.enableZoom = true;
-        controls.zoomSpeed = 1.0;
-
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.08;
-
-        // ✅ Touch: pinch zoom only (no rotate, no pan)
-        controls.touches = {
-            ONE: THREE.TOUCH.DOLLY,
-            TWO: THREE.TOUCH.DOLLY
-        };
-
-        controls.update();
     };
 
     const disposeObject = (obj: THREE.Object3D) => {
@@ -166,25 +167,35 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         container.appendChild(renderer.domElement);
         rendererRef.current = renderer;
 
-        // ✅ OrbitControls (zoom only; no rotate)
+        // OrbitControls (zoom-only)
         const controls = new OrbitControls(camera, renderer.domElement);
         controlsRef.current = controls;
-        applyViewConstraints(viewRef.current);
+        forceZoomOnlyControls();
 
-        scene.add(new THREE.HemisphereLight(0xdbeafe, 0x020617, 0.75));
-
-        const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+        // Lights
+        scene.add(new THREE.HemisphereLight(0xdbeafe, 0x020617, 0.9));
+        const dir = new THREE.DirectionalLight(0xffffff, 1.0);
         dir.position.set(8, 12, 6);
         dir.castShadow = true;
         dir.shadow.mapSize.set(1024, 1024);
         scene.add(dir);
 
+        // Visual reference helpers (so “blank” is impossible)
+        const grid = new THREE.GridHelper(40, 40, 0x334155, 0x0f172a);
+        grid.position.y = GROUND_Y;
+        scene.add(grid);
+
+        const axes = new THREE.AxesHelper(2);
+        axes.position.set(0, GROUND_Y, 0);
+        scene.add(axes);
+
+        // Ground (slightly lighter than background so you can see it)
         const ground = new THREE.Mesh(
             new THREE.PlaneGeometry(80, 80),
-            new THREE.MeshStandardMaterial({ color: 0x020617 })
+            new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 1 })
         );
         ground.rotation.x = -Math.PI / 2;
-        ground.position.y = GROUND_Y - 0.1;
+        ground.position.y = GROUND_Y - 0.001;
         ground.receiveShadow = true;
         scene.add(ground);
 
@@ -199,7 +210,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             rendererRef.current.setSize(nw, nh);
             cameraRef.current.aspect = nw / nh;
             cameraRef.current.updateProjectionMatrix();
-
             if (rampRef.current) frameObject(rampRef.current, viewRef.current);
         };
 
@@ -208,6 +218,10 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         let raf = 0;
         const loop = () => {
             raf = requestAnimationFrame(loop);
+
+            // Hard-force zoom-only every frame (kills any accidental re-enable)
+            forceZoomOnlyControls();
+
             controls.update();
             renderer.render(scene, camera);
         };
@@ -218,10 +232,8 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         return () => {
             window.removeEventListener('resize', handleResize);
             cancelAnimationFrame(raf);
-
             controls.dispose();
             renderer.dispose();
-
             try {
                 container.removeChild(renderer.domElement);
             } catch {
@@ -243,6 +255,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         }
 
         const ramp = buildRampGroup(config);
+
         ramp.traverse(o => {
             const m = o as THREE.Mesh;
             if (m.isMesh) {
@@ -252,9 +265,16 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             }
         });
 
-        ramp.position.y = 0.02;
+        // Put it on ground
+        ramp.position.set(0, 0.02, 0);
+        ramp.updateWorldMatrix(true, true);
+
         scene.add(ramp);
         rampRef.current = ramp;
+
+        // Log bounds to prove whether it exists
+        const box = new THREE.Box3().setFromObject(ramp);
+        console.log('[PathEditor3D] ramp bounds', box.min, box.max);
 
         frameObject(ramp, viewRef.current);
     }, [config]);
@@ -263,12 +283,12 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
        VIEW SWITCH
     ---------------------------------------------------- */
     useEffect(() => {
-        applyViewConstraints(view);
+        // still zoom-only; view just changes camera position
         if (rampRef.current) frameObject(rampRef.current, view);
     }, [view]);
 
     /* ---------------------------------------------------
-       DRAWING (mouse only; touch reserved for pinch zoom)
+       DRAWING (mouse only; touch reserved for zoom)
     ---------------------------------------------------- */
     const pickPoint = (e: PointerEvent): THREE.Vector3 | null => {
         if (!cameraRef.current || !rendererRef.current) return null;
@@ -329,9 +349,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         if (!dom) return;
 
         const down = (e: PointerEvent) => {
-            // Touch is reserved for pinch zoom; no drawing on touch
-            if (e.pointerType === 'touch') return;
-
+            if (e.pointerType === 'touch') return; // touch = zoom only
             dom.setPointerCapture(e.pointerId);
             startStroke(e);
         };
@@ -343,7 +361,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
 
         const up = (e: PointerEvent) => {
             if (e.pointerType === 'touch') return;
-
             try {
                 dom.releasePointerCapture(e.pointerId);
             } catch {
