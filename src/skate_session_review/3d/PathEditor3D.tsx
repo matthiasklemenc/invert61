@@ -44,7 +44,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     }, [view]);
 
     /* ---------------------------------------------------
-       CAMERA FRAMING
+       CAMERA FRAMING (robust)
     ---------------------------------------------------- */
     const frameObject = (obj: THREE.Object3D | null, mode: ViewMode) => {
         const camera = cameraRef.current;
@@ -63,8 +63,16 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             return;
         }
 
-        const box = new THREE.Box3().setFromObject(obj);
-        if (box.isEmpty()) return;
+        // ✅ robust world update + safety fallback
+        const box = new THREE.Box3();
+        obj.updateWorldMatrix(true, true);
+        box.setFromObject(obj);
+
+        // If Box3 comes back "empty" (Infinity), force a sane fallback box
+        if (box.min.y === Infinity || box.max.y === -Infinity) {
+            box.min.set(-2, 0, -2);
+            box.max.set(2, 2, 2);
+        }
 
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
@@ -73,8 +81,10 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         const dist = Math.max(2.5, maxDim * 2.2);
 
         if (mode === 'top') {
+            // Map-like top-down
             camera.position.set(center.x, center.y + dist * 1.8, center.z + 0.001);
         } else {
+            // Slight 3D but static
             camera.position.set(
                 center.x + dist,
                 center.y + dist * 0.6,
@@ -84,8 +94,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
 
         camera.lookAt(center);
         controls.target.copy(center);
-
-        // keep controls usable (pinch/wheel)
         controls.update();
 
         camera.near = 0.05;
@@ -93,32 +101,28 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         camera.updateProjectionMatrix();
     };
 
-    const applyViewConstraints = (mode: ViewMode) => {
+    const applyViewConstraints = (_mode: ViewMode) => {
         const controls = controlsRef.current;
         if (!controls) return;
 
-        // Always allow zoom (pinch / wheel)
+        // ✅ NO ROTATION EVER (both views)
+        controls.enableRotate = false;
+
+        // ✅ No panning (keeps editor stable)
+        controls.enablePan = false;
+
+        // ✅ Zoom only (wheel + pinch)
         controls.enableZoom = true;
         controls.zoomSpeed = 1.0;
 
-        // Make touch gestures do the right thing:
-        // 1-finger = rotate/pan (depending on enableRotate), 2-finger = pinch zoom
-        controls.enablePan = false;
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
 
-        // Touch mapping (pinch zoom works)
+        // ✅ Touch: pinch zoom only (no rotate, no pan)
         controls.touches = {
-            ONE: THREE.TOUCH.ROTATE,
-            TWO: THREE.TOUCH.DOLLY_PAN
+            ONE: THREE.TOUCH.DOLLY,
+            TWO: THREE.TOUCH.DOLLY
         };
-
-        if (mode === 'top') {
-            // top view: lock rotation so it stays a "map-like" top-down editor
-            controls.enableRotate = false;
-        } else {
-            controls.enableRotate = true;
-        }
 
         controls.update();
     };
@@ -162,7 +166,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         container.appendChild(renderer.domElement);
         rendererRef.current = renderer;
 
-        // ✅ OrbitControls (pinch zoom + wheel zoom)
+        // ✅ OrbitControls (zoom only; no rotate)
         const controls = new OrbitControls(camera, renderer.domElement);
         controlsRef.current = controls;
         applyViewConstraints(viewRef.current);
@@ -196,7 +200,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             cameraRef.current.aspect = nw / nh;
             cameraRef.current.updateProjectionMatrix();
 
-            // ✅ use current view, not stale
             if (rampRef.current) frameObject(rampRef.current, viewRef.current);
         };
 
@@ -219,7 +222,11 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
             controls.dispose();
             renderer.dispose();
 
-            container.removeChild(renderer.domElement);
+            try {
+                container.removeChild(renderer.domElement);
+            } catch {
+                // ignore
+            }
         };
     }, []);
 
@@ -249,7 +256,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         scene.add(ramp);
         rampRef.current = ramp;
 
-        // ✅ use current view, not stale
         frameObject(ramp, viewRef.current);
     }, [config]);
 
@@ -262,7 +268,7 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     }, [view]);
 
     /* ---------------------------------------------------
-       DRAWING (mouse only; touch is reserved for pinch/orbit)
+       DRAWING (mouse only; touch reserved for pinch zoom)
     ---------------------------------------------------- */
     const pickPoint = (e: PointerEvent): THREE.Vector3 | null => {
         if (!cameraRef.current || !rendererRef.current) return null;
@@ -323,20 +329,26 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         if (!dom) return;
 
         const down = (e: PointerEvent) => {
-            // ✅ Touch = OrbitControls / pinch zoom (no drawing)
+            // Touch is reserved for pinch zoom; no drawing on touch
             if (e.pointerType === 'touch') return;
 
             dom.setPointerCapture(e.pointerId);
             startStroke(e);
         };
+
         const move = (e: PointerEvent) => {
             if (e.pointerType === 'touch') return;
             if (currentStrokeRef.current) continueStroke(e);
         };
+
         const up = (e: PointerEvent) => {
             if (e.pointerType === 'touch') return;
 
-            dom.releasePointerCapture(e.pointerId);
+            try {
+                dom.releasePointerCapture(e.pointerId);
+            } catch {
+                // ignore
+            }
             endStroke();
         };
 
