@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import type { RampConfig } from '../planner/rampTypes';
 import { buildRampGroup } from './rampMeshes';
 
@@ -26,7 +25,6 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
     const sceneRef = useRef<THREE.Scene | null>(null);
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-    const controlsRef = useRef<OrbitControls | null>(null);
     const rampRef = useRef<THREE.Group | null>(null);
 
     const strokesRef = useRef<THREE.Vector3[][]>([]);
@@ -38,106 +36,46 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
     const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), -GROUND_Y));
 
     const [view, setView] = useState<ViewMode>('front');
-    const viewRef = useRef<ViewMode>('front');
-    useEffect(() => {
-        viewRef.current = view;
-    }, [view]);
+    const zoomRef = useRef(1.0);
 
     /* ---------------------------------------------------
-       CONTROLS: ZOOM ONLY (NO ROTATE, NO PAN)
+       CAMERA FRAMING (DETERMINISTIC)
     ---------------------------------------------------- */
-    const forceZoomOnlyControls = () => {
-        const controls = controlsRef.current;
-        if (!controls) return;
-
-        controls.enableRotate = false;
-        controls.enablePan = false;
-        controls.enableZoom = true;
-
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.08;
-
-        // Mouse: always dolly (prevents rotate even if enableRotate ever flips)
-        controls.mouseButtons = {
-            LEFT: THREE.MOUSE.DOLLY,
-            MIDDLE: THREE.MOUSE.DOLLY,
-            RIGHT: THREE.MOUSE.DOLLY
-        };
-
-        // Touch: pinch/drag = dolly only
-        controls.touches = {
-            ONE: THREE.TOUCH.DOLLY,
-            TWO: THREE.TOUCH.DOLLY
-        };
-
-        controls.update();
-    };
-
-    /* ---------------------------------------------------
-       CAMERA FRAMING (robust)
-    ---------------------------------------------------- */
-    const frameObject = (obj: THREE.Object3D | null, mode: ViewMode) => {
+    const frameObject = (obj: THREE.Object3D | null) => {
         const camera = cameraRef.current;
-        const controls = controlsRef.current;
-        if (!camera || !controls) return;
-
-        const fallback = () => {
-            camera.position.set(6, 4, 6);
-            camera.lookAt(0, 1, 0);
-            controls.target.set(0, 1, 0);
-            controls.update();
-            camera.near = 0.05;
-            camera.far = 500;
-            camera.updateProjectionMatrix();
-        };
+        if (!camera) return;
 
         if (!obj) {
-            fallback();
+            camera.position.set(6, 4, 6);
+            camera.lookAt(0, 1, 0);
+            camera.updateProjectionMatrix();
             return;
         }
-
-        obj.updateWorldMatrix(true, true);
 
         const box = new THREE.Box3().setFromObject(obj);
-
-        // If empty, don’t pretend everything is fine — fallback.
-        if (box.min.y === Infinity || box.max.y === -Infinity) {
-            console.warn('[PathEditor3D] Ramp Box3 empty -> fallback camera. (Ramp may be invalid)');
-            fallback();
-            return;
-        }
+        if (box.isEmpty()) return;
 
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const dist = Math.max(2.5, maxDim * 2.2);
 
-        if (mode === 'top') {
-            camera.position.set(center.x, center.y + dist * 1.8, center.z + 0.001);
+        const dist = maxDim * 2.2 * zoomRef.current;
+
+        if (view === 'top') {
+            camera.position.set(center.x, center.y + dist, center.z);
+            camera.lookAt(center.x, center.y, center.z);
         } else {
-            // Slight 3D angle (static)
-            camera.position.set(center.x + dist, center.y + dist * 0.6, center.z + dist);
+            camera.position.set(
+                center.x + dist,
+                center.y + dist * 0.5,
+                center.z + dist
+            );
+            camera.lookAt(center);
         }
-
-        camera.lookAt(center);
-        controls.target.copy(center);
-        controls.update();
 
         camera.near = 0.05;
         camera.far = 500;
         camera.updateProjectionMatrix();
-    };
-
-    const disposeObject = (obj: THREE.Object3D) => {
-        obj.traverse(o => {
-            const m = o as THREE.Mesh;
-            if (m.isMesh) {
-                m.geometry?.dispose();
-                const mat: any = m.material;
-                if (Array.isArray(mat)) mat.forEach(x => x?.dispose?.());
-                else mat?.dispose?.();
-            }
-        });
     };
 
     /* ---------------------------------------------------
@@ -167,35 +105,19 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         container.appendChild(renderer.domElement);
         rendererRef.current = renderer;
 
-        // OrbitControls (zoom-only)
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controlsRef.current = controls;
-        forceZoomOnlyControls();
+        scene.add(new THREE.HemisphereLight(0xdbeafe, 0x020617, 0.8));
 
-        // Lights
-        scene.add(new THREE.HemisphereLight(0xdbeafe, 0x020617, 0.9));
         const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-        dir.position.set(8, 12, 6);
+        dir.position.set(10, 15, 8);
         dir.castShadow = true;
-        dir.shadow.mapSize.set(1024, 1024);
         scene.add(dir);
 
-        // Visual reference helpers (so “blank” is impossible)
-        const grid = new THREE.GridHelper(40, 40, 0x334155, 0x0f172a);
-        grid.position.y = GROUND_Y;
-        scene.add(grid);
-
-        const axes = new THREE.AxesHelper(2);
-        axes.position.set(0, GROUND_Y, 0);
-        scene.add(axes);
-
-        // Ground (slightly lighter than background so you can see it)
         const ground = new THREE.Mesh(
             new THREE.PlaneGeometry(80, 80),
-            new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 1 })
+            new THREE.MeshStandardMaterial({ color: 0x020617 })
         );
         ground.rotation.x = -Math.PI / 2;
-        ground.position.y = GROUND_Y - 0.001;
+        ground.position.y = GROUND_Y - 0.05;
         ground.receiveShadow = true;
         scene.add(ground);
 
@@ -203,47 +125,47 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         scene.add(linesGroup);
         linesGroupRef.current = linesGroup;
 
-        const handleResize = () => {
-            if (!rendererRef.current || !cameraRef.current || !containerRef.current) return;
-            const nw = Math.max(container.clientWidth || MIN_WIDTH, MIN_WIDTH);
-            const nh = Math.max(container.clientHeight || MIN_HEIGHT, MIN_HEIGHT);
-            rendererRef.current.setSize(nw, nh);
-            cameraRef.current.aspect = nw / nh;
-            cameraRef.current.updateProjectionMatrix();
-            if (rampRef.current) frameObject(rampRef.current, viewRef.current);
-        };
-
-        window.addEventListener('resize', handleResize);
-
         let raf = 0;
         const loop = () => {
             raf = requestAnimationFrame(loop);
-
-            // Hard-force zoom-only every frame (kills any accidental re-enable)
-            forceZoomOnlyControls();
-
-            controls.update();
             renderer.render(scene, camera);
         };
         loop();
 
-        frameObject(null, viewRef.current);
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            zoomRef.current = THREE.MathUtils.clamp(
+                zoomRef.current + e.deltaY * 0.001,
+                0.4,
+                3.0
+            );
+            if (rampRef.current) frameObject(rampRef.current);
+        };
+
+        renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
+
+        const handleResize = () => {
+            const nw = Math.max(container.clientWidth || MIN_WIDTH, MIN_WIDTH);
+            const nh = Math.max(container.clientHeight || MIN_HEIGHT, MIN_HEIGHT);
+            renderer.setSize(nw, nh);
+            camera.aspect = nw / nh;
+            camera.updateProjectionMatrix();
+            if (rampRef.current) frameObject(rampRef.current);
+        };
+
+        window.addEventListener('resize', handleResize);
 
         return () => {
-            window.removeEventListener('resize', handleResize);
             cancelAnimationFrame(raf);
-            controls.dispose();
+            renderer.domElement.removeEventListener('wheel', onWheel);
+            window.removeEventListener('resize', handleResize);
             renderer.dispose();
-            try {
-                container.removeChild(renderer.domElement);
-            } catch {
-                // ignore
-            }
+            container.removeChild(renderer.domElement);
         };
     }, []);
 
     /* ---------------------------------------------------
-       BUILD RAMP
+       BUILD RAMP (THIS IS WHERE IT MUST SHOW)
     ---------------------------------------------------- */
     useEffect(() => {
         const scene = sceneRef.current;
@@ -251,44 +173,24 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
 
         if (rampRef.current) {
             scene.remove(rampRef.current);
-            disposeObject(rampRef.current);
         }
 
         const ramp = buildRampGroup(config);
-
         ramp.traverse(o => {
-            const m = o as THREE.Mesh;
-            if (m.isMesh) {
-                m.castShadow = true;
-                m.receiveShadow = true;
-                m.frustumCulled = false;
+            if ((o as THREE.Mesh).isMesh) {
+                o.castShadow = true;
+                o.receiveShadow = true;
             }
         });
-
-        // Put it on ground
-        ramp.position.set(0, 0.02, 0);
-        ramp.updateWorldMatrix(true, true);
 
         scene.add(ramp);
         rampRef.current = ramp;
 
-        // Log bounds to prove whether it exists
-        const box = new THREE.Box3().setFromObject(ramp);
-        console.log('[PathEditor3D] ramp bounds', box.min, box.max);
-
-        frameObject(ramp, viewRef.current);
-    }, [config]);
+        frameObject(ramp);
+    }, [config, view]);
 
     /* ---------------------------------------------------
-       VIEW SWITCH
-    ---------------------------------------------------- */
-    useEffect(() => {
-        // still zoom-only; view just changes camera position
-        if (rampRef.current) frameObject(rampRef.current, view);
-    }, [view]);
-
-    /* ---------------------------------------------------
-       DRAWING (mouse only; touch reserved for zoom)
+       DRAWING
     ---------------------------------------------------- */
     const pickPoint = (e: PointerEvent): THREE.Vector3 | null => {
         if (!cameraRef.current || !rendererRef.current) return null;
@@ -305,82 +207,49 @@ const PathEditor3D: React.FC<PathEditor3DProps> = ({ config, onPathChange }) => 
         return p;
     };
 
-    const startStroke = (e: PointerEvent) => {
-        const p = pickPoint(e);
-        if (!p) return;
-
-        currentStrokeRef.current = [p.clone()];
-        const geom = new THREE.BufferGeometry().setFromPoints(currentStrokeRef.current);
-        const mat = new THREE.LineBasicMaterial({ color: 0xff4747 });
-        linesGroupRef.current?.add(new THREE.Line(geom, mat));
-    };
-
-    const continueStroke = (e: PointerEvent) => {
-        const stroke = currentStrokeRef.current;
-        if (!stroke) return;
-
-        const p = pickPoint(e);
-        if (!p) return;
-
-        if (stroke[stroke.length - 1].distanceTo(p) < 0.03) return;
-        stroke.push(p.clone());
-
-        const line = linesGroupRef.current?.children.at(-1) as THREE.Line;
-        if (!line) return;
-
-        line.geometry.dispose();
-        line.geometry = new THREE.BufferGeometry().setFromPoints(stroke);
-    };
-
-    const endStroke = () => {
-        const stroke = currentStrokeRef.current;
-        if (!stroke) return;
-
-        strokesRef.current.push(stroke);
-        currentStrokeRef.current = null;
-
-        onPathChange?.(
-            strokesRef.current.map(s => s.map(v => ({ x: v.x, y: v.y, z: v.z })))
-        );
-    };
-
     useEffect(() => {
         const dom = rendererRef.current?.domElement;
         if (!dom) return;
 
         const down = (e: PointerEvent) => {
-            if (e.pointerType === 'touch') return; // touch = zoom only
-            dom.setPointerCapture(e.pointerId);
-            startStroke(e);
+            const p = pickPoint(e);
+            if (!p) return;
+
+            currentStrokeRef.current = [p.clone()];
+            const geom = new THREE.BufferGeometry().setFromPoints(currentStrokeRef.current);
+            const mat = new THREE.LineBasicMaterial({ color: 0xff4747 });
+            linesGroupRef.current?.add(new THREE.Line(geom, mat));
         };
 
         const move = (e: PointerEvent) => {
-            if (e.pointerType === 'touch') return;
-            if (currentStrokeRef.current) continueStroke(e);
+            if (!currentStrokeRef.current) return;
+            const p = pickPoint(e);
+            if (!p) return;
+
+            currentStrokeRef.current.push(p.clone());
+            const line = linesGroupRef.current?.children.at(-1) as THREE.Line;
+            line.geometry.dispose();
+            line.geometry = new THREE.BufferGeometry().setFromPoints(currentStrokeRef.current);
         };
 
-        const up = (e: PointerEvent) => {
-            if (e.pointerType === 'touch') return;
-            try {
-                dom.releasePointerCapture(e.pointerId);
-            } catch {
-                // ignore
-            }
-            endStroke();
+        const up = () => {
+            if (!currentStrokeRef.current) return;
+            strokesRef.current.push(currentStrokeRef.current);
+            currentStrokeRef.current = null;
+
+            onPathChange?.(
+                strokesRef.current.map(s => s.map(v => ({ x: v.x, y: v.y, z: v.z })))
+            );
         };
 
         dom.addEventListener('pointerdown', down);
         dom.addEventListener('pointermove', move);
         dom.addEventListener('pointerup', up);
-        dom.addEventListener('pointercancel', up);
-        dom.addEventListener('pointerleave', up);
 
         return () => {
             dom.removeEventListener('pointerdown', down);
             dom.removeEventListener('pointermove', move);
             dom.removeEventListener('pointerup', up);
-            dom.removeEventListener('pointercancel', up);
-            dom.removeEventListener('pointerleave', up);
         };
     }, []);
 
