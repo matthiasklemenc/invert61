@@ -1,0 +1,394 @@
+
+/* /index.css */
+
+/* Tailwind base layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- Base tweaks ---------- */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-gray-900 text-white antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Prevent “cut off” feel on buttons/labels across browsers */
+  button,
+  input,
+  select {
+    line-height: 1;                 /* avoids extra vertical metrics that clip */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Make images/SVGs scale cleanly */
+  img, svg {
+    max-width: 100%;
+    height: auto;
+    shape-rendering: geometricPrecision;
+  }
+}
+
+/* ---------- Components you can reuse ---------- */
+@layer components {
+  /* Modern genre chip (use this on your genre buttons) */
+  .genre-chip {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-full
+           bg-white/5 border border-white/10 text-white/90
+           shadow-sm hover:bg-white/10 hover:text-white
+           transition-colors select-none;
+    backdrop-filter: saturate(140%) blur(2px);
+  }
+  .genre-chip[data-active="true"] {
+    @apply bg-indigo-500/20 border-indigo-400/40 text-white;
+  }
+
+  /* --- Transport buttons (prev, play, next, repeat) --- */
+  .transport-btn {
+    color: #ffffff;
+    transition: color 150ms ease;
+  }
+
+  /* Hover (desktop) */
+  .transport-btn:hover {
+    color: #d1d5db; /* tailwind gray-300 */
+  }
+
+  /* Short red flash while pressing / tapping */
+  .press-flash-red:active {
+    color: #c52323;
+  }
+
+  /* Mini-helpers for icon sizing consistency */
+  .icon-6 { width: 1.5rem; height: 1.5rem; }
+  .icon-7 { width: 1.75rem; height: 1.75rem; }
+  .icon-8 { width: 2rem; height: 2rem; }
+  .icon-10 { width: 2.5rem; height: 2.5rem; }
+
+  /* Sliders (range inputs) */
+  .slider {
+    @apply w-full;
+  }
+  input[type="range"].slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: transparent; /* Use track pseudo-element for background */
+    border-radius: 9999px;
+    outline: none;
+  }
+  input[type="range"].slider::-webkit-slider-runnable-track {
+    height: 4px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 9999px;
+  }
+  input[type="range"].slider::-moz-range-track {
+    height: 4px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 9999px;
+  }
+  input[type="range"].slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 9999px;
+    background: white;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.25);
+    cursor: pointer;
+    margin-top: -6px; /* Vertically center thumb */
+    transition: transform 0.2s ease;
+  }
+  input[type="range"].slider:hover::-webkit-slider-thumb {
+    transform: scale(1.1);
+  }
+  input[type="range"].slider::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border: none;
+    border-radius: 9999px;
+    background: white;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.25);
+    cursor: pointer;
+    transition: transform 0.2s ease;
+  }
+  input[type="range"].slider:hover::-moz-range-thumb {
+    transform: scale(1.1);
+  }
+
+  /* Logo wordmark helpers (Bebas Neue) */
+  .logo-wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 1px;                              /* spacing between INVERT and FM */
+    font-family: "Bebas Neue", Impact, "Arial Black", system-ui, sans-serif;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1;
+      position: relative;
+    top: 10px;        /* move logo 10px lower */
+    margin-bottom: -10px; /* keep overall layout height the same */
+
+    /* Set the base size ON THE CONTAINER */
+    font-size: 48px;                       /* adjust overall logo size here */
+  }
+
+  .logo-invert {
+    color: #ffffff;
+    font-size: 1em;                        /* 100% of container */
+  }
+
+  .logo-fm {
+    color: #c52323;
+    font-size: 0.8em;                      /* 80% of container (i.e., 80% of INVERT) */
+  }
+
+  .logo-block {
+    position: relative;
+    top: -5px; /* move upward */
+  }
+
+  /* ---------- Grip Handlers ---------- */
+/* Grip handler (3 horizontal lines, dark grey background) */
+.grip-rectangle {
+  display: inline-block; 
+  cursor: move; /* Draggable cursor */
+  font-size: 1.5rem; /* Adjust size */
+  color: white; /* Text color */
+  background-color: #333; /* Dark grey background */
+  padding: 0.5rem; /* Padding for spacing */
+  user-select: none; /* Prevent selection */
+  border-radius: 5px; /* Rounded corners */
+  width: 24px; /* Width of each line */
+  height: 8px; /* Height of each line */
+  /* Rotate the lines 90 degrees */
+  transform: rotate(90deg); 
+  margin-top: 4px; /* Optional margin adjustment */
+}
+
+
+  /* Optional: Hover effect for Grip handler */
+  .grip-rectangle:hover {
+    color: #ff6347; /* Color on hover */
+  }
+
+  /* ---------- New Playlist Button Layout ---------- */
+  /* Flexbox layout to allow the button to move below the text field on mobile */
+  .new-playlist-container {
+    display: flex;
+    flex-wrap: wrap; /* Allow items to wrap when there isn't enough space */
+    gap: 1rem; /* Space between items */
+    align-items: center;
+  }
+
+  .new-playlist-container input {
+    flex-grow: 1; /* Make the input take up all available space */
+  }
+
+  .new-playlist-container button {
+    flex-shrink: 0; /* Prevent button from shrinking */
+  }
+}
+
+/* ---------- Utilities ---------- */
+@layer utilities {
+  /* If any parent is clipping children, add class="no-clip" */
+  .no-clip { overflow: visible !important; }
+}
+
+/* Flexbox layout to allow the button to move below the text field on mobile */
+.new-playlist-container {
+  display: flex;
+  flex-wrap: wrap; /* Allow items to wrap when there isn't enough space */
+  gap: 1rem; /* Space between items */
+  align-items: center;
+}
+
+.new-playlist-container input {
+  flex-grow: 1; /* Make the input take up all available space */
+}
+
+.new-playlist-container button {
+  flex-shrink: 0; /* Prevent button from shrinking */
+}
+
+/* ---------------- 3D CAROUSEL ---------------- */
+
+.c3d-area {
+  position: relative;
+  overflow: visible; /* Changed to visible so items don't clip during scale */
+  height: 240px; /* Adjusted for smaller items */
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.c3d-carousel {
+  position: relative;
+  height: 180px; /* Adjusted height */
+  width: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.c3d-item {
+  position: absolute;
+  /* Square dimensions for regular octagon */
+  width: 120px;
+  height: 120px;
+  transition: transform 0.6s ease-out, width 0.6s, height 0.6s, left 0.6s, opacity 0.6s, z-index 0.6s, filter 0.6s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  /* Regular Octagon clip-path */
+  clip-path: polygon(29.3% 0%, 70.7% 0%, 100% 29.3%, 100% 70.7%, 70.7% 100%, 29.3% 100%, 0% 70.7%, 0% 29.3%);
+  background-color: rgba(30, 30, 30, 0.9);
+  border: 2px solid #444;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.c3d-item.selected {
+  z-index: 20;
+  left: 50%;
+  transform: translateY(0%) translateX(-50%);
+  border-color: #c52323; /* Invert Red */
+  background-color: rgba(20, 20, 20, 0.95);
+  box-shadow: 0 0 20px rgba(197, 35, 35, 0.3);
+}
+
+.c3d-item.prev {
+  z-index: 10;
+  left: 25%; /* Adjusted percent to bring closer */
+  width: 90px;
+  height: 90px;
+  transform: translateY(0%) translateX(-50%);
+  opacity: 0.7;
+  filter: brightness(60%);
+}
+
+.c3d-item.next {
+  z-index: 10;
+  left: 75%; /* Adjusted percent */
+  width: 90px;
+  height: 90px;
+  transform: translateY(0%) translateX(-50%);
+  opacity: 0.7;
+  filter: brightness(60%);
+}
+
+.c3d-item.prevLeftSecond {
+  z-index: 5;
+  left: 10%;
+  width: 60px;
+  height: 60px;
+  transform: translateY(10%) translateX(-50%);
+  opacity: 0.4;
+  filter: brightness(40%);
+}
+
+.c3d-item.nextRightSecond {
+  z-index: 5;
+  left: 90%;
+  width: 60px;
+  height: 60px;
+  transform: translateY(10%) translateX(-50%);
+  opacity: 0.4;
+  filter: brightness(40%);
+}
+
+.c3d-item.hideRight {
+  left: 100%;
+  transform: translateY(0%) translateX(100%);
+  opacity: 0;
+}
+
+.c3d-item.hideLeft {
+  left: 0%;
+  transform: translateY(0%) translateX(-200%);
+  opacity: 0;
+}
+
+.c3d-img-wrap {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  /* clip-path is on the parent item */
+}
+
+.c3d-content-inner {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.c3d-text {
+  position: absolute;
+  bottom: 5px;
+  width: 100%;
+  text-align: center;
+  color: #fff;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 1rem;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+  z-index: 10;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.c3d-item.selected .c3d-text {
+    color: #c52323;
+}
+
+.c3d-buttons {
+  position: absolute;
+  top: 50%;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  transform: translateY(-50%);
+  pointer-events: none; /* Let clicks pass through to items */
+  padding: 0 10px;
+}
+
+.c3d-icon-btn {
+  pointer-events: auto;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid #555;
+  color: #fff;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  z-index: 30;
+}
+
+.c3d-icon-btn:hover {
+  background: #c52323;
+  border-color: #c52323;
+  transform: scale(1.1);
+}
+
+.c3d-icon-svg {
+  width: 16px;
+  height: 16px;
+}

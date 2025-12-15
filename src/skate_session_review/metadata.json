@@ -1,0 +1,7 @@
+{
+  "name": "Skate Sense - Motion Tracker",
+  "description": "A motion tracker app for skateboarding that uses your phone's sensors to analyze and record your tricks. Calibrate movements, track sessions, and view your progress over time with detailed stats and a session calendar.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

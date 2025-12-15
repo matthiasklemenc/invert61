@@ -1,0 +1,77 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!-- Prevent caching -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <meta http-equiv="Permissions-Policy" content='autoplay=(self "https://www.youtube.com")'>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>INVERT FM - Music Player</title>
+
+    <!-- Icons + Manifest -->
+    <link rel="icon" type="image/png" href="./icons/icon-512.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-512.png" />
+
+    <!-- FIXED: manifest must be RELATIVE -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;800;900&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- MapLibre CSS + JS -->
+    <link
+      href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+    <!-- UI smoothness + custom scrollbars -->
+    <style>
+      body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: #1a202c; }
+      ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #718096; }
+    </style>
+
+    <!-- Global CSS -->
+
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
+    "path": "https://esm.sh/path@^0.12.7",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "url": "https://esm.sh/url@^0.11.4",
+    "tone": "https://esm.sh/tone@^15.1.22",
+    "@ffmpeg/ffmpeg": "https://esm.sh/@ffmpeg/ffmpeg@^0.12.15"
+  }
+}
+</script>
+  <script type="module" crossorigin src="/invert61/assets/index-CgjRbVxx.js"></script>
+  <link rel="stylesheet" crossorigin href="/invert61/assets/index-BnsH6wVf.css">
+</head>
+
+  <body class="bg-gray-900">
+    <div id="root"></div>
+
+    <!-- FIXED: Vite entry point MUST be relative -->
+</body>
+</html>
