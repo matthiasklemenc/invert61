@@ -18,7 +18,7 @@ const HomePage: React.FC<Props> = ({ onSetPage, youTubeSlots, onSetYouTubeSlots 
       onClick={onClick}
       className="bg-gray-800 text-white rounded-xl shadow-lg flex flex-col items-center justify-center p-4 gap-2 transition-transform transform hover:scale-105 active:scale-100 border border-gray-700 hover:border-red-500/50"
     >
-      <div className="w-16 h-16 flex items-center justify-center">
+      <div className="w-24 h-24 flex items-center justify-center">
         {icon}
       </div>
       <span className="font-bold tracking-wider uppercase text-center text-sm">{label}</span>
