@@ -44,7 +44,7 @@ const HomePage: React.FC<Props> = ({ onSetPage, youTubeSlots, onSetYouTubeSlots 
             onClick={() => onSetPage('rollometer')} 
           />
           <NavButton 
-            icon={<img src="./assets/homepage_icons/homepage_icon_music.png" alt="Music" className="w-full h-full object-contain" />} 
+            icon={<img src="./assets/homepage_icons/homepage_icon_music.png" alt="Music" className="w-full h-full object-contain -translate-y-[5px]" />} 
             label="Music" 
             onClick={() => onSetPage('music')} 
           />
