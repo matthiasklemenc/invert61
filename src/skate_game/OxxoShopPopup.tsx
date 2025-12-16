@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { formatScore } from './GameConstants';
 
@@ -34,7 +35,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
 
     return (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50 p-2 md:p-4">
-            <div className="bg-gray-800 border-4 border-[#fbbf24] rounded-xl shadow-2xl overflow-hidden w-full max-w-2xl relative flex flex-col max-h-full">
+            <div className="bg-gray-800 border-4 border-[#fbbf24] rounded-xl shadow-2xl overflow-hidden w-full max-w-3xl relative flex flex-col max-h-full">
                 
                 {/* Header - Sticky so Exit is always visible */}
                 <div className="bg-[#dc2626] p-2 md:p-3 flex justify-between items-center border-b-4 border-[#fbbf24] sticky top-0 z-30 shrink-0">
@@ -47,8 +48,8 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
 
                 {/* Scrollable Content Container */}
                 <div className="overflow-y-auto flex-grow">
-                    {/* Scene - Reduced height on mobile */}
-                    <div className="relative h-32 md:h-64 bg-gray-900 overflow-hidden shrink-0">
+                    {/* Scene - Reduced height on mobile to fit landscape screens */}
+                    <div className="relative h-24 md:h-64 bg-gray-900 overflow-hidden shrink-0">
                         {/* Background Wall */}
                         <div className="absolute inset-0 bg-gradient-to-b from-gray-800 to-gray-700"></div>
                         
@@ -62,7 +63,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                         )}
                         
                         {/* Alien Cashier - Scaled for mobile */}
-                        <div className="absolute top-4 md:top-10 left-1/2 -translate-x-1/2 w-24 h-36 md:w-40 md:h-60">
+                        <div className="absolute top-2 md:top-10 left-1/2 -translate-x-1/2 w-16 h-24 md:w-40 md:h-60">
                             <svg viewBox="0 0 100 150" className="w-full h-full drop-shadow-lg">
                                 {/* Body */}
                                 <path d="M30 150 L30 100 Q50 90 70 100 L70 150 Z" fill="#dc2626" /> {/* Red Vest */}
@@ -80,15 +81,15 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                         </div>
 
                         {/* Speech Bubble */}
-                        <div className="absolute top-2 left-2 bg-white text-black p-1 md:p-2 rounded-xl rounded-bl-none max-w-[120px] md:max-w-[150px] text-[10px] md:text-xs font-bold shadow-lg animate-bounce">
+                        <div className="absolute top-1 left-2 bg-white text-black p-1 md:p-2 rounded-xl rounded-bl-none max-w-[100px] md:max-w-[150px] text-[9px] md:text-xs font-bold shadow-lg animate-bounce">
                             Chips, Coke, Korova?
                         </div>
 
                         {/* Counter */}
-                        <div className="absolute bottom-0 w-full h-8 md:h-12 bg-gray-600 border-t-4 border-gray-500"></div>
+                        <div className="absolute bottom-0 w-full h-6 md:h-12 bg-gray-600 border-t-4 border-gray-500"></div>
 
                         {/* Skater (Back of Head) */}
-                        <div className="absolute -bottom-6 md:-bottom-10 left-1/2 -translate-x-1/2 w-32 h-32 md:w-48 md:h-48">
+                        <div className="absolute -bottom-4 md:-bottom-10 left-1/2 -translate-x-1/2 w-20 h-20 md:w-48 md:h-48">
                             <svg viewBox="0 0 100 100" className="w-full h-full">
                                 {/* Shoulders */}
                                 <path d="M10 100 Q50 80 90 100" fill="#333" />
@@ -101,26 +102,26 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                         </div>
                     </div>
 
-                    {/* Items Selection - 2 cols on mobile, 4 on desktop */}
-                    <div className="bg-gray-800 p-2 md:p-4 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+                    {/* Items Selection - 4 cols on all screens to save vertical space in landscape */}
+                    <div className="bg-gray-800 p-2 md:p-4 grid grid-cols-4 gap-2 md:gap-4">
                         <button 
                             onClick={() => handleAttemptBuy('CHIPS', 5000)}
-                            className={`flex flex-col items-center gap-2 p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordChips ? 'opacity-70' : ''}`}
+                            className={`flex flex-col items-center gap-1 md:gap-2 p-1 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordChips ? 'opacity-70' : ''}`}
                         >
                             <div className="w-10 h-10 md:w-12 md:h-12 bg-yellow-400 rounded-md flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform relative overflow-hidden">
                                 <span className="font-black text-red-600 -rotate-12 text-[8px] md:text-[10px]">CHIPS</span>
                                 <div className="absolute top-0 right-0 w-3 h-3 bg-white/30 rounded-bl-full"></div>
                             </div>
                             <div className="text-center">
-                                <div className="font-bold text-yellow-400 text-xs">Chips</div>
-                                <div className="text-[9px] text-gray-400 leading-tight mb-1">Laser + UFOs</div>
+                                <div className="font-bold text-yellow-400 text-[10px] md:text-xs">Chips</div>
+                                <div className="text-[8px] md:text-[9px] text-gray-400 leading-tight mb-1">Laser + UFOs</div>
                                 <div className={`text-[10px] font-mono font-bold ${canAffordChips ? 'text-green-400' : 'text-red-500'}`}>5,000</div>
                             </div>
                         </button>
 
                         <button 
                             onClick={() => handleAttemptBuy('COKE', 10000)}
-                            className={`flex flex-col items-center gap-2 p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordCoke ? 'opacity-70' : ''}`}
+                            className={`flex flex-col items-center gap-1 md:gap-2 p-1 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordCoke ? 'opacity-70' : ''}`}
                         >
                             <div className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                                 {/* Coke Bottle SVG */}
@@ -132,15 +133,15 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                                 </svg>
                             </div>
                             <div className="text-center">
-                                <div className="font-bold text-red-500 text-xs">Coke</div>
-                                <div className="text-[9px] text-gray-400 leading-tight mb-1">Speed + Riches</div>
+                                <div className="font-bold text-red-500 text-[10px] md:text-xs">Coke</div>
+                                <div className="text-[8px] md:text-[9px] text-gray-400 leading-tight mb-1">Speed + Riches</div>
                                 <div className={`text-[10px] font-mono font-bold ${canAffordCoke ? 'text-green-400' : 'text-red-500'}`}>10,000</div>
                             </div>
                         </button>
 
                         <button 
                             onClick={() => handleAttemptBuy('KOROVA', 67)}
-                            className={`flex flex-col items-center gap-2 p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordKorova ? 'opacity-70' : ''}`}
+                            className={`flex flex-col items-center gap-1 md:gap-2 p-1 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordKorova ? 'opacity-70' : ''}`}
                         >
                             <div className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                                 {/* Tetra Pak SVG */}
@@ -152,22 +153,22 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                                 </svg>
                             </div>
                             <div className="text-center">
-                                <div className="font-bold text-white text-xs">Korova +</div>
-                                <div className="text-[9px] text-gray-400 leading-tight mb-1">Psychedelic</div>
+                                <div className="font-bold text-white text-[10px] md:text-xs">Korova +</div>
+                                <div className="text-[8px] md:text-[9px] text-gray-400 leading-tight mb-1">Psychedelic</div>
                                 <div className={`text-[10px] font-mono font-bold ${canAffordKorova ? 'text-green-400' : 'text-red-500'}`}>67</div>
                             </div>
                         </button>
 
                         <button 
                             onClick={() => handleAttemptBuy('LIFE', 50000)}
-                            className={`flex flex-col items-center gap-2 p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordLife ? 'opacity-70' : ''}`}
+                            className={`flex flex-col items-center gap-1 md:gap-2 p-1 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordLife ? 'opacity-70' : ''}`}
                         >
                             <div className="w-10 h-10 md:w-12 md:h-12 bg-green-600 rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform border-2 border-white">
                                 <span className="font-black text-white text-base md:text-lg">1UP</span>
                             </div>
                             <div className="text-center">
-                                <div className="font-bold text-green-400 text-xs">Extra Life</div>
-                                <div className="text-[9px] text-gray-400 leading-tight mb-1">+1 Skateboard</div>
+                                <div className="font-bold text-green-400 text-[10px] md:text-xs">Extra Life</div>
+                                <div className="text-[8px] md:text-[9px] text-gray-400 leading-tight mb-1">+1 Skateboard</div>
                                 <div className={`text-[10px] font-mono font-bold ${canAffordLife ? 'text-green-400' : 'text-red-500'}`}>50,000</div>
                             </div>
                         </button>

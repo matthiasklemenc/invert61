@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { GENRES } from './constants';
 import { GENRE_COLORS } from './genreColors';
@@ -224,7 +225,7 @@ const MusicPage: React.FC<{
                   aria-label={tr('chooseRpMix', uiLang)}
                   title={tr('radioParadise', uiLang)}
                 >
-                  <RadioIcon className="h-6 w-6" />
+                  <RadioIcon className="h-6 w-6 -translate-y-[5px]" />
                   <span className="text-sm">{tr('radioParadise', uiLang)}</span>
                   <svg
                     width="14" height="14" viewBox="0 0 20 20"
