@@ -12,20 +12,24 @@ const stringToColor = (str: string) => {
     return '#' + '00000'.substring(0, 6 - c.length) + c;
 }
 
-// Point in Polygon Algorithm (Ray Casting)
-const isPointInPolygon = (point: {x: number, y: number}, vs: {x: number, y: number}[]) => {
-    let x = point.x, y = point.y;
-    let inside = false;
-    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-        let xi = vs[i].x, yi = vs[i].y;
-        let xj = vs[j].x, yj = vs[j].y;
-        
-        let intersect = ((yi > y) !== (yj > y))
-            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-        if (intersect) inside = !inside;
-    }
-    return inside;
-};
+// --- ICONS ---
+const HandIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/>
+        <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/>
+        <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/>
+        <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a.9.9 0 0 1 0-1.27l1.27-1.27a.9.9 0 0 1 1.27 0l1.06 1.06"/>
+    </svg>
+);
+
+const PenIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+        <path d="M2 2l7.586 7.586"/>
+        <circle cx="11" cy="11" r="2"/>
+    </svg>
+);
 
 // --- VISUALIZATION COMPONENT ---
 interface SessionGraphProps {
@@ -34,62 +38,66 @@ interface SessionGraphProps {
 }
 
 const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }) => {
-    const containerRef = useRef<HTMLDivElement>(null);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     
-    // State for responsive dimensions
-    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+    // Modes: 'SCROLL' allows panning/page scroll. 'SELECT' locks scroll for drawing.
+    const [mode, setMode] = useState<'SCROLL' | 'SELECT'>('SCROLL');
     
-    // Refs for interaction to avoid re-renders during drag
-    const isDrawingRef = useRef(false);
-    const lassoPathRef = useRef<{x: number, y: number}[]>([]);
+    // Dimensions
+    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
     
-    // Determine scales based on data
+    // Interaction State
+    const isSwipingRef = useRef(false);
+    const swipePathRef = useRef<{x: number, y: number}[]>([]);
+    const selectedIndicesRef = useRef<Set<number>>(new Set());
+    const [visuallySelectedIndices, setVisuallySelectedIndices] = useState<Set<number>>(new Set());
+
+    // Determine content width based on data density
+    // Minimum 10px per data point to allow precision, or container width if sparse
+    const contentWidth = useMemo(() => {
+        const minPxPerPoint = 8;
+        const calcWidth = data.length * minPxPerPoint;
+        return Math.max(containerSize.width, calcWidth);
+    }, [data.length, containerSize.width]);
+
+    // Scales
     const maxTime = useMemo(() => data.length > 0 ? Math.max(data[data.length - 1].timestamp, 0.1) : 1, [data]);
     const maxIntensity = useMemo(() => Math.max(...data.map(d => d.intensity), 3.0), [data]);
 
-    // Measure container on mount and resize
+    // Resize Observer
     useEffect(() => {
         const updateSize = () => {
-            if (containerRef.current) {
-                const { clientWidth, clientHeight } = containerRef.current;
-                setDimensions({ width: clientWidth, height: clientHeight });
-                // Resize canvas to match display size exactly for 1:1 mapping
+            if (wrapperRef.current) {
+                const { clientWidth, clientHeight } = wrapperRef.current;
+                setContainerSize({ width: clientWidth, height: clientHeight });
                 if (canvasRef.current) {
+                    // Canvas matches viewport exactly (not scrollable content)
                     canvasRef.current.width = clientWidth;
                     canvasRef.current.height = clientHeight;
                 }
             }
         };
         
-        // Initial size
         updateSize();
-        
-        // Observer for robustness
         const observer = new ResizeObserver(updateSize);
-        if (containerRef.current) observer.observe(containerRef.current);
-        
+        if (wrapperRef.current) observer.observe(wrapperRef.current);
         return () => observer.disconnect();
     }, []);
 
-    // Calculate screen coordinates for all data points
+    // Point Coordinates relative to the CONTENT (SCROLLABLE AREA)
     const pointCoords = useMemo(() => {
-        if (dimensions.width === 0) return [];
+        if (contentWidth === 0 || containerSize.height === 0) return [];
         
         const paddingX = 20;
         const paddingTop = 40; 
         const paddingBottom = 20;
-        const graphHeight = dimensions.height - paddingTop - paddingBottom;
-        const graphWidth = dimensions.width - paddingX * 2;
+        const graphHeight = containerSize.height - paddingTop - paddingBottom;
+        const graphWidth = contentWidth - paddingX * 2;
 
         return data.map((d, i) => {
-            // Map Time to X
             const x = paddingX + (d.timestamp / maxTime) * graphWidth;
-            // Map Intensity to Y (inverted, 0 at top + padding)
-            // But we want 0G to be high? No, usually graphs go 0 bottom. 
-            // Let's stick to standard: 0 at bottom relative to graph area
-            // v / max * height gives pixel height. 
-            // y = (paddingTop + graphHeight) - (v / max * graphHeight)
             const y = (paddingTop + graphHeight) - (d.intensity / maxIntensity) * graphHeight;
             
             return {
@@ -97,27 +105,29 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
                 y,
                 index: i,
                 data: d,
-                isSignificant: d.intensity > 1.5 || d.intensity < 0.8 || (d.rotation && d.rotation > 10)
+                hitRadius: 25 
             };
         });
-    }, [data, dimensions, maxTime, maxIntensity]);
+    }, [data, contentWidth, containerSize.height, maxTime, maxIntensity]);
 
-    // Draw Loop
+    // Draw Loop for the "Highlighter Trail" (Canvas Overlay)
     const drawCanvas = useCallback(() => {
         const ctx = canvasRef.current?.getContext('2d');
-        if (!ctx || dimensions.width === 0) return;
+        if (!ctx || containerSize.width === 0) return;
         
-        ctx.clearRect(0, 0, dimensions.width, dimensions.height);
+        ctx.clearRect(0, 0, containerSize.width, containerSize.height);
         
-        // 1. Draw Static Graph Elements (Lines) if needed, 
-        // but we use SVG for that below. Canvas is for the Lasso overlay.
-
-        const path = lassoPathRef.current;
-        if (path.length > 0) {
-            // Draw Lasso Line
-            ctx.strokeStyle = '#22d3ee'; // Cyan
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 3]);
+        const path = swipePathRef.current;
+        if (path.length > 1) {
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            // Outer Glow
+            ctx.shadowColor = '#22d3ee';
+            ctx.shadowBlur = 15;
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
+            ctx.lineWidth = 12;
+            
             ctx.beginPath();
             ctx.moveTo(path[0].x, path[0].y);
             for (let i = 1; i < path.length; i++) {
@@ -125,96 +135,107 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
             }
             ctx.stroke();
             
-            // Draw Closing Line Hint
-            if (path.length > 2) {
-                ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
-                ctx.beginPath();
-                ctx.moveTo(path[path.length-1].x, path[path.length-1].y);
-                ctx.lineTo(path[0].x, path[0].y);
-                ctx.stroke();
-            }
-
-            // 2. Highlight Points Inside Lasso (Visual Feedback)
-            // This is "expensive" to do every frame but with < 1000 points it's fine
-            if (path.length > 2) {
-                ctx.fillStyle = '#22d3ee';
-                pointCoords.forEach(pt => {
-                    if (pt.isSignificant || pt.data.label) {
-                        if (isPointInPolygon({x: pt.x, y: pt.y}, path)) {
-                            ctx.beginPath();
-                            ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
-                            ctx.fill();
-                        }
-                    }
-                });
-            }
+            // Inner Core
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#22d3ee'; 
+            ctx.lineWidth = 4;
+            ctx.stroke();
         }
-    }, [dimensions, pointCoords]);
+    }, [containerSize]);
 
-    // --- INPUT HANDLERS ---
+    // --- HANDLERS ---
 
     const handlePointerDown = (e: React.PointerEvent) => {
-        // Prevent default to stop scrolling / text selection
+        // Only active in SELECT mode
+        if (mode !== 'SELECT') return;
+
         e.preventDefault();
         e.stopPropagation();
         
         const target = e.currentTarget;
         target.setPointerCapture(e.pointerId);
         
-        isDrawingRef.current = true;
+        isSwipingRef.current = true;
         
-        // Get coordinates relative to the container
+        // Coords relative to Viewport (Canvas)
         const rect = target.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        lassoPathRef.current = [{x, y}];
+        swipePathRef.current = [{x, y}];
+        selectedIndicesRef.current.clear();
+        setVisuallySelectedIndices(new Set());
+        
+        // Initial hit test
+        checkHit(x, y);
         requestAnimationFrame(drawCanvas);
     };
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        if (!isDrawingRef.current) return;
+        if (!isSwipingRef.current || mode !== 'SELECT') return;
+        e.preventDefault(); // Critical to stop scrolling
         
         const target = e.currentTarget;
         const rect = target.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        lassoPathRef.current.push({x, y});
+        swipePathRef.current.push({x, y});
+        
+        if (swipePathRef.current.length > 50) {
+            swipePathRef.current.shift();
+        }
+
+        checkHit(x, y);
         requestAnimationFrame(drawCanvas);
+    };
+
+    const checkHit = (screenX: number, screenY: number) => {
+        // Map screen coordinates to content coordinates by adding scroll offset
+        const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
+        const dataX = screenX + scrollLeft;
+        const dataY = screenY; // Y doesn't scroll
+
+        let changed = false;
+        
+        // Simple radius check
+        // Optimization: Only check points roughly visible? 
+        // For < 1000 points, straightforward loop is fast enough.
+        for (const pt of pointCoords) {
+            if (selectedIndicesRef.current.has(pt.index)) continue;
+
+            const dx = dataX - pt.x;
+            const dy = dataY - pt.y;
+            
+            if (dx*dx + dy*dy < pt.hitRadius * pt.hitRadius) {
+                selectedIndicesRef.current.add(pt.index);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            setVisuallySelectedIndices(new Set(selectedIndicesRef.current));
+        }
     };
 
     const handlePointerUp = (e: React.PointerEvent) => {
-        if (!isDrawingRef.current) return;
+        if (!isSwipingRef.current) return;
         
         const target = e.currentTarget;
-        target.releasePointerCapture(e.pointerId);
-        isDrawingRef.current = false;
+        try { target.releasePointerCapture(e.pointerId); } catch {}
+        isSwipingRef.current = false;
         
-        const path = lassoPathRef.current;
-        
-        if (path.length > 2) {
-            // Final Selection Check
-            const selectedIndices: number[] = [];
-            pointCoords.forEach(pt => {
-                // Only select significant points or already labeled points to avoid noise
-                if (pt.isSignificant || pt.data.label) {
-                    if (isPointInPolygon({x: pt.x, y: pt.y}, path)) {
-                        selectedIndices.push(pt.index);
-                    }
-                }
-            });
-
-            if (selectedIndices.length > 0) {
-                onSelectionComplete(selectedIndices);
-            }
+        if (selectedIndicesRef.current.size > 0) {
+            onSelectionComplete(Array.from(selectedIndicesRef.current));
+            // Auto switch back to scroll mode after selection? 
+            // Better to keep in select mode for multiple operations, user manually toggles back.
         }
         
-        lassoPathRef.current = [];
-        requestAnimationFrame(drawCanvas);
+        swipePathRef.current = [];
+        drawCanvas();
     };
 
-    // Construct SVG Path for the graph line
+    // SVG Path
     const svgPathD = useMemo(() => {
         if (pointCoords.length === 0) return "";
         let d = `M ${pointCoords[0].x} ${pointCoords[0].y}`;
@@ -225,85 +246,151 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
     }, [pointCoords]);
 
     return (
-        <div 
-            ref={containerRef}
-            className="w-full h-64 bg-gray-900 rounded-lg mb-4 border border-gray-700 relative select-none touch-none overflow-hidden"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-        >
-            <div className="absolute top-2 left-2 right-2 pointer-events-none z-20 flex justify-between">
-                <h5 className="text-xs text-gray-400 font-mono uppercase">
+        <div className="relative w-full bg-gray-900 rounded-lg mb-4 border border-gray-700 overflow-hidden shadow-inner">
+            {/* Header / Toolbar */}
+            <div className="flex justify-between items-center bg-gray-800/50 p-2 border-b border-gray-700 relative z-20">
+                <h5 className="text-xs text-gray-400 font-mono uppercase ml-2">
                     Motion Sequence
                 </h5>
-                <span className="text-cyan-500 text-[10px] font-mono uppercase animate-pulse">
-                    DRAW CIRCLE TO GROUP
-                </span>
+                
+                {/* Mode Toggle Switch */}
+                <div className="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
+                    <button
+                        onClick={() => setMode('SCROLL')}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
+                            mode === 'SCROLL' 
+                            ? 'bg-gray-700 text-white shadow-sm' 
+                            : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                    >
+                        <HandIcon />
+                        <span>PAN</span>
+                    </button>
+                    <button
+                        onClick={() => setMode('SELECT')}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
+                            mode === 'SELECT' 
+                            ? 'bg-cyan-600 text-white shadow-sm ring-1 ring-cyan-400' 
+                            : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                    >
+                        <PenIcon />
+                        <span>SELECT</span>
+                    </button>
+                </div>
             </div>
 
-            {/* Canvas for Interaction (Lasso) */}
-            <canvas 
-                ref={canvasRef}
-                className="absolute inset-0 z-10 pointer-events-none"
-            />
+            {/* Viewport Wrapper */}
+            <div 
+                ref={wrapperRef}
+                className="relative w-full h-64"
+            >
+                {/* Scrollable Container */}
+                <div 
+                    ref={scrollContainerRef}
+                    className="w-full h-full overflow-x-auto overflow-y-hidden"
+                    style={{ 
+                        // If in SELECT mode, we disable touch-action on the scroll container as well?
+                        // Actually, if the overlay covers it, this shouldn't receive events.
+                        scrollBehavior: 'smooth' 
+                    }}
+                >
+                    {/* Content (Wider than viewport) */}
+                    <div style={{ width: contentWidth, height: '100%' }} className="relative">
+                        <svg width={contentWidth} height={containerSize.height} className="absolute inset-0 pointer-events-none">
+                            {/* 1G Line */}
+                            {(() => {
+                                const graphHeight = containerSize.height - 60; // 40 top + 20 bot
+                                const y1g = (40 + graphHeight) - (1.0 / maxIntensity) * graphHeight;
+                                return (
+                                    <>
+                                        <line x1="0" y1={y1g} x2={contentWidth} y2={y1g} stroke="#374151" strokeDasharray="4" strokeWidth="1" />
+                                    </>
+                                );
+                            })()}
 
-            {/* SVG for Data Visualization (Underneath) */}
-            {dimensions.width > 0 && (
-                <svg width={dimensions.width} height={dimensions.height} className="absolute inset-0 pointer-events-none">
-                    {/* 1G Reference Line */}
-                    {/* Assuming maxIntensity > 1, calculate Y for 1G. 
-                        y = (paddingTop + graphHeight) - (1 / maxIntensity) * graphHeight 
-                    */}
-                    {(() => {
-                        const paddingBottom = 20; 
-                        const graphHeight = dimensions.height - 40 - 20; // top padding 40
-                        const y1g = (40 + graphHeight) - (1.0 / maxIntensity) * graphHeight;
-                        return (
-                            <>
-                                <line x1="20" y1={y1g} x2={dimensions.width - 20} y2={y1g} stroke="#374151" strokeDasharray="4" strokeWidth="1" />
-                                <text x="25" y={y1g - 5} fill="#6b7280" fontSize="10">1G</text>
-                            </>
-                        );
-                    })()}
+                            {/* Data Line */}
+                            <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
 
-                    {/* Main Data Line */}
-                    <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
+                            {/* Points */}
+                            {pointCoords.map((pt) => {
+                                const isSignificant = pt.data.intensity > 1.5 || pt.data.intensity < 0.8 || (pt.data.rotation && pt.data.rotation > 10);
+                                const isSelected = visuallySelectedIndices.has(pt.index);
+                                const isLabeled = !!pt.data.label;
 
-                    {/* Event Markers */}
-                    {pointCoords.map((pt) => {
-                        if (!pt.isSignificant && !pt.data.label) return null;
+                                if (!isSignificant && !isLabeled && !isSelected) return null;
 
-                        let dotColor = "#f59e0b"; // Default orange
-                        let dotRadius = 4;
-                        const d = pt.data;
+                                let dotColor = "#f59e0b";
+                                let dotRadius = 4;
+                                let strokeColor = "#fff";
+                                let strokeWidth = 1;
 
-                        if (d.label) {
-                            dotColor = stringToColor(d.label);
-                            if (d.isGroupStart) {
-                                dotRadius = 8;
-                            } else if (d.groupId) {
-                                dotColor = stringToColor(d.label);
-                                dotRadius = 3;
-                            }
-                        }
+                                if (isLabeled) {
+                                    dotColor = stringToColor(pt.data.label!);
+                                    if (pt.data.isGroupStart) dotRadius = 6;
+                                }
 
-                        return (
-                            <g key={pt.index}>
-                                <circle cx={pt.x} cy={pt.y} r={dotRadius} fill={dotColor} stroke="#fff" strokeWidth="1" />
-                                {d.label && d.isGroupStart && (
-                                    <g>
-                                        <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y - 20} stroke={dotColor} strokeWidth="1" />
-                                        <text x={pt.x} y={pt.y - 25} textAnchor="middle" fill={dotColor} fontSize="12" fontWeight="bold" style={{textShadow: '0px 1px 2px black'}}>
-                                            {d.label}
-                                        </text>
+                                if (isSelected) {
+                                    dotColor = "#22d3ee";
+                                    dotRadius = 8;
+                                    strokeColor = "#22d3ee";
+                                    strokeWidth = 2;
+                                }
+
+                                return (
+                                    <g key={pt.index}>
+                                        {isSelected && (
+                                            <circle cx={pt.x} cy={pt.y} r={12} fill="#22d3ee" fillOpacity="0.3" />
+                                        )}
+                                        <circle 
+                                            cx={pt.x} 
+                                            cy={pt.y} 
+                                            r={dotRadius} 
+                                            fill={dotColor} 
+                                            stroke={strokeColor} 
+                                            strokeWidth={strokeWidth} 
+                                        />
+                                        {isLabeled && pt.data.isGroupStart && !isSelected && (
+                                            <g>
+                                                <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y - 15} stroke={dotColor} strokeWidth="1" />
+                                                <text x={pt.x} y={pt.y - 20} textAnchor="middle" fill={dotColor} fontSize="10" fontWeight="bold" style={{textShadow: '0px 1px 2px black'}}>
+                                                    {pt.data.label}
+                                                </text>
+                                            </g>
+                                        )}
                                     </g>
-                                )}
-                            </g>
-                        );
-                    })}
-                </svg>
-            )}
+                                );
+                            })}
+                        </svg>
+                    </div>
+                </div>
+
+                {/* Interaction Overlay (Fixed to Viewport) */}
+                {/* 
+                    This canvas is absolutely positioned over the viewport.
+                    Mode === 'SELECT' -> touch-action: none (blocks browser scroll), pointer-events: auto (captures draws).
+                    Mode === 'SCROLL' -> pointer-events: none (allows clicks to pass through to scroll container).
+                */}
+                <canvas 
+                    ref={canvasRef}
+                    className={`absolute inset-0 z-30 transition-opacity duration-200 ${
+                        mode === 'SELECT' 
+                        ? 'cursor-crosshair touch-none' 
+                        : 'pointer-events-none opacity-0'
+                    }`}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onPointerCancel={handlePointerUp}
+                />
+                
+                {/* Hint */}
+                {mode === 'SELECT' && (
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/60 px-3 py-1 rounded-full text-[10px] text-cyan-400 pointer-events-none border border-cyan-500/30">
+                        SWIPE TO SELECT
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
