@@ -36,8 +36,10 @@ interface SessionGraphProps {
 const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [isDrawing, setIsDrawing] = useState(false);
-    const [lassoPath, setLassoPath] = useState<{x: number, y: number}[]>([]);
+    
+    // Use Refs for drawing state to avoid React render lag during interaction
+    const isDrawingRef = useRef(false);
+    const lassoPathRef = useRef<{x: number, y: number}[]>([]);
     
     // Graph Dimensions
     const width = 600;
@@ -48,7 +50,8 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
     const graphHeight = height - paddingTop - paddingBottom;
 
     // Scales
-    const maxTime = data[data.length - 1].timestamp;
+    // Ensure maxTime is at least small positive number to avoid div/0
+    const maxTime = data.length > 0 ? Math.max(data[data.length - 1].timestamp, 0.1) : 1;
     const maxIntensity = Math.max(...data.map(d => d.intensity), 3.0); 
 
     const getX = (t: number) => paddingX + (t / maxTime) * (width - paddingX * 2);
@@ -66,59 +69,104 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
     }, [data, maxTime, maxIntensity]);
 
     // Path for SVG line
-    let pathD = `M ${pointCoords[0].x} ${pointCoords[0].y}`;
-    for(let i=1; i<pointCoords.length; i++) {
-        pathD += ` L ${pointCoords[i].x} ${pointCoords[i].y}`;
+    let pathD = "";
+    if (pointCoords.length > 0) {
+        pathD = `M ${pointCoords[0].x} ${pointCoords[0].y}`;
+        for(let i=1; i<pointCoords.length; i++) {
+            pathD += ` L ${pointCoords[i].x} ${pointCoords[i].y}`;
+        }
     }
 
     // --- DRAWING HANDLERS ---
-    const getCanvasCoords = (e: React.PointerEvent | React.TouchEvent) => {
+    
+    const drawCanvas = () => {
+        const ctx = canvasRef.current?.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0, 0, width, height);
+        
+        const path = lassoPathRef.current;
+        if (path.length === 0) return;
+
+        ctx.strokeStyle = '#22d3ee'; // Cyan
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) {
+            ctx.lineTo(path[i].x, path[i].y);
+        }
+        ctx.stroke();
+        
+        // Closing line hint
+        if (path.length > 2) {
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
+            ctx.beginPath();
+            ctx.moveTo(path[path.length-1].x, path[path.length-1].y);
+            ctx.lineTo(path[0].x, path[0].y);
+            ctx.stroke();
+        }
+    };
+
+    const getCanvasCoords = (e: React.PointerEvent) => {
         if (!containerRef.current) return { x: 0, y: 0 };
         const rect = containerRef.current.getBoundingClientRect();
         
-        let clientX, clientY;
-        if ('touches' in e) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else {
-            clientX = (e as React.PointerEvent).clientX;
-            clientY = (e as React.PointerEvent).clientY;
-        }
-
-        // Scale coordinates to SVG viewBox (600x200)
+        // Scale coordinates from DOM size to internal Canvas size (600x200)
         const scaleX = width / rect.width;
         const scaleY = height / rect.height;
 
         return {
-            x: (clientX - rect.left) * scaleX,
-            y: (clientY - rect.top) * scaleY
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
         };
     };
 
-    const startDrawing = (e: React.PointerEvent | React.TouchEvent) => {
-        setIsDrawing(true);
+    const onPointerDown = (e: React.PointerEvent) => {
+        // IMPORTANT: Prevent default browser actions (scrolling) and capture pointer
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const target = e.currentTarget as HTMLElement;
+        try {
+            target.setPointerCapture(e.pointerId);
+        } catch(err) {
+            // Ignore capture errors
+        }
+        
+        isDrawingRef.current = true;
         const coords = getCanvasCoords(e);
-        setLassoPath([coords]);
+        lassoPathRef.current = [coords];
+        drawCanvas();
     };
 
-    const draw = (e: React.PointerEvent | React.TouchEvent) => {
-        if (!isDrawing) return;
-        // Prevent scrolling on touch devices while drawing
-        if (e.cancelable && 'preventDefault' in e) e.preventDefault();
+    const onPointerMove = (e: React.PointerEvent) => {
+        if (!isDrawingRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
         
         const coords = getCanvasCoords(e);
-        setLassoPath(prev => [...prev, coords]);
+        lassoPathRef.current.push(coords);
+        
+        requestAnimationFrame(drawCanvas);
     };
 
-    const endDrawing = () => {
-        if (!isDrawing) return;
-        setIsDrawing(false);
+    const onPointerUp = (e: React.PointerEvent) => {
+        if (!isDrawingRef.current) return;
+        isDrawingRef.current = false;
+        
+        const target = e.currentTarget as HTMLElement;
+        try {
+            target.releasePointerCapture(e.pointerId);
+        } catch(err) {
+            // Ignore capture errors
+        }
 
-        if (lassoPath.length > 2) {
+        const path = lassoPathRef.current;
+        if (path.length > 2) {
             // Check points inside polygon
             const selectedIndices: number[] = [];
             pointCoords.forEach(pt => {
-                if (isPointInPolygon({x: pt.x, y: pt.y}, lassoPath)) {
+                if (isPointInPolygon({x: pt.x, y: pt.y}, path)) {
                     selectedIndices.push(pt.index);
                 }
             });
@@ -127,48 +175,21 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
                 onSelectionComplete(selectedIndices);
             }
         }
-        setLassoPath([]);
+        
+        lassoPathRef.current = [];
+        drawCanvas(); // Clear canvas
     };
-
-    // Draw Lasso on Canvas
-    useEffect(() => {
-        const ctx = canvasRef.current?.getContext('2d');
-        if (ctx) {
-            ctx.clearRect(0, 0, width, height);
-            if (lassoPath.length > 0) {
-                ctx.strokeStyle = '#22d3ee'; // Cyan
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 3]);
-                ctx.beginPath();
-                ctx.moveTo(lassoPath[0].x, lassoPath[0].y);
-                for (let i = 1; i < lassoPath.length; i++) {
-                    ctx.lineTo(lassoPath[i].x, lassoPath[i].y);
-                }
-                ctx.stroke();
-                
-                // Draw closing line hint
-                ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
-                ctx.beginPath();
-                ctx.moveTo(lassoPath[lassoPath.length-1].x, lassoPath[lassoPath.length-1].y);
-                ctx.lineTo(lassoPath[0].x, lassoPath[0].y);
-                ctx.stroke();
-            }
-        }
-    }, [lassoPath]);
 
     return (
         <div 
             ref={containerRef}
             className="w-full overflow-hidden bg-gray-900 rounded-lg p-0 mb-4 border border-gray-700 relative select-none"
             style={{ touchAction: 'none' }} // Critical: Disables browser scrolling
-            onPointerDown={startDrawing}
-            onPointerMove={draw}
-            onPointerUp={endDrawing}
-            onPointerLeave={endDrawing}
-            // Add Touch events for better mobile support if Pointer events fail on some browsers
-            onTouchStart={startDrawing}
-            onTouchMove={draw}
-            onTouchEnd={endDrawing}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            onPointerLeave={onPointerUp}
         >
             <div className="absolute top-2 left-2 right-2 pointer-events-none z-20 flex justify-between">
                 <h5 className="text-xs text-gray-400 font-mono uppercase">
