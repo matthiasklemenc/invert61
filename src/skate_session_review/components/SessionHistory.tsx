@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Session, Page, SessionDataPoint, SessionHistoryProps, Motion } from '../types';
 
 // --- UTILS ---
@@ -37,137 +37,171 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     
-    // Use Refs for drawing state to avoid React render lag during interaction
+    // State for responsive dimensions
+    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+    
+    // Refs for interaction to avoid re-renders during drag
     const isDrawingRef = useRef(false);
     const lassoPathRef = useRef<{x: number, y: number}[]>([]);
     
-    // Graph Dimensions
-    const width = 600;
-    const height = 200; 
-    const paddingX = 20;
-    const paddingTop = 50; 
-    const paddingBottom = 20;
-    const graphHeight = height - paddingTop - paddingBottom;
+    // Determine scales based on data
+    const maxTime = useMemo(() => data.length > 0 ? Math.max(data[data.length - 1].timestamp, 0.1) : 1, [data]);
+    const maxIntensity = useMemo(() => Math.max(...data.map(d => d.intensity), 3.0), [data]);
 
-    // Scales
-    // Ensure maxTime is at least small positive number to avoid div/0
-    const maxTime = data.length > 0 ? Math.max(data[data.length - 1].timestamp, 0.1) : 1;
-    const maxIntensity = Math.max(...data.map(d => d.intensity), 3.0); 
-
-    const getX = (t: number) => paddingX + (t / maxTime) * (width - paddingX * 2);
-    // Inverted Y: 0G is Top, MaxG is Bottom
-    const getY = (v: number) => paddingTop + (v / maxIntensity) * graphHeight;
-
-    // Cache point coordinates for hit testing
-    const pointCoords = useMemo(() => {
-        return data.map((d, i) => ({
-            x: getX(d.timestamp),
-            y: getY(d.intensity),
-            index: i,
-            data: d
-        }));
-    }, [data, maxTime, maxIntensity]);
-
-    // Path for SVG line
-    let pathD = "";
-    if (pointCoords.length > 0) {
-        pathD = `M ${pointCoords[0].x} ${pointCoords[0].y}`;
-        for(let i=1; i<pointCoords.length; i++) {
-            pathD += ` L ${pointCoords[i].x} ${pointCoords[i].y}`;
-        }
-    }
-
-    // --- DRAWING HANDLERS ---
-    
-    const drawCanvas = () => {
-        const ctx = canvasRef.current?.getContext('2d');
-        if (!ctx) return;
-        ctx.clearRect(0, 0, width, height);
-        
-        const path = lassoPathRef.current;
-        if (path.length === 0) return;
-
-        ctx.strokeStyle = '#22d3ee'; // Cyan
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 3]);
-        ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        for (let i = 1; i < path.length; i++) {
-            ctx.lineTo(path[i].x, path[i].y);
-        }
-        ctx.stroke();
-        
-        // Closing line hint
-        if (path.length > 2) {
-            ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
-            ctx.beginPath();
-            ctx.moveTo(path[path.length-1].x, path[path.length-1].y);
-            ctx.lineTo(path[0].x, path[0].y);
-            ctx.stroke();
-        }
-    };
-
-    const getCanvasCoords = (e: React.PointerEvent) => {
-        if (!containerRef.current) return { x: 0, y: 0 };
-        const rect = containerRef.current.getBoundingClientRect();
-        
-        // Scale coordinates from DOM size to internal Canvas size (600x200)
-        const scaleX = width / rect.width;
-        const scaleY = height / rect.height;
-
-        return {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
+    // Measure container on mount and resize
+    useEffect(() => {
+        const updateSize = () => {
+            if (containerRef.current) {
+                const { clientWidth, clientHeight } = containerRef.current;
+                setDimensions({ width: clientWidth, height: clientHeight });
+                // Resize canvas to match display size exactly for 1:1 mapping
+                if (canvasRef.current) {
+                    canvasRef.current.width = clientWidth;
+                    canvasRef.current.height = clientHeight;
+                }
+            }
         };
-    };
+        
+        // Initial size
+        updateSize();
+        
+        // Observer for robustness
+        const observer = new ResizeObserver(updateSize);
+        if (containerRef.current) observer.observe(containerRef.current);
+        
+        return () => observer.disconnect();
+    }, []);
 
-    const onPointerDown = (e: React.PointerEvent) => {
-        // IMPORTANT: Prevent default browser actions (scrolling) and capture pointer
+    // Calculate screen coordinates for all data points
+    const pointCoords = useMemo(() => {
+        if (dimensions.width === 0) return [];
+        
+        const paddingX = 20;
+        const paddingTop = 40; 
+        const paddingBottom = 20;
+        const graphHeight = dimensions.height - paddingTop - paddingBottom;
+        const graphWidth = dimensions.width - paddingX * 2;
+
+        return data.map((d, i) => {
+            // Map Time to X
+            const x = paddingX + (d.timestamp / maxTime) * graphWidth;
+            // Map Intensity to Y (inverted, 0 at top + padding)
+            // But we want 0G to be high? No, usually graphs go 0 bottom. 
+            // Let's stick to standard: 0 at bottom relative to graph area
+            // v / max * height gives pixel height. 
+            // y = (paddingTop + graphHeight) - (v / max * graphHeight)
+            const y = (paddingTop + graphHeight) - (d.intensity / maxIntensity) * graphHeight;
+            
+            return {
+                x,
+                y,
+                index: i,
+                data: d,
+                isSignificant: d.intensity > 1.5 || d.intensity < 0.8 || (d.rotation && d.rotation > 10)
+            };
+        });
+    }, [data, dimensions, maxTime, maxIntensity]);
+
+    // Draw Loop
+    const drawCanvas = useCallback(() => {
+        const ctx = canvasRef.current?.getContext('2d');
+        if (!ctx || dimensions.width === 0) return;
+        
+        ctx.clearRect(0, 0, dimensions.width, dimensions.height);
+        
+        // 1. Draw Static Graph Elements (Lines) if needed, 
+        // but we use SVG for that below. Canvas is for the Lasso overlay.
+
+        const path = lassoPathRef.current;
+        if (path.length > 0) {
+            // Draw Lasso Line
+            ctx.strokeStyle = '#22d3ee'; // Cyan
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i].x, path[i].y);
+            }
+            ctx.stroke();
+            
+            // Draw Closing Line Hint
+            if (path.length > 2) {
+                ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
+                ctx.beginPath();
+                ctx.moveTo(path[path.length-1].x, path[path.length-1].y);
+                ctx.lineTo(path[0].x, path[0].y);
+                ctx.stroke();
+            }
+
+            // 2. Highlight Points Inside Lasso (Visual Feedback)
+            // This is "expensive" to do every frame but with < 1000 points it's fine
+            if (path.length > 2) {
+                ctx.fillStyle = '#22d3ee';
+                pointCoords.forEach(pt => {
+                    if (pt.isSignificant || pt.data.label) {
+                        if (isPointInPolygon({x: pt.x, y: pt.y}, path)) {
+                            ctx.beginPath();
+                            ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                });
+            }
+        }
+    }, [dimensions, pointCoords]);
+
+    // --- INPUT HANDLERS ---
+
+    const handlePointerDown = (e: React.PointerEvent) => {
+        // Prevent default to stop scrolling / text selection
         e.preventDefault();
         e.stopPropagation();
         
-        const target = e.currentTarget as HTMLElement;
-        try {
-            target.setPointerCapture(e.pointerId);
-        } catch(err) {
-            // Ignore capture errors
-        }
+        const target = e.currentTarget;
+        target.setPointerCapture(e.pointerId);
         
         isDrawingRef.current = true;
-        const coords = getCanvasCoords(e);
-        lassoPathRef.current = [coords];
-        drawCanvas();
-    };
-
-    const onPointerMove = (e: React.PointerEvent) => {
-        if (!isDrawingRef.current) return;
-        e.preventDefault();
-        e.stopPropagation();
         
-        const coords = getCanvasCoords(e);
-        lassoPathRef.current.push(coords);
+        // Get coordinates relative to the container
+        const rect = target.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
         
+        lassoPathRef.current = [{x, y}];
         requestAnimationFrame(drawCanvas);
     };
 
-    const onPointerUp = (e: React.PointerEvent) => {
+    const handlePointerMove = (e: React.PointerEvent) => {
         if (!isDrawingRef.current) return;
+        
+        const target = e.currentTarget;
+        const rect = target.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        lassoPathRef.current.push({x, y});
+        requestAnimationFrame(drawCanvas);
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+        if (!isDrawingRef.current) return;
+        
+        const target = e.currentTarget;
+        target.releasePointerCapture(e.pointerId);
         isDrawingRef.current = false;
         
-        const target = e.currentTarget as HTMLElement;
-        try {
-            target.releasePointerCapture(e.pointerId);
-        } catch(err) {
-            // Ignore capture errors
-        }
-
         const path = lassoPathRef.current;
+        
         if (path.length > 2) {
-            // Check points inside polygon
+            // Final Selection Check
             const selectedIndices: number[] = [];
             pointCoords.forEach(pt => {
-                if (isPointInPolygon({x: pt.x, y: pt.y}, path)) {
-                    selectedIndices.push(pt.index);
+                // Only select significant points or already labeled points to avoid noise
+                if (pt.isSignificant || pt.data.label) {
+                    if (isPointInPolygon({x: pt.x, y: pt.y}, path)) {
+                        selectedIndices.push(pt.index);
+                    }
                 }
             });
 
@@ -177,19 +211,27 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
         }
         
         lassoPathRef.current = [];
-        drawCanvas(); // Clear canvas
+        requestAnimationFrame(drawCanvas);
     };
+
+    // Construct SVG Path for the graph line
+    const svgPathD = useMemo(() => {
+        if (pointCoords.length === 0) return "";
+        let d = `M ${pointCoords[0].x} ${pointCoords[0].y}`;
+        for(let i=1; i<pointCoords.length; i++) {
+            d += ` L ${pointCoords[i].x} ${pointCoords[i].y}`;
+        }
+        return d;
+    }, [pointCoords]);
 
     return (
         <div 
             ref={containerRef}
-            className="w-full overflow-hidden bg-gray-900 rounded-lg p-0 mb-4 border border-gray-700 relative select-none"
-            style={{ touchAction: 'none' }} // Critical: Disables browser scrolling
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            onPointerLeave={onPointerUp}
+            className="w-full h-64 bg-gray-900 rounded-lg mb-4 border border-gray-700 relative select-none touch-none overflow-hidden"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
         >
             <div className="absolute top-2 left-2 right-2 pointer-events-none z-20 flex justify-between">
                 <h5 className="text-xs text-gray-400 font-mono uppercase">
@@ -200,58 +242,68 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onSelectionComplete }
                 </span>
             </div>
 
-            {/* Canvas for Lasso Drawing */}
+            {/* Canvas for Interaction (Lasso) */}
             <canvas 
                 ref={canvasRef}
-                width={width}
-                height={height}
                 className="absolute inset-0 z-10 pointer-events-none"
             />
 
-            {/* SVG for Data Visualization */}
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-48 pointer-events-none">
-                {/* 1G Reference Line */}
-                <line x1={paddingX} y1={getY(1)} x2={width-paddingX} y2={getY(1)} stroke="#374151" strokeDasharray="4" strokeWidth="1" />
-                <text x={paddingX} y={getY(1) - 5} fill="#6b7280" fontSize="10">1G</text>
+            {/* SVG for Data Visualization (Underneath) */}
+            {dimensions.width > 0 && (
+                <svg width={dimensions.width} height={dimensions.height} className="absolute inset-0 pointer-events-none">
+                    {/* 1G Reference Line */}
+                    {/* Assuming maxIntensity > 1, calculate Y for 1G. 
+                        y = (paddingTop + graphHeight) - (1 / maxIntensity) * graphHeight 
+                    */}
+                    {(() => {
+                        const paddingBottom = 20; 
+                        const graphHeight = dimensions.height - 40 - 20; // top padding 40
+                        const y1g = (40 + graphHeight) - (1.0 / maxIntensity) * graphHeight;
+                        return (
+                            <>
+                                <line x1="20" y1={y1g} x2={dimensions.width - 20} y2={y1g} stroke="#374151" strokeDasharray="4" strokeWidth="1" />
+                                <text x="25" y={y1g - 5} fill="#6b7280" fontSize="10">1G</text>
+                            </>
+                        );
+                    })()}
 
-                {/* Main Data Line */}
-                <path d={pathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
+                    {/* Main Data Line */}
+                    <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
 
-                {/* Event Markers */}
-                {pointCoords.map((pt, i) => {
-                    const d = pt.data;
-                    const isSignificant = d.intensity > 1.5 || d.intensity < 0.8 || (d.rotation && d.rotation > 10);
-                    
-                    if (!isSignificant && !d.label) return null; 
+                    {/* Event Markers */}
+                    {pointCoords.map((pt) => {
+                        if (!pt.isSignificant && !pt.data.label) return null;
 
-                    let dotColor = "#f59e0b"; // Default orange
-                    let dotRadius = 4;
-                    
-                    if (d.label) {
-                        dotColor = stringToColor(d.label);
-                        if (d.isGroupStart) {
-                            dotRadius = 8;
-                        } else if (d.groupId) {
+                        let dotColor = "#f59e0b"; // Default orange
+                        let dotRadius = 4;
+                        const d = pt.data;
+
+                        if (d.label) {
                             dotColor = stringToColor(d.label);
-                            dotRadius = 3;
+                            if (d.isGroupStart) {
+                                dotRadius = 8;
+                            } else if (d.groupId) {
+                                dotColor = stringToColor(d.label);
+                                dotRadius = 3;
+                            }
                         }
-                    }
 
-                    return (
-                        <g key={i}>
-                            <circle cx={pt.x} cy={pt.y} r={dotRadius} fill={dotColor} stroke="#fff" strokeWidth="1" />
-                            {d.label && d.isGroupStart && (
-                                <g>
-                                    <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y - 20} stroke={dotColor} strokeWidth="1" />
-                                    <text x={pt.x} y={pt.y - 25} textAnchor="middle" fill={dotColor} fontSize="12" fontWeight="bold" style={{textShadow: '0px 1px 2px black'}}>
-                                        {d.label}
-                                    </text>
-                                </g>
-                            )}
-                        </g>
-                    );
-                })}
-            </svg>
+                        return (
+                            <g key={pt.index}>
+                                <circle cx={pt.x} cy={pt.y} r={dotRadius} fill={dotColor} stroke="#fff" strokeWidth="1" />
+                                {d.label && d.isGroupStart && (
+                                    <g>
+                                        <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y - 20} stroke={dotColor} strokeWidth="1" />
+                                        <text x={pt.x} y={pt.y - 25} textAnchor="middle" fill={dotColor} fontSize="12" fontWeight="bold" style={{textShadow: '0px 1px 2px black'}}>
+                                            {d.label}
+                                        </text>
+                                    </g>
+                                )}
+                            </g>
+                        );
+                    })}
+                </svg>
+            )}
         </div>
     );
 };
