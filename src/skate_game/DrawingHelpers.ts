@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import { KAI_SPRITES } from './GameConstants';
 import { CharacterType, ObstacleType } from './GameTypes';
@@ -541,7 +542,8 @@ export function drawStickman(
     state: 'RUNNING' | 'COASTING' | 'JUMPING' | 'GRINDING' | 'CRASHED' | 'TUMBLING' | 'NATAS_SPIN' | 'ARRESTED' | 'ABDUCTED',
     trickRotation: number = 0, 
     trickType: string = '',
-    isFakie: boolean = false
+    isFakie: boolean = false,
+    isCrouching: boolean = false
 ) {
     ctx.save();
     ctx.translate(x, y);
@@ -584,14 +586,20 @@ export function drawStickman(
         const drawW = 50; 
         const drawH = 75; 
         
-if (imageToDraw && imageToDraw.complete) {
-    ctx.drawImage(imageToDraw, -drawW/2, -drawH + 25, drawW, drawH);
-} else {
-    // Tiny debug text that will NOT cover the sprite
-    ctx.fillStyle = '#c52323';
-    ctx.font = '10px Arial';
-    ctx.fillText("Loading", -15, -10);
-}
+        // Crouch squash effect for Kai sprite
+        if (isCrouching && state !== 'JUMPING') {
+            ctx.scale(1.1, 0.8);
+            ctx.translate(0, 15);
+        }
+
+        if (imageToDraw && imageToDraw.complete) {
+            ctx.drawImage(imageToDraw, -drawW/2, -drawH + 25, drawW, drawH);
+        } else {
+            // Tiny debug text that will NOT cover the sprite
+            ctx.fillStyle = '#c52323';
+            ctx.font = '10px Arial';
+            ctx.fillText("Loading", -15, -10);
+        }
 
 
         ctx.restore();
@@ -627,7 +635,7 @@ if (imageToDraw && imageToDraw.complete) {
     ctx.fillStyle = skinColor;
 
     const armAngle = state === 'RUNNING' ? Math.sin(safeFrame * 0.25) * 0.5 : -0.5;
-    const crouch = state === 'JUMPING' ? -5 : 0;
+    const crouch = state === 'JUMPING' ? -5 : (isCrouching ? 8 : 0);
 
     if (state !== 'CRASHED' && state !== 'ABDUCTED') {
         ctx.save();
@@ -683,62 +691,62 @@ if (imageToDraw && imageToDraw.complete) {
         const isRecovery = Math.cos(cycle) > 0;
         const lift = isRecovery ? Math.abs(Math.cos(cycle)) * 8 : 0;
         const backFootX = xOffset - 5; 
-        const backFootY = 25 - lift; 
+        const backFootY = 25 - lift + crouch; 
 
-        ctx.moveTo(0, 10); 
+        ctx.moveTo(0, 10 + crouch); 
         ctx.lineTo(backFootX, backFootY); 
         
-        ctx.moveTo(0, 10);
-        ctx.lineTo(10, 25); 
+        ctx.moveTo(0, 10 + crouch);
+        ctx.lineTo(10, 25 + crouch); 
     } else if (state === 'COASTING' || state === 'NATAS_SPIN' || state === 'ARRESTED' || state === 'ABDUCTED') {
-        ctx.moveTo(0, 10);
-        ctx.lineTo(-12, 25); 
-        ctx.moveTo(0, 10);
-        ctx.lineTo(10, 25); 
+        ctx.moveTo(0, 10 + crouch);
+        ctx.lineTo(-12, 25 + crouch); 
+        ctx.moveTo(0, 10 + crouch);
+        ctx.lineTo(10, 25 + crouch); 
     } else if (state === 'JUMPING' || state === 'GRINDING' || state === 'TUMBLING' || state === 'CRASHED') {
         const footY = 25 + crouch;
         const kneeY = 20 + crouch;
 
-        ctx.moveTo(0, 10);
+        ctx.moveTo(0, 10 + crouch);
         ctx.lineTo(-5, kneeY); ctx.lineTo(-10, footY);
-        ctx.moveTo(0, 10);
+        ctx.moveTo(0, 10 + crouch);
         ctx.lineTo(5, kneeY); ctx.lineTo(10, footY);
     }
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(0, 10); 
-    ctx.lineTo(0, -15); 
+    ctx.moveTo(0, 10 + crouch); 
+    ctx.lineTo(0, -15 + crouch); 
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(0, -10);
+    ctx.moveTo(0, -10 + crouch);
     if (state === 'NATAS_SPIN') {
-         ctx.lineTo(-15, -12);
-         ctx.moveTo(0, -10);
-         ctx.lineTo(15, -12);
+         ctx.lineTo(-15, -12 + crouch);
+         ctx.moveTo(0, -10 + crouch);
+         ctx.lineTo(15, -12 + crouch);
     } else if (state === 'ARRESTED' || state === 'ABDUCTED') {
-        ctx.lineTo(-10, -25);
-        ctx.moveTo(0, -10);
-        ctx.lineTo(10, -25);
+        ctx.lineTo(-10, -25 + crouch);
+        ctx.moveTo(0, -10 + crouch);
+        ctx.lineTo(10, -25 + crouch);
     } else {
-        ctx.lineTo(-10, -10 + armAngle * 10);
-        ctx.moveTo(0, -10);
-        ctx.lineTo(10, -10 - armAngle * 10);
+        ctx.lineTo(-10, -10 + armAngle * 10 + crouch);
+        ctx.moveTo(0, -10 + crouch);
+        ctx.lineTo(10, -10 - armAngle * 10 + crouch);
     }
     ctx.stroke();
 
     ctx.beginPath();
     if (isAlien) {
-        ctx.ellipse(0, -22, 6, 8, 0, 0, Math.PI*2);
+        ctx.ellipse(0, -22 + crouch, 6, 8, 0, 0, Math.PI*2);
         ctx.fill();
         ctx.fillStyle = 'black';
         ctx.beginPath();
-        ctx.ellipse(-2, -22, 2, 3, 0.2, 0, Math.PI*2);
-        ctx.ellipse(2, -22, 2, 3, -0.2, 0, Math.PI*2);
+        ctx.ellipse(-2, -22 + crouch, 2, 3, 0.2, 0, Math.PI*2);
+        ctx.ellipse(2, -22 + crouch, 2, 3, -0.2, 0, Math.PI*2);
         ctx.fill();
     } else {
-        ctx.arc(0, -22, 6, 0, Math.PI * 2);
+        ctx.arc(0, -22 + crouch, 6, 0, Math.PI * 2);
         ctx.fill();
     }
 
@@ -748,17 +756,17 @@ if (imageToDraw && imageToDraw.complete) {
         ctx.strokeStyle = '#ffcc00'; 
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(0, -28);
-        ctx.quadraticCurveTo(-10, -20, -8, -10); 
+        ctx.moveTo(0, -28 + crouch);
+        ctx.quadraticCurveTo(-10, -20 + crouch, -8, -10 + crouch); 
         ctx.stroke();
     }
     
     if (type === 'female_short') {
         ctx.fillStyle = '#8B4513'; 
         ctx.beginPath();
-        ctx.arc(0, -22, 7, Math.PI, 0); 
-        ctx.lineTo(7, -18);
-        ctx.lineTo(-7, -18);
+        ctx.arc(0, -22 + crouch, 7, Math.PI, 0); 
+        ctx.lineTo(7, -18 + crouch);
+        ctx.lineTo(-7, -18 + crouch);
         ctx.fill();
     }
 

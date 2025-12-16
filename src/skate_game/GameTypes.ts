@@ -32,6 +32,8 @@ export interface Player {
     natasTapCount: number;
     lastNatasTapTime: number;
     platformId: number | null;
+    isCrouching?: boolean;
+    isSpinReady?: boolean;
 }
 
 export interface Obstacle {

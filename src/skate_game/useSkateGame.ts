@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { getSoundManager } from './SoundManager';
 import { drawStickman, drawObstacle, drawCityBackground, drawUnderworldBackground, drawSpaceBackground, drawCollectible, drawTransitionPipe, drawLaser, drawBeamDownSequence, CharacterType, ObstacleType, getOxxoPosition } from './DrawingHelpers';
@@ -28,6 +29,7 @@ export function useSkateGame() {
         tapCount: number, 
         touchStartY: number,
         touchStartX: number,
+        touchStartTime: number,
         currentFloorY: number, 
         nextObstacleDist: number,
         totalScroll: number,
@@ -60,7 +62,9 @@ export function useSkateGame() {
             pushTimer: 0, pushCount: 0, targetPushes: 3, coastingDuration: 0,
             natasSpinCount: 0, natasSpinTarget: 0,
             natasTapCount: 0, lastNatasTapTime: 0,
-            platformId: null
+            platformId: null,
+            isCrouching: false,
+            isSpinReady: false
         },
         obstacles: [],
         collectibles: [],
@@ -71,6 +75,7 @@ export function useSkateGame() {
         tapCount: 0,
         touchStartY: 0,
         touchStartX: 0,
+        touchStartTime: 0,
         currentFloorY: BASE_FLOOR_Y,
         nextObstacleDist: 0,
         totalScroll: 0,
@@ -353,6 +358,7 @@ export function useSkateGame() {
         if (state.player.state === 'CRASHED') return; 
 
         state.player.state = 'CRASHED';
+        state.player.isCrouching = false;
         getSoundManager().playCrash();
         state.lives--;
         setLives(state.lives);
@@ -379,6 +385,7 @@ export function useSkateGame() {
                 state.player.rotation = 0;
                 state.player.trickName = '';
                 state.player.isFakie = false; 
+                state.player.isCrouching = false;
             }, 250);
         }
     };
@@ -498,6 +505,7 @@ export function useSkateGame() {
                     state.spaceDuration = 0;
                     state.abductionActive = false;
                     state.ufoLocked = false;
+                    state.player.isCrouching = false;
                     
                     state.powerups.has360Laser = false;
                     state.powerups.speedBoostTimer = 0;
@@ -533,6 +541,7 @@ export function useSkateGame() {
                      state.currentFloorY = BASE_FLOOR_Y;
                      state.player.rotation = 0;
                      state.player.x = 100;
+                     state.player.isCrouching = false;
                      
                      const startPlatY = BASE_FLOOR_Y - 50;
                      const startPlat = {
@@ -632,6 +641,7 @@ export function useSkateGame() {
                              if (state.ufoLocked) {
                                  state.player.platformId = null;
                                  state.player.vy = 0;
+                                 state.player.isCrouching = false;
                                  
                                  const targetX = bigUfo.x + bigUfo.w/2;
                                  const targetY = bigUfo.y + bigUfo.h/2 + 40; 
@@ -679,6 +689,7 @@ export function useSkateGame() {
                                 s.player.y = 0;
                                 s.player.vy = 0;
                                 s.player.rotation = 0;
+                                s.player.isCrouching = false;
                                 s.obstacles = s.obstacles.filter(o => o.x > 400); 
                                 s.arrestTimer = 0;
                               };
@@ -692,6 +703,7 @@ export function useSkateGame() {
                             s.player.y = 0;
                             s.player.vy = 0;
                             s.player.rotation = 0;
+                            s.player.isCrouching = false;
                             s.obstacles = s.obstacles.filter(o => o.x > 400); 
                             s.arrestTimer = 0;
                           };
@@ -1269,6 +1281,7 @@ export function useSkateGame() {
                                 state.player.rotation = 0; 
                                 state.player.state = state.player.isFakie ? 'COASTING' : 'RUNNING';
                                 state.player.pushTimer = 0;
+                                state.player.isSpinReady = false; // Reset spin readiness on landing
                             } 
                         }
                     }
@@ -1660,7 +1673,8 @@ export function useSkateGame() {
                     state.player.state,
                     state.player.rotation,
                     state.player.trickName,
-                    state.player.isFakie
+                    state.player.isFakie,
+                    state.player.isCrouching
                 );
             }
         }
@@ -1698,6 +1712,7 @@ export function useSkateGame() {
                 'ABDUCTED',
                 state.player.rotation,
                 '',
+                false,
                 false
             );
         }
@@ -1737,106 +1752,55 @@ export function useSkateGame() {
             state.touchStartX = e.clientX;
         }
         
+        state.touchStartTime = Date.now();
         const now = Date.now();
-        if (now - state.lastTapTime < 300) state.tapCount++;
+        if (now - state.lastTapTime < 400) state.tapCount++; // Increased tap window slightly for combos
         else state.tapCount = 1;
         state.lastTapTime = now;
 
-        if (state.player.state === 'NATAS_SPIN') {
-             if (state.player.natasSpinCount < 3) {
-                 const currentTime = Date.now();
-                 if (currentTime - state.player.lastNatasTapTime > 200) {
-                     state.player.natasTapCount = 0; 
-                 }
-                 state.player.natasTapCount++;
-                 state.player.lastNatasTapTime = currentTime;
-
-                 if (state.player.natasTapCount >= 3) {
-                     if (state.player.natasSpinTarget < Math.PI * 6) {
-                         state.player.natasSpinTarget += Math.PI * 2;
-                         addFloatingText(state.player.x, state.currentFloorY - 120, "SPIN +1", "#fbbf24");
-                         getSoundManager().playGrind();
-                     }
-                     state.player.natasTapCount = 0; 
-                 }
-             }
-             return;
-        }
-
         const currentState = state.player.state; 
 
+        // --- SPACE JUMP LOGIC (Kept Immediate) ---
         if ((state.world as string) === 'SPACE') {
              if (currentState === 'JUMPING' || currentState === 'RUNNING' || currentState === 'COASTING' || state.player.platformId) {
-                 
                  if (state.player.platformId) {
                      const absY = state.currentFloorY + state.player.y;
                      state.player.platformId = null;
                      state.player.y = absY - state.currentFloorY; 
                  }
-
                  state.player.vy = JUMP_FORCE * 0.5; 
                  state.player.state = 'JUMPING';
                  getSoundManager().playJump();
                  state.jumpsPerformed++;
-                 
-                 if (state.tapCount === 2) {
-                    state.player.trickName = '180';
-                    state.player.rotation = 0;
-                    state.player.isFakie = !state.player.isFakie;
-                    getSoundManager().playDoubleJump();
-                 } else if (state.tapCount === 3) {
-                    state.player.trickName = '360';
-                    state.player.rotation = 0;
-                    state.player.isFakie = !state.player.isFakie;
-                    getSoundManager().playDoubleJump();
-                 }
              }
              return;
         }
 
+        // --- GROUND LOGIC (Charge/Crouch) ---
         if (currentState === 'RUNNING' || currentState === 'COASTING' || currentState === 'GRINDING') {
-            const activePlat = state.obstacles.find(o => o.id === state.player.platformId);
-            const isRidingRamp = activePlat && activePlat.type === 'ramp';
-
-            if (state.player.platformId) {
-                 const absY = state.currentFloorY + state.player.y;
-                 state.player.platformId = null;
-                 
-                 if (state.world !== 'SPACE') {
-                      state.currentFloorY = BASE_FLOOR_Y;
-                 }
-                 
-                 state.player.y = absY - state.currentFloorY;
-            }
-
-            if (isRidingRamp) {
-                 state.score += 500;
-                 addFloatingText(state.player.x, state.currentFloorY - 100, "BOOST +500", "#3b82f6");
-                 enterSpace(); 
-            } else {
-                 state.player.vy = JUMP_FORCE;
-                 getSoundManager().playJump();
-            }
-
-            state.player.state = 'JUMPING';
-            state.player.y -= 1; 
-            state.jumpsPerformed++;
-            
-            if (currentState === 'COASTING' && !state.player.isFakie) {
-                 state.player.state = 'RUNNING';
-            }
-
-        } else if (currentState === 'JUMPING') {
-            if (state.tapCount === 2) {
-                state.player.trickName = '180';
-                state.player.rotation = 0;
-                state.player.isFakie = !state.player.isFakie;
-                getSoundManager().playDoubleJump();
-            } else if (state.tapCount === 3) {
-                state.player.trickName = '360';
-                state.player.rotation = 0;
-                state.player.isFakie = !state.player.isFakie;
-                getSoundManager().playDoubleJump();
+            state.player.isCrouching = true;
+            // DO NOT JUMP YET. Jump happens on Release.
+        } 
+        // --- AIR LOGIC (Spins) ---
+        else if (currentState === 'JUMPING') {
+            // Check if spin was primed by a long press release
+            if (state.player.isSpinReady) {
+                if (state.tapCount === 2) {
+                    state.player.trickName = '180';
+                    state.player.rotation = 0;
+                    state.player.isFakie = !state.player.isFakie;
+                    getSoundManager().playDoubleJump();
+                } else if (state.tapCount === 3) {
+                    state.player.trickName = '360';
+                    state.player.rotation = 0;
+                    state.player.isFakie = !state.player.isFakie; // Revert fakie logic if 360? Or flip again? 
+                    // Usually 360 lands same stance if you do full rot, but Fakie logic here is just mirroring sprite.
+                    // For simplicity, let's just toggle fakie again to return to original, or keep it consistent with game logic.
+                    // If start regular -> 180 -> fakie.
+                    // If start regular -> 360 -> regular (so toggle twice effectively).
+                    state.player.isFakie = !state.player.isFakie; 
+                    getSoundManager().playDoubleJump();
+                }
             }
         }
     }, [uiState, isPaused]);
@@ -1853,13 +1817,59 @@ export function useSkateGame() {
          const deltaX = clientX - state.touchStartX;
          const deltaY = clientY - state.touchStartY;
 
+         // Check Swipe (Kickflip) - Override everything
          if (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30) {
              triggerAction();
+             state.player.isCrouching = false;
+             return;
+         }
+
+         // Handle Ground Release (Jump)
+         if (state.player.isCrouching) {
+             const pressDuration = Date.now() - state.touchStartTime;
+             
+             // Trigger Jump
+             const activePlat = state.obstacles.find(o => o.id === state.player.platformId);
+             const isRidingRamp = activePlat && activePlat.type === 'ramp';
+
+             if (state.player.platformId) {
+                 const absY = state.currentFloorY + state.player.y;
+                 state.player.platformId = null;
+                 if (state.world !== 'SPACE') {
+                      state.currentFloorY = BASE_FLOOR_Y;
+                 }
+                 state.player.y = absY - state.currentFloorY;
+             }
+
+             if (isRidingRamp) {
+                 state.score += 500;
+                 addFloatingText(state.player.x, state.currentFloorY - 100, "BOOST +500", "#3b82f6");
+                 enterSpace(); 
+             } else {
+                 state.player.vy = JUMP_FORCE;
+                 getSoundManager().playJump();
+             }
+
+             state.player.state = 'JUMPING';
+             state.player.y -= 1; 
+             state.jumpsPerformed++;
+             state.player.isCrouching = false;
+
+             // Determine if this was a long press to ready a spin
+             if (pressDuration > 200) {
+                 state.player.isSpinReady = true;
+                 // Maybe add visual cue?
+             } else {
+                 state.player.isSpinReady = false;
+             }
          } else {
+             // Air tap release - nothing special unless variable jump height logic needed
              if ((state.world as string) !== 'SPACE' && state.player.state === 'JUMPING' && state.player.vy < -5) {
-                 state.player.vy *= 0.4;
+                 // Variable jump height cut-off if tap was super short? 
+                 // We keep it simple for now.
              }
          }
+
     }, [uiState, isPaused, triggerAction]);
 
     const startGame = () => {
@@ -1890,6 +1900,8 @@ export function useSkateGame() {
         state.player.natasTapCount = 0;
         state.player.lastNatasTapTime = 0;
         state.player.platformId = null;
+        state.player.isCrouching = false;
+        state.player.isSpinReady = false;
         state.world = 'NORMAL';
         state.underworldTimer = 0;
         state.spawnedExit = false;

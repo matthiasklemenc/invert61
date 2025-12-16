@@ -1,3 +1,4 @@
+
 import React from 'react';
 import Carousel3D from '../Carousel3D';
 import CharacterPreview from './CharacterPreview';
@@ -53,7 +54,8 @@ const GameMenu: React.FC<GameMenuProps> = ({
             </div>
 
             <p className="text-gray-400 mb-4 text-center text-xs md:text-sm max-w-md leading-relaxed">
-                Tap=Ollie | Swipe=Flip | 2xTap=180 | 3xTap=360<br/>
+                Tap=Ollie | Swipe=Flip | Hold & Release=Charge Spin<br/>
+                Air Tap x2 = 180 | Air Tap x3 = 360<br/>
                 Rapid Tap on Hydrant = Natas Spin
             </p>
 
