@@ -23,7 +23,11 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, onPointClick }) => {
     const maxIntensity = Math.max(...data.map(d => d.intensity), 2); // At least 2G scale
 
     const getX = (t: number) => padding + (t / maxTime) * (width - padding * 2);
-    const getY = (v: number) => height - padding - (v / maxIntensity) * (height - padding * 2);
+    
+    // Inverted Y-axis for G-forces:
+    // Low G (Weightless/Air) -> Top of graph (Small Y coord)
+    // High G (Impact/Compression) -> Bottom of graph (Large Y coord)
+    const getY = (v: number) => padding + (v / maxIntensity) * (height - padding * 2);
 
     // Generate Path
     let pathD = `M ${getX(data[0].timestamp)} ${getY(data[0].intensity)}`;
