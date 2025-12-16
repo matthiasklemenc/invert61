@@ -1760,19 +1760,9 @@ export function useSkateGame() {
 
         const currentState = state.player.state; 
 
-        // --- SPACE JUMP LOGIC (Kept Immediate) ---
+        // --- SPACE JUMP LOGIC (MOVED TO TOUCH END) ---
         if ((state.world as string) === 'SPACE') {
-             if (currentState === 'JUMPING' || currentState === 'RUNNING' || currentState === 'COASTING' || state.player.platformId) {
-                 if (state.player.platformId) {
-                     const absY = state.currentFloorY + state.player.y;
-                     state.player.platformId = null;
-                     state.player.y = absY - state.currentFloorY; 
-                 }
-                 state.player.vy = JUMP_FORCE * 0.5; 
-                 state.player.state = 'JUMPING';
-                 getSoundManager().playJump();
-                 state.jumpsPerformed++;
-             }
+             // We do nothing on touch start in space now, waiting for hold duration check on release.
              return;
         }
 
@@ -1793,11 +1783,6 @@ export function useSkateGame() {
                 } else if (state.tapCount === 3) {
                     state.player.trickName = '360';
                     state.player.rotation = 0;
-                    state.player.isFakie = !state.player.isFakie; // Revert fakie logic if 360? Or flip again? 
-                    // Usually 360 lands same stance if you do full rot, but Fakie logic here is just mirroring sprite.
-                    // For simplicity, let's just toggle fakie again to return to original, or keep it consistent with game logic.
-                    // If start regular -> 180 -> fakie.
-                    // If start regular -> 360 -> regular (so toggle twice effectively).
                     state.player.isFakie = !state.player.isFakie; 
                     getSoundManager().playDoubleJump();
                 }
@@ -1817,16 +1802,37 @@ export function useSkateGame() {
          const deltaX = clientX - state.touchStartX;
          const deltaY = clientY - state.touchStartY;
 
-         // Check Swipe (Kickflip) - Override everything
+         // Check Swipe (Kickflip / Laser) - Override everything
          if (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30) {
              triggerAction();
              state.player.isCrouching = false;
              return;
          }
 
+         const pressDuration = Date.now() - state.touchStartTime;
+
+         // --- SPACE LOGIC (Jump on Long Tap Release) ---
+         if ((state.world as string) === 'SPACE') {
+             // "tap a bit longer" -> > 150ms
+             if (pressDuration > 150) {
+                 const currentState = state.player.state;
+                 if (currentState === 'JUMPING' || currentState === 'RUNNING' || currentState === 'COASTING' || state.player.platformId) {
+                     if (state.player.platformId) {
+                         const absY = state.currentFloorY + state.player.y;
+                         state.player.platformId = null;
+                         state.player.y = absY - state.currentFloorY; 
+                     }
+                     state.player.vy = JUMP_FORCE * 0.5; 
+                     state.player.state = 'JUMPING';
+                     getSoundManager().playJump();
+                     state.jumpsPerformed++;
+                 }
+             }
+             return;
+         }
+
          // Handle Ground Release (Jump)
          if (state.player.isCrouching) {
-             const pressDuration = Date.now() - state.touchStartTime;
              
              // Trigger Jump
              const activePlat = state.obstacles.find(o => o.id === state.player.platformId);
