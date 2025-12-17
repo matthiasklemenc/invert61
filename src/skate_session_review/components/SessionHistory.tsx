@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Session, Page, SessionDataPoint, SessionHistoryProps, Motion } from '../types';
 import SkateMap from '../../maptiler/SkateMap';
@@ -167,6 +168,21 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                             stroke={strokeColor} 
                                             strokeWidth={strokeWidth} 
                                         />
+
+                                        {/* Turn Angle Annotation */}
+                                        {pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 0 && !isSelected && (
+                                            <text 
+                                                x={pt.x + 10} 
+                                                y={pt.y + 4} 
+                                                textAnchor="start" 
+                                                fill={pt.data.turnAngle > 0 ? "#22d3ee" : "#ef4444"} 
+                                                fontSize="9" 
+                                                fontFamily="monospace"
+                                                style={{textShadow: '0px 1px 1px black'}}
+                                            >
+                                                {pt.data.turnAngle > 0 ? '+' : ''}{pt.data.turnAngle}°
+                                            </text>
+                                        )}
 
                                         {/* Labels */}
                                         {isLabeled && pt.data.isGroupStart && !isSelected && (
@@ -462,6 +478,12 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                 const isExpanded = !!expandedSessions[s.id];
                 const isThisSessionEditing = editingSessionId === s.id;
                 const hasSelection = isThisSessionEditing && selectedPointIndices.size > 0;
+                
+                // Determine button label based on selection count
+                let buttonLabel = "SELECT";
+                if (hasSelection && selectedPointIndices.size > 1) {
+                    buttonLabel = `GROUP SELECTION (${selectedPointIndices.size})`;
+                }
 
                 return (
                     <div key={s.id} className="bg-gray-800 rounded-lg border-l-4 border-cyan-500 overflow-hidden shadow-sm mb-4">
@@ -515,7 +537,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                             onTogglePoint={(idx) => handleTogglePoint(s.id, idx)}
                                         />
                                         
-                                        {/* GROUP BUTTON */}
+                                        {/* GROUP/SELECT BUTTON */}
                                         <div className="flex justify-end mb-4">
                                             <button
                                                 onClick={handleGroupClick}
@@ -533,7 +555,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                                     <line x1="20" y1="8" x2="20" y2="14"></line>
                                                     <line x1="23" y1="11" x2="17" y2="11"></line>
                                                 </svg>
-                                                GROUP SELECTION ({isThisSessionEditing ? selectedPointIndices.size : 0})
+                                                {buttonLabel}
                                             </button>
                                         </div>
                                     </>

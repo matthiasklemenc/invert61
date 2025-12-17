@@ -32,6 +32,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     // Magnitude of rotation vector
     const rotMag = Math.sqrt((alpha||0)**2 + (beta||0)**2 + (gamma||0)**2); 
 
+    // Specific Yaw Rotation (Z-axis) for angle calculation
+    // alpha is in degrees per second
+    const yawRate = alpha || 0; 
+
     setCurrentG(gForce);
     setCurrentRot(rotMag);
 
@@ -41,10 +45,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     const now = (Date.now() - startTimeRef.current) / 1000;
     const lastPoint = timelineRef.current[timelineRef.current.length - 1];
     
-    // Throttle data recording to approx 10Hz (every 0.1s) to avoid flooding
-    // But we want to capture PEAKS immediately
-    
-    const timeSinceLast = lastPoint ? now - lastPoint.timestamp : 1.0;
+    // Throttle data recording to approx 10Hz (every 0.1s)
+    const timeSinceLast = lastPoint ? now - lastPoint.timestamp : 0.1;
 
     if (timeSinceLast > 0.1) {
         
@@ -54,16 +56,25 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         
         // 2. Rapid Rotation (Snaps, 180s, 90deg turns)
         // User requested detection for > 20 degrees rapid change.
-        // If we sample at ~10Hz (0.1s), a rate of 200 deg/s means 20 degrees change in that frame.
-        // We set threshold to 180 to be safe and catch snaps, but avoid smooth carving (usually < 100 deg/s).
-        const isRapidRotation = rotMag > 180; 
+        // We integrate rate over the time step to get approximate degrees turned.
+        const degreesTurned = yawRate * timeSinceLast;
+        const isRapidRotation = Math.abs(degreesTurned) > 15 || rotMag > 180; 
 
         if (isImpact || isRapidRotation || timeSinceLast > 0.5) {
-            timelineRef.current.push({
+            
+            const point: SessionDataPoint = {
                 timestamp: parseFloat(now.toFixed(2)),
                 intensity: parseFloat(gForce.toFixed(2)),
                 rotation: parseFloat(rotMag.toFixed(2))
-            });
+            };
+
+            // Only add turnAngle if it was a significant rotation event
+            if (isRapidRotation) {
+                // Round to nearest 5 degrees for cleaner UI
+                point.turnAngle = Math.round(degreesTurned / 5) * 5;
+            }
+
+            timelineRef.current.push(point);
         }
     }
   };
@@ -111,8 +122,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                const finalG = Math.random() > 0.95 ? 3.0 : simG;
                
                // Simulate rotation occasionally (Snap)
-               const isSnap = Math.random() > 0.92;
-               const simAlpha = isSnap ? 300 : Math.random() * 20;
+               const isSnap = Math.random() > 0.90;
+               // Randomize direction for simulation
+               const direction = Math.random() > 0.5 ? 1 : -1;
+               const simAlpha = isSnap ? (300 * direction) : (Math.random() * 20 * direction);
 
                handleMotion({ 
                    accelerationIncludingGravity: { x:0, y: finalG * 9.8, z: 0 },
