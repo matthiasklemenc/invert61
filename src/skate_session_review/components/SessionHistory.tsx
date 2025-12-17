@@ -29,7 +29,9 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
 
     // Determine content width based on data density
     const contentWidth = useMemo(() => {
-        const minPxPerPoint = 12; // Wider spacing for easier clicking
+        if (!data.length) return containerSize.width;
+        // 12px per point ensures they are clickable
+        const minPxPerPoint = 12; 
         const calcWidth = data.length * minPxPerPoint;
         return Math.max(containerSize.width, calcWidth);
     }, [data.length, containerSize.width]);
@@ -43,7 +45,7 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
         const updateSize = () => {
             if (wrapperRef.current) {
                 const { clientWidth, clientHeight } = wrapperRef.current;
-                setContainerSize({ width: clientWidth, height: clientHeight });
+                setContainerSize({ width: clientWidth || 300, height: clientHeight || 250 });
             }
         };
         
@@ -86,6 +88,10 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
         return d;
     }, [pointCoords]);
 
+    if (data.length === 0) {
+        return <div className="text-gray-500 text-center py-8 text-xs">No motion data recorded for this session.</div>;
+    }
+
     return (
         <div className="relative w-full bg-gray-900 rounded-lg mb-4 border border-gray-700 overflow-hidden shadow-inner">
             {/* Header / Info */}
@@ -121,17 +127,15 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                             {/* Data Line */}
                             <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
 
-                            {/* Points */}
+                            {/* Points - Render ALL points so user can select them, regardless of 'significance' */}
                             {pointCoords.map((pt) => {
-                                // Threshold for displaying points (filtering noise visually)
-                                const isSignificant = pt.data.intensity > 1.5 || pt.data.intensity < 0.8 || (pt.data.rotation && pt.data.rotation > 100);
                                 const isSelected = selectedIndices.has(pt.index);
                                 const isLabeled = !!pt.data.label;
+                                // Significant events get different styling, but all are rendered
+                                const isSignificant = pt.data.intensity > 1.5 || pt.data.intensity < 0.8 || (pt.data.rotation && pt.data.rotation > 100);
 
-                                if (!isSignificant && !isLabeled && !isSelected) return null;
-
-                                let dotColor = "#f59e0b"; // Default Orange
-                                let dotRadius = 5;
+                                let dotColor = isSignificant ? "#f59e0b" : "#4b5563"; // Orange for significant, dark grey for flow
+                                let dotRadius = isSignificant ? 5 : 3;
                                 let strokeColor = "#fff";
                                 let strokeWidth = 1;
 
@@ -149,7 +153,7 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
 
                                 return (
                                     <g key={pt.index} style={{cursor: 'pointer'}} onClick={(e) => { e.stopPropagation(); onTogglePoint(pt.index); }}>
-                                        {/* Hit Area (Invisible larger circle) */}
+                                        {/* Hit Area (Invisible larger circle for easier tapping) */}
                                         <circle cx={pt.x} cy={pt.y} r={20} fill="transparent" />
                                         
                                         {/* Selection Halo */}
@@ -167,6 +171,7 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                             fill={dotColor} 
                                             stroke={strokeColor} 
                                             strokeWidth={strokeWidth} 
+                                            opacity={isSelected || isSignificant || isLabeled ? 1 : 0.6}
                                         />
 
                                         {/* Turn Angle Annotation */}
@@ -592,7 +597,13 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                                 </span>
                                             );
                                         }) : (
-                                            <span className="text-gray-500 text-xs italic">No tricks detected yet.</span>
+                                            <div className="w-full bg-cyan-900/30 border border-cyan-800/50 rounded-lg p-3 text-cyan-300 text-xs flex gap-2 items-start">
+                                                <span className="text-lg">ℹ️</span>
+                                                <div>
+                                                    <p className="font-bold mb-1">No tricks detected yet.</p>
+                                                    <p>Select points on the graph above to group movements and name your first trick. The app will learn from your labels!</p>
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </div>

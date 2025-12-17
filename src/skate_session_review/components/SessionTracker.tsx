@@ -15,12 +15,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const [currentG, setCurrentG] = useState(1.0);
   const [currentRot, setCurrentRot] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0); // km/h
+  const [pointsRecorded, setPointsRecorded] = useState(0);
   
   // Real Data Stores
   const timelineRef = useRef<SessionDataPoint[]>([]);
   const speedReadingsRef = useRef<number[]>([]);
   const pathRef = useRef<GpsPoint[]>([]);
   const startTimeRef = useRef(0);
+  const lastPositionRef = useRef<GpsPoint | null>(null);
   
   const handleMotion = (event: DeviceMotionEvent) => {
     // 1. Calculate Linear G-Force (Impact)
@@ -48,19 +50,20 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     // Throttle data recording to approx 10Hz (every 0.1s)
     const timeSinceLast = lastPoint ? now - lastPoint.timestamp : 0.1;
 
-    if (timeSinceLast > 0.1) {
+    if (timeSinceLast >= 0.1) {
         
         // --- LOGIC UPDATE ---
         // 1. G-Force changes (Ollies, landings)
-        const isImpact = gForce > 1.3 || gForce < 0.8;
+        const isImpact = gForce > 1.2 || gForce < 0.8;
         
         // 2. Rapid Rotation (Snaps, 180s, 90deg turns)
-        // User requested detection for > 20 degrees rapid change.
-        // We integrate rate over the time step to get approximate degrees turned.
         const degreesTurned = yawRate * timeSinceLast;
-        const isRapidRotation = Math.abs(degreesTurned) > 15 || rotMag > 180; 
+        const isRapidRotation = Math.abs(degreesTurned) > 10 || rotMag > 150; 
+        
+        // 3. Heartbeat: Record at least every 0.5s even if idle, so the graph isn't empty
+        const isHeartbeat = timeSinceLast > 0.5;
 
-        if (isImpact || isRapidRotation || timeSinceLast > 0.5) {
+        if (isImpact || isRapidRotation || isHeartbeat) {
             
             const point: SessionDataPoint = {
                 timestamp: parseFloat(now.toFixed(2)),
@@ -68,25 +71,43 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                 rotation: parseFloat(rotMag.toFixed(2))
             };
 
-            // Only add turnAngle if it was a significant rotation event
-            if (isRapidRotation) {
-                // Round to nearest 5 degrees for cleaner UI
-                point.turnAngle = Math.round(degreesTurned / 5) * 5;
+            // Only add turnAngle if it was a significant rotation event to keep UI clean
+            if (Math.abs(degreesTurned) > 5) {
+                point.turnAngle = Math.round(degreesTurned);
             }
 
             timelineRef.current.push(point);
+            setPointsRecorded(prev => prev + 1);
         }
     }
   };
 
+  // Helper to calc distance between two coords
+  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 6371e3; // metres
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+  }
+
   useEffect(() => {
     let watchId: number;
+    let simInterval: number;
 
     if (status === 'tracking') {
       startTimeRef.current = Date.now();
       timelineRef.current = []; // Clear previous data
       speedReadingsRef.current = [];
       pathRef.current = [];
+      lastPositionRef.current = null;
+      setPointsRecorded(0);
       
       const interval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
@@ -98,62 +119,89 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       if (navigator.geolocation) {
         watchId = navigator.geolocation.watchPosition(
           (position) => {
-            const speedKmh = (position.coords.speed || 0) * 3.6;
-            setCurrentSpeed(speedKmh);
-            speedReadingsRef.current.push(speedKmh);
+            const { latitude, longitude, speed } = position.coords;
+            const timestamp = position.timestamp;
+            
+            // Calculate speed manually if device returns null (common indoors/low signal)
+            let calculatedSpeed = speed || 0;
+            
+            if (lastPositionRef.current) {
+                const dist = getDistance(
+                    lastPositionRef.current.lat, 
+                    lastPositionRef.current.lon, 
+                    latitude, 
+                    longitude
+                );
+                const timeDiff = (timestamp - lastPositionRef.current.timestamp) / 1000;
+                if (timeDiff > 0) {
+                    const derivedSpeed = dist / timeDiff; // m/s
+                    // Use derived speed if GPS speed is null, or filter massive jumps
+                    if ((calculatedSpeed === 0 || calculatedSpeed === null) && derivedSpeed < 30) {
+                        calculatedSpeed = derivedSpeed;
+                    }
+                }
+            }
 
-            // Record GPS Point
-            pathRef.current.push({
-                lat: position.coords.latitude,
-                lon: position.coords.longitude,
-                timestamp: position.timestamp,
+            const speedKmh = calculatedSpeed * 3.6;
+            
+            // Filter noise: simple low pass
+            if (speedKmh > 0.5) {
+                setCurrentSpeed(speedKmh);
+                speedReadingsRef.current.push(speedKmh);
+            }
+
+            const newPoint = {
+                lat: latitude,
+                lon: longitude,
+                timestamp: timestamp,
                 speed: speedKmh
-            });
+            };
+            
+            pathRef.current.push(newPoint);
+            lastPositionRef.current = newPoint;
           },
           (err) => console.warn('GPS Error', err),
           { enableHighAccuracy: true, maximumAge: 0 }
         );
       }
 
-      // If desktop/testing, simulate data injection
-      if (!window.DeviceMotionEvent) {
-           const simInterval = setInterval(() => {
-               const simG = 1 + Math.random() * 0.5;
-               const finalG = Math.random() > 0.95 ? 3.0 : simG;
-               
-               // Simulate rotation occasionally (Snap)
-               const isSnap = Math.random() > 0.90;
-               // Randomize direction for simulation
-               const direction = Math.random() > 0.5 ? 1 : -1;
-               const simAlpha = isSnap ? (300 * direction) : (Math.random() * 20 * direction);
-
-               handleMotion({ 
-                   accelerationIncludingGravity: { x:0, y: finalG * 9.8, z: 0 },
-                   rotationRate: { alpha: simAlpha, beta: 0, gamma: 0 }
-               } as any);
-               
-               const simSpeed = Math.random() * 15;
-               setCurrentSpeed(simSpeed);
-               speedReadingsRef.current.push(simSpeed);
-           }, 100);
-           return () => {
-             window.removeEventListener('devicemotion', handleMotion);
-             clearInterval(interval);
-             clearInterval(simInterval);
-             if (watchId) navigator.geolocation.clearWatch(watchId);
-           };
-      }
+      // If desktop/testing (no sensors), simulate data
+      // Check if sensors actually fire, if not, start sim
+      const checkForSensors = setTimeout(() => {
+          if (timelineRef.current.length === 0) {
+             console.log("No motion detected, starting simulation for testing...");
+             simInterval = window.setInterval(() => {
+                   const simG = 1 + Math.random() * 0.2;
+                   const finalG = Math.random() > 0.9 ? 2.5 : simG;
+                   
+                   const isSnap = Math.random() > 0.92;
+                   const direction = Math.random() > 0.5 ? 1 : -1;
+                   const simAlpha = isSnap ? (250 * direction) : (Math.random() * 10 * direction);
+    
+                   handleMotion({ 
+                       accelerationIncludingGravity: { x:0, y: finalG * 9.8, z: 0 },
+                       rotationRate: { alpha: simAlpha, beta: 0, gamma: 0 },
+                       timeStamp: Date.now()
+                   } as any);
+                   
+                   const simSpeed = 5 + Math.random() * 10;
+                   setCurrentSpeed(simSpeed);
+                   speedReadingsRef.current.push(simSpeed);
+             }, 100);
+          }
+      }, 2000);
 
       return () => {
         window.removeEventListener('devicemotion', handleMotion);
         clearInterval(interval);
+        clearTimeout(checkForSensors);
+        if (simInterval) clearInterval(simInterval);
         if (watchId) navigator.geolocation.clearWatch(watchId);
       };
     }
   }, [status]);
   
   const startSession = async () => {
-    // --- iOS PERMISSION REQUEST ---
     if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
       try {
         const response = await (DeviceMotionEvent as any).requestPermission();
@@ -164,6 +212,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         }
       } catch (e) {
         console.error(e);
+        // Fallback for non-iOS or error
+        setStatus('tracking');
       }
     } else {
       setStatus('tracking');
@@ -173,10 +223,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const stopSession = () => {
     setStatus('idle');
     
-    // 1. Process Timeline to Auto-Label using Learning Logic
+    // 1. Process Timeline
     const processedTimeline = autoLabelTimeline(timelineRef.current, previousSessions);
     
-    // 2. Generate Summary based on new labels
+    // 2. Generate Summary
     const summary: Record<string, number> = {};
     motions.forEach(m => summary[m.name] = 0);
     
@@ -210,36 +260,36 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   
   // --- AI / PATTERN MATCHING LOGIC ---
   const autoLabelTimeline = (timeline: SessionDataPoint[], history: Session[]): SessionDataPoint[] => {
-      // Basic logic: if user labeled a G-force of 2.5 as "Ollie", assume 2.5 is Ollie.
-      // This is simple; real implementation would use DTW (Dynamic Time Warping) in future steps.
-      
+      if (history.length === 0) return timeline;
+
       const knownPatterns: { intensity: number, rotation: number, label: string }[] = [];
       history.forEach(s => {
-          s.timelineData.forEach(p => {
-              if (p.label && p.isGroupStart) {
-                  knownPatterns.push({ intensity: p.intensity, rotation: p.rotation || 0, label: p.label });
-              }
-          });
+          if (s.timelineData) {
+              s.timelineData.forEach(p => {
+                  if (p.label && p.isGroupStart) {
+                      knownPatterns.push({ intensity: p.intensity, rotation: p.rotation || 0, label: p.label });
+                  }
+              });
+          }
       });
 
-      return timeline.map((p, index, arr) => {
+      if (knownPatterns.length === 0) return timeline;
+
+      return timeline.map((p, index) => {
           // Check for significant events
-          const isEvent = p.intensity > 1.5 || (p.rotation && p.rotation > 180);
+          const isEvent = p.intensity > 1.5 || (p.rotation && p.rotation > 150);
           
           if (!isEvent) return p;
 
-          // Simple peak matching against history
           let bestMatchLabel: string | undefined = undefined;
           let minDiff = 1000;
 
           for (const pattern of knownPatterns) {
-              // Compare G-Force and Rotation similarity
               const gDiff = Math.abs(p.intensity - pattern.intensity);
               const rDiff = Math.abs((p.rotation || 0) - pattern.rotation);
-              // Normalize diff score
               const totalDiff = gDiff + (rDiff / 100); 
 
-              if (totalDiff < minDiff && totalDiff < 1.0) {
+              if (totalDiff < minDiff && totalDiff < 0.8) {
                   minDiff = totalDiff;
                   bestMatchLabel = pattern.label;
               }
@@ -247,9 +297,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
           if (bestMatchLabel) {
               return { ...p, label: bestMatchLabel, isGroupStart: true, groupId: `auto-${Date.now()}-${index}` };
-          } else if (p.intensity > 2.0) {
-              // Mark high impact as unknown trick attempt
-              return { ...p, label: undefined, isGroupStart: false };
           }
           
           return p;
@@ -295,6 +342,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                     <p className="text-xs text-gray-500 uppercase">Impact</p>
                     <p className="text-xl font-bold text-white">{currentG.toFixed(1)} <span className="text-xs text-gray-500">G</span></p>
                 </div>
+                <div className="bg-gray-900 p-2 rounded border border-gray-700 col-span-2">
+                    <p className="text-xs text-gray-500 uppercase">Speed</p>
+                    <p className="text-xl font-bold text-white">{currentSpeed.toFixed(1)} <span className="text-xs text-gray-500">km/h</span></p>
+                </div>
             </div>
 
             {/* Live G-Force Meter */}
@@ -304,6 +355,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                     style={{ width: `${Math.min((currentG / 4) * 100, 100)}%` }}
                  ></div>
             </div>
+            
+            <p className="text-xs text-gray-600 mt-4 font-mono">{pointsRecorded} points recorded</p>
 
             <p className="text-sm text-gray-400 mt-6">Screen can be turned off.</p>
         </div>
