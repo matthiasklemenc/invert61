@@ -69,8 +69,9 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
 
-      let currentAlpha = data.alpha;
-      let delta = currentAlpha - track.lastAlpha;
+      // Calculate delta. Invert sign: Standard alpha increases counter-clockwise (left).
+      // We want Left = Negative, Right = Positive.
+      let delta = track.lastAlpha - data.alpha;
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
 
@@ -78,7 +79,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       if (absDelta > 0.5) {
           track.accumulatedTurn += delta;
       }
-      track.lastAlpha = currentAlpha;
+      track.lastAlpha = data.alpha;
       setLiveYaw(Math.round(track.accumulatedTurn));
 
       let shouldRecord = false;

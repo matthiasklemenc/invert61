@@ -136,7 +136,8 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                 // If it's just a heartbeat point with no interesting data, skip drawing the circle
                                 if (!isTurn && !isLabeled && !isImpact && !isSelected) return null;
 
-                                let dotColor = isTurn ? "#22d3ee" : (isImpact ? "#f59e0b" : "#4b5563"); 
+                                // Turn Logic: Negative = Left (Red), Positive = Right (Blue)
+                                let dotColor = isTurn ? (pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444") : (isImpact ? "#f59e0b" : "#4b5563"); 
                                 let dotRadius = 4;
                                 let strokeColor = "#fff";
                                 let strokeWidth = 1;
@@ -177,18 +178,34 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
 
                                         {/* Turn Angle Annotation - Above dot */}
                                         {isTurn && !isSelected && (
-                                            <text 
-                                                x={pt.x} 
-                                                y={pt.y - 10} 
-                                                textAnchor="middle" 
-                                                fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} 
-                                                fontSize="10" 
-                                                fontWeight="bold"
-                                                fontFamily="monospace"
-                                                style={{textShadow: '0px 1px 1px black'}}
-                                            >
-                                                {pt.data.turnAngle! > 0 ? '+' : ''}{pt.data.turnAngle}°
-                                            </text>
+                                            <g>
+                                                {/* Left / Right Label */}
+                                                {/* Fix: Moved textTransform to style object as it is not a valid SVG attribute in React */}
+                                                <text 
+                                                    x={pt.x} 
+                                                    y={pt.y - 22} 
+                                                    textAnchor="middle" 
+                                                    fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} 
+                                                    fontSize="9" 
+                                                    fontWeight="800"
+                                                    style={{textShadow: '0px 1px 1px black', textTransform: 'uppercase'}}
+                                                >
+                                                    {pt.data.turnAngle! > 0 ? 'right' : 'left'}
+                                                </text>
+                                                {/* Angle Value */}
+                                                <text 
+                                                    x={pt.x} 
+                                                    y={pt.y - 10} 
+                                                    textAnchor="middle" 
+                                                    fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} 
+                                                    fontSize="10" 
+                                                    fontWeight="bold"
+                                                    fontFamily="monospace"
+                                                    style={{textShadow: '0px 1px 1px black'}}
+                                                >
+                                                    {pt.data.turnAngle! > 0 ? '+' : ''}{pt.data.turnAngle}°
+                                                </text>
+                                            </g>
                                         )}
 
                                         {/* Labels - Below dot */}
@@ -421,7 +438,6 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
         }
     };
 
-    // Fix: Using explicit narrowing and local variables to fix index type and arithmetic errors.
     const saveGroupLabel = (newLabel: string) => {
         if (!editingSessionId || selectedPointIndices.size === 0) return;
         
@@ -434,7 +450,6 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
         const groupId = `group-${Date.now()}`;
         
         // 2. Iterate selected indices and update
-        // Use array for sorting
         const sortedIndices = Array.from(selectedPointIndices).sort((a,b) => a - b);
         
         sortedIndices.forEach((idx, i) => {
@@ -597,7 +612,6 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                 <div className="mt-4">
                                     <p className="text-gray-400 text-xs font-bold mb-2 uppercase">Detected Tricks</p>
                                     <div className="flex flex-wrap gap-2">
-                                        {/* Fix: casting entries to specific types to fix unknown index errors. */}
                                         {(Object.entries(s.trickSummary) as [string, number][]).length > 0 ? (Object.entries(s.trickSummary) as [string, number][]).map(([trick, count]) => {
                                             if (count <= 0) return null;
                                             return (
