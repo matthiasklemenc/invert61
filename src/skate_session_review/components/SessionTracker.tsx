@@ -41,7 +41,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       rotationStartValue: 0,
       stopTicks: 0,
       lastG: 1.0,
-      isFirstSample: true // Used for instant calibration
+      isFirstSample: true
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -58,8 +58,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
   const handleOrientation = (event: DeviceOrientationEvent) => {
       if (event.alpha !== null) {
-          // INSTANT CALIBRATION:
-          // The moment recording starts, the first heading reading is our 0 point.
+          // INSTANT ZEROING: The very first reading becomes the 0 baseline.
           if (trackingStateRef.current.isFirstSample && status === 'tracking') {
               trackingStateRef.current.lastAlpha = event.alpha;
               trackingStateRef.current.isFirstSample = false;
@@ -77,13 +76,13 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
 
-      // 1. Calculate Rotation Delta (The "Perfect" Logic Reverted)
+      // 1. Calculate Rotation Delta (The "Perfect" Logic)
       let delta = track.lastAlpha - data.alpha;
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
 
-      // Filter micro-noise but keep turns responsive
       const absDelta = Math.abs(delta);
+      // Filter micro-noise but keep turns responsive
       if (absDelta > 0.4) {
           track.accumulatedTurn += delta;
       }
@@ -96,10 +95,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
       // 2. Detection logic
       
-      // A) ROTATION DETECTION (Boundaries logic)
+      // A) ROTATION DETECTION
       if (!track.isRotating) {
           const diffFromStable = Math.abs(track.accumulatedTurn - track.lastStableAngle);
-          if (diffFromStable > 15) { // Responsive threshold for turns
+          if (diffFromStable > 15) { // Sensitivity threshold
               track.isRotating = true;
               track.rotationStartValue = track.lastStableAngle;
               track.stopTicks = 0;
@@ -107,16 +106,17 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
               isGroupStart = true;
           }
       } else {
-          // If moving, record more points for the line plot
+          // While rotating, record points frequently for path resolution
           if (absDelta > 1.0) shouldRecord = true;
 
-          if (absDelta < 1.0) {
+          // END CONDITION: Only 2 frames (200ms) of near-stillness required to split tricks
+          if (absDelta < 0.8) {
               track.stopTicks++;
           } else {
               track.stopTicks = 0;
           }
 
-          if (track.stopTicks >= 4) { // Reached a new stable heading
+          if (track.stopTicks >= 2) { 
               track.isRotating = false;
               track.stopTicks = 0;
               shouldRecord = true;
@@ -125,15 +125,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           }
       }
 
-      // B) G-FORCE SENSITIVITY (Ensure Pumps & Impacts show up as circles)
-      // We lowered this to 0.15G to capture small "pumps" as distinct points
+      // B) IMPACT DETECTION (Pumps, Drop-ins, Landings)
       const gDiff = Math.abs(data.gForce - track.lastG);
       if (gDiff > 0.15 || data.gForce > 1.8) {
           shouldRecord = true;
       }
       track.lastG = data.gForce;
 
-      // C) Heartbeat (Max 2s gap between points)
+      // C) Heartbeat (Maintain graph continuity)
       if (timeSec - track.lastRecordTime > 2.0) {
           shouldRecord = true;
       }

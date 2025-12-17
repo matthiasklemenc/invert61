@@ -499,7 +499,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                     onClose={() => setShowGroupModal(false)}
                     motions={motions}
                     onAddMotion={onAddMotion}
-                    onDeleteMotion={onDeleteMotion}
+                    onDeleteMotion={id => onDeleteMotion(id)}
                     selectionCount={selectedPointIndices.size}
                 />
             )}
