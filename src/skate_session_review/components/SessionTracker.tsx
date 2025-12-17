@@ -39,7 +39,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       lastStableAngle: 0,
       isRotating: false,
       rotationStartValue: 0,
-      stopTicks: 0
+      stopTicks: 0,
+      lastG: 1.0,
+      isSettling: true, // Used to ignore initial sensor drift
+      settleTimer: 0
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -69,14 +72,36 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
 
-      // Calculate delta. Invert sign: Standard alpha increases counter-clockwise (left).
-      // We want Left = Negative, Right = Positive.
+      // 1. Calculate Rotation Delta
       let delta = track.lastAlpha - data.alpha;
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
 
+      // 2. Handle Initial Drift/Settling
+      if (track.isSettling) {
+          track.settleTimer += 0.1;
+          // During the first 2 seconds, we constantly reset the baseline to '0'
+          // unless the user is actually jumping/moving (G-force change)
+          const isUserMoving = Math.abs(data.gForce - 1.0) > 0.2;
+          if (!isUserMoving) {
+              track.lastAlpha = data.alpha;
+              track.accumulatedTurn = 0;
+              if (track.settleTimer > 2.5) track.isSettling = false;
+              return; // Don't record during warm-up
+          } else {
+              // User started early! Stop settling immediately
+              track.isSettling = false;
+          }
+      }
+
+      // Filter out impossible noise (jumps > 30deg in 100ms while still)
+      if (Math.abs(delta) > 30 && Math.abs(data.gForce - 1.0) < 0.1) {
+          track.lastAlpha = data.alpha;
+          return;
+      }
+
       const absDelta = Math.abs(delta);
-      if (absDelta > 0.5) {
+      if (absDelta > 0.3) {
           track.accumulatedTurn += delta;
       }
       track.lastAlpha = data.alpha;
@@ -86,10 +111,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       let turnAngle: number | undefined = undefined;
       let isGroupStart = false;
 
-      // Rotation detection: record start and end of significant turns
+      // 3. Rotation Commit Logic
       if (!track.isRotating) {
           const diffFromStable = Math.abs(track.accumulatedTurn - track.lastStableAngle);
-          if (diffFromStable > 30) {
+          if (diffFromStable > 15) { // Lowered to 15 to catch pumps and small turns
               track.isRotating = true;
               track.rotationStartValue = track.lastStableAngle;
               track.stopTicks = 0;
@@ -97,13 +122,16 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
               isGroupStart = true;
           }
       } else {
+          // If actively rotating, commit points every 500ms for detail
+          if (timeSec - track.lastRecordTime > 0.5) shouldRecord = true;
+
           if (absDelta < 1.0) {
               track.stopTicks++;
           } else {
               track.stopTicks = 0;
           }
 
-          if (track.stopTicks >= 4) { // Stable for ~400ms
+          if (track.stopTicks >= 5) { // Still for ~500ms
               track.isRotating = false;
               track.stopTicks = 0;
               shouldRecord = true;
@@ -112,12 +140,15 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           }
       }
 
-      // Record impacts (Ollies/Lands)
-      if (data.gForce > 2.5) {
+      // 4. Intensity / Pump Logic
+      // Record any significant G-force change (pumps/landings)
+      const gDiff = Math.abs(data.gForce - track.lastG);
+      if (gDiff > 0.4 || data.gForce > 2.5) {
           shouldRecord = true;
       }
+      track.lastG = data.gForce;
 
-      // Heartbeat every 2 seconds
+      // 5. Heartbeat
       if (timeSec - track.lastRecordTime > 2.0) {
           shouldRecord = true;
       }
@@ -168,7 +199,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           lastStableAngle: 0,
           isRotating: false,
           rotationStartValue: 0,
-          stopTicks: 0
+          stopTicks: 0,
+          lastG: 1.0,
+          isSettling: true,
+          settleTimer: 0
       };
       
       setPointsRecorded(0);
@@ -327,11 +361,12 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="text-6xl font-bold text-cyan-400 my-4">{formatTime(elapsedTime)}</div>
             
             <div className="grid grid-cols-2 gap-4 text-center mb-6">
-                <div className={`p-2 rounded border transition-colors duration-200 bg-gray-900 border-gray-700`}>
+                <div className={`p-2 rounded border transition-colors duration-200 bg-gray-900 ${trackingStateRef.current.isSettling ? 'border-yellow-600' : 'border-gray-700'}`}>
                     <p className="text-xs text-gray-500 uppercase">Live Angle</p>
                     <p className="text-xl font-bold text-white">
                         {liveYaw}°
                     </p>
+                    {trackingStateRef.current.isSettling && <p className="text-[9px] text-yellow-500 animate-pulse">SETTLING...</p>}
                 </div>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
                     <p className="text-xs text-gray-500 uppercase">Impact</p>
