@@ -60,8 +60,12 @@ export enum Page {
 
 export interface SessionDataPoint {
   timestamp: number;
-  intensity: number;
+  intensity: number; // G-Force
+  rotation?: number; // Rotation magnitude (rad/s)
+  turnAngle?: number; // Specific rotation change in degrees (signed)
   label?: string;
+  isGroupStart?: boolean; // If true, show the label
+  groupId?: string; // Links multiple points into one "Trick"
 }
 
 export interface Session {
@@ -73,6 +77,7 @@ export interface Session {
   maxSpeed: number;
   avgSpeed: number;
   timelineData: SessionDataPoint[];
+  path?: GpsPoint[];
 }
 
 export interface Motion {

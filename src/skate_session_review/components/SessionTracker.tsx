@@ -21,63 +21,75 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const timelineRef = useRef<SessionDataPoint[]>([]);
   const speedReadingsRef = useRef<number[]>([]);
   const pathRef = useRef<GpsPoint[]>([]);
+  
   const startTimeRef = useRef(0);
   const lastPositionRef = useRef<GpsPoint | null>(null);
+
+  // --- CONTINUOUS INTEGRATION REFS ---
+  // These track data between the 0.1s recording intervals
+  const cumulativeYawRef = useRef(0); 
+  const lastIntegrationTimeRef = useRef(0);
+  const lastRecordedYawRef = useRef(0);
   
   const handleMotion = (event: DeviceMotionEvent) => {
-    // 1. Calculate Linear G-Force (Impact)
+    const now = performance.now();
+    
+    // 1. Calculate Time Delta (dt) for accurate integration
+    // Guard against large jumps (first frame or lag)
+    let dt = (now - lastIntegrationTimeRef.current) / 1000;
+    if (dt > 0.5) dt = 0; 
+    lastIntegrationTimeRef.current = now;
+
+    // 2. Continuous Integration of Rotation (Z-axis / Alpha)
+    // alpha is degrees per second. alpha * dt = degrees turned in this frame.
+    const { alpha, beta, gamma } = event.rotationRate || {alpha:0, beta:0, gamma:0};
+    if (alpha) {
+        cumulativeYawRef.current += alpha * dt;
+    }
+
+    // 3. Instant Metrics for UI/Checks
     const { x, y, z } = event.accelerationIncludingGravity || {x:0,y:0,z:0};
     const gForce = Math.sqrt((x||0)**2 + (y||0)**2 + (z||0)**2) / 9.8;
-    
-    // 2. Calculate Rotation Magnitude (Turn Intensity in deg/s)
-    const { alpha, beta, gamma } = event.rotationRate || {alpha:0, beta:0, gamma:0};
-    // Magnitude of rotation vector
     const rotMag = Math.sqrt((alpha||0)**2 + (beta||0)**2 + (gamma||0)**2); 
-
-    // Specific Yaw Rotation (Z-axis) for angle calculation
-    // alpha is in degrees per second
-    const yawRate = alpha || 0; 
 
     setCurrentG(gForce);
     setCurrentRot(rotMag);
 
-    // Only record data if tracking
+    // Only record data to timeline if tracking
     if (status !== 'tracking') return;
 
-    const now = (Date.now() - startTimeRef.current) / 1000;
+    // 4. Throttled Recording (approx 10Hz)
+    // We use Date.now() for the official timestamp of the point
+    const recordNow = (Date.now() - startTimeRef.current) / 1000;
     const lastPoint = timelineRef.current[timelineRef.current.length - 1];
-    
-    // Throttle data recording to approx 10Hz (every 0.1s)
-    const timeSinceLast = lastPoint ? now - lastPoint.timestamp : 0.1;
+    const timeSinceLastRecord = lastPoint ? recordNow - lastPoint.timestamp : 0.1;
 
-    if (timeSinceLast >= 0.1) {
+    if (timeSinceLastRecord >= 0.1) {
         
-        // --- LOGIC UPDATE ---
-        // 1. G-Force changes (Ollies, landings)
-        const isImpact = gForce > 1.2 || gForce < 0.8;
+        // Calculate exact degrees turned since the LAST recorded point
+        const totalYaw = cumulativeYawRef.current;
+        const deltaYawSinceLastRecord = totalYaw - lastRecordedYawRef.current;
         
-        // 2. Rapid Rotation (Snaps, 180s, 90deg turns)
-        const degreesTurned = yawRate * timeSinceLast;
-        const isRapidRotation = Math.abs(degreesTurned) > 10 || rotMag > 150; 
-        
-        // 3. Heartbeat: Record at least every 0.5s even if idle, so the graph isn't empty
-        const isHeartbeat = timeSinceLast > 0.5;
+        // Logic: Record if significant G-force, Rapid Rotation, or Heartbeat
+        const isImpact = gForce > 1.3 || gForce < 0.8;
+        const isRapidRotation = Math.abs(deltaYawSinceLastRecord) > 15; // >15 degrees change since last dot
+        const isHeartbeat = timeSinceLastRecord > 0.5;
 
         if (isImpact || isRapidRotation || isHeartbeat) {
             
             const point: SessionDataPoint = {
-                timestamp: parseFloat(now.toFixed(2)),
+                timestamp: parseFloat(recordNow.toFixed(2)),
                 intensity: parseFloat(gForce.toFixed(2)),
-                rotation: parseFloat(rotMag.toFixed(2))
+                rotation: parseFloat(rotMag.toFixed(2)),
+                // Store the exact angle change accumulated since the last point
+                turnAngle: parseFloat(deltaYawSinceLastRecord.toFixed(1))
             };
-
-            // Only add turnAngle if it was a significant rotation event to keep UI clean
-            if (Math.abs(degreesTurned) > 5) {
-                point.turnAngle = Math.round(degreesTurned);
-            }
 
             timelineRef.current.push(point);
             setPointsRecorded(prev => prev + 1);
+            
+            // Update the "baseline" for the next delta calculation
+            lastRecordedYawRef.current = totalYaw;
         }
     }
   };
@@ -103,10 +115,16 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
     if (status === 'tracking') {
       startTimeRef.current = Date.now();
-      timelineRef.current = []; // Clear previous data
+      timelineRef.current = []; 
       speedReadingsRef.current = [];
       pathRef.current = [];
       lastPositionRef.current = null;
+      
+      // Reset Integration State
+      cumulativeYawRef.current = 0;
+      lastRecordedYawRef.current = 0;
+      lastIntegrationTimeRef.current = performance.now();
+      
       setPointsRecorded(0);
       
       const interval = setInterval(() => {
@@ -122,7 +140,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             const { latitude, longitude, speed } = position.coords;
             const timestamp = position.timestamp;
             
-            // Calculate speed manually if device returns null (common indoors/low signal)
             let calculatedSpeed = speed || 0;
             
             if (lastPositionRef.current) {
@@ -134,8 +151,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                 );
                 const timeDiff = (timestamp - lastPositionRef.current.timestamp) / 1000;
                 if (timeDiff > 0) {
-                    const derivedSpeed = dist / timeDiff; // m/s
-                    // Use derived speed if GPS speed is null, or filter massive jumps
+                    const derivedSpeed = dist / timeDiff; 
                     if ((calculatedSpeed === 0 || calculatedSpeed === null) && derivedSpeed < 30) {
                         calculatedSpeed = derivedSpeed;
                     }
@@ -144,7 +160,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
             const speedKmh = calculatedSpeed * 3.6;
             
-            // Filter noise: simple low pass
             if (speedKmh > 0.5) {
                 setCurrentSpeed(speedKmh);
                 speedReadingsRef.current.push(speedKmh);
@@ -165,29 +180,32 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         );
       }
 
-      // If desktop/testing (no sensors), simulate data
-      // Check if sensors actually fire, if not, start sim
+      // Simulation for desktop testing
       const checkForSensors = setTimeout(() => {
           if (timelineRef.current.length === 0) {
              console.log("No motion detected, starting simulation for testing...");
+             // Initialize sim time
+             lastIntegrationTimeRef.current = performance.now();
+
              simInterval = window.setInterval(() => {
                    const simG = 1 + Math.random() * 0.2;
-                   const finalG = Math.random() > 0.9 ? 2.5 : simG;
+                   const finalG = Math.random() > 0.95 ? 2.5 : simG;
                    
-                   const isSnap = Math.random() > 0.92;
+                   const isSnap = Math.random() > 0.90;
                    const direction = Math.random() > 0.5 ? 1 : -1;
-                   const simAlpha = isSnap ? (250 * direction) : (Math.random() * 10 * direction);
+                   // High rotation rate for snap
+                   const simAlpha = isSnap ? (400 * direction) : (Math.random() * 10 * direction);
     
                    handleMotion({ 
                        accelerationIncludingGravity: { x:0, y: finalG * 9.8, z: 0 },
                        rotationRate: { alpha: simAlpha, beta: 0, gamma: 0 },
-                       timeStamp: Date.now()
+                       timeStamp: performance.now()
                    } as any);
                    
                    const simSpeed = 5 + Math.random() * 10;
                    setCurrentSpeed(simSpeed);
                    speedReadingsRef.current.push(simSpeed);
-             }, 100);
+             }, 16); // Simulate 60Hz events
           }
       }, 2000);
 
@@ -212,7 +230,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         }
       } catch (e) {
         console.error(e);
-        // Fallback for non-iOS or error
         setStatus('tracking');
       }
     } else {
@@ -276,8 +293,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       if (knownPatterns.length === 0) return timeline;
 
       return timeline.map((p, index) => {
-          // Check for significant events
-          const isEvent = p.intensity > 1.5 || (p.rotation && p.rotation > 150);
+          const isEvent = p.intensity > 1.5 || (p.turnAngle && Math.abs(p.turnAngle) > 90);
           
           if (!isEvent) return p;
 
@@ -348,7 +364,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                 </div>
             </div>
 
-            {/* Live G-Force Meter */}
             <div className="w-full max-w-xs mx-auto bg-gray-900 h-2 rounded-full overflow-hidden relative border border-gray-700 mt-2">
                  <div 
                     className="h-full bg-gradient-to-r from-green-500 to-red-500 transition-all duration-100"

@@ -127,14 +127,17 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                             {/* Data Line */}
                             <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
 
-                            {/* Points - Render ALL points so user can select them, regardless of 'significance' */}
+                            {/* Points - Render circles ONLY for significant events (Turns > 15 deg or High G) */}
                             {pointCoords.map((pt) => {
                                 const isSelected = selectedIndices.has(pt.index);
                                 const isLabeled = !!pt.data.label;
-                                // Significant events get different styling, but all are rendered
-                                const isSignificant = pt.data.intensity > 1.5 || pt.data.intensity < 0.8 || (pt.data.rotation && pt.data.rotation > 100);
+                                // Significant events: High Impact OR Significant Turn (>15deg)
+                                const isSignificant = pt.data.intensity > 1.5 || pt.data.intensity < 0.8 || (pt.data.turnAngle && Math.abs(pt.data.turnAngle) > 15);
 
-                                let dotColor = isSignificant ? "#f59e0b" : "#4b5563"; // Orange for significant, dark grey for flow
+                                // If not significant and not selected/labeled, don't draw the circle clutter
+                                if (!isSignificant && !isSelected && !isLabeled) return null;
+
+                                let dotColor = isSignificant ? "#f59e0b" : "#4b5563"; // Orange for significant
                                 let dotRadius = isSignificant ? 5 : 3;
                                 let strokeColor = "#fff";
                                 let strokeWidth = 1;
@@ -171,11 +174,11 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                             fill={dotColor} 
                                             stroke={strokeColor} 
                                             strokeWidth={strokeWidth} 
-                                            opacity={isSelected || isSignificant || isLabeled ? 1 : 0.6}
+                                            opacity={1}
                                         />
 
-                                        {/* Turn Angle Annotation */}
-                                        {pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 0 && !isSelected && (
+                                        {/* Turn Angle Annotation - Only if significant turn */}
+                                        {pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 15 && !isSelected && (
                                             <text 
                                                 x={pt.x + 10} 
                                                 y={pt.y + 4} 
