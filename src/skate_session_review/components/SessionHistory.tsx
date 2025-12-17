@@ -127,29 +127,29 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                             {/* Data Line */}
                             <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
 
-                            {/* Points - Render circles ONLY for significant events (Turns > 15 deg or High G) */}
+                            {/* Points - Render circles ONLY for event points (turns, tricks, impacts) */}
                             {pointCoords.map((pt) => {
                                 const isSelected = selectedIndices.has(pt.index);
                                 const isLabeled = !!pt.data.label;
-                                // Significant events: High Impact OR Significant Turn (>15deg)
-                                const isSignificant = pt.data.intensity > 1.5 || pt.data.intensity < 0.8 || (pt.data.turnAngle && Math.abs(pt.data.turnAngle) > 15);
+                                const isTurn = pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 0;
+                                const isImpact = pt.data.intensity > 2.0;
 
-                                // If not significant and not selected/labeled, don't draw the circle clutter
-                                if (!isSignificant && !isSelected && !isLabeled) return null;
+                                // If it's just a heartbeat point with no interesting data, skip drawing the circle
+                                if (!isTurn && !isLabeled && !isImpact && !isSelected) return null;
 
-                                let dotColor = isSignificant ? "#f59e0b" : "#4b5563"; // Orange for significant
-                                let dotRadius = isSignificant ? 5 : 3;
+                                let dotColor = isTurn ? "#22d3ee" : (isImpact ? "#f59e0b" : "#4b5563"); 
+                                let dotRadius = 4;
                                 let strokeColor = "#fff";
                                 let strokeWidth = 1;
 
                                 if (isLabeled) {
                                     dotColor = stringToColor(pt.data.label!);
-                                    if (pt.data.isGroupStart) dotRadius = 7;
+                                    if (pt.data.isGroupStart) dotRadius = 6;
                                 }
 
                                 if (isSelected) {
-                                    dotColor = "#22d3ee"; // Cyan
-                                    dotRadius = 8;
+                                    dotColor = "#ef4444"; // Red for selected
+                                    dotRadius = 7;
                                     strokeColor = "#fff";
                                     strokeWidth = 2;
                                 }
@@ -161,7 +161,7 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                         
                                         {/* Selection Halo */}
                                         {isSelected && (
-                                            <circle cx={pt.x} cy={pt.y} r={14} fill="#22d3ee" fillOpacity="0.3">
+                                            <circle cx={pt.x} cy={pt.y} r={14} fill="#ef4444" fillOpacity="0.3">
                                                 <animate attributeName="r" values="12;14;12" dur="2s" repeatCount="indefinite" />
                                             </circle>
                                         )}
@@ -174,29 +174,29 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                             fill={dotColor} 
                                             stroke={strokeColor} 
                                             strokeWidth={strokeWidth} 
-                                            opacity={1}
                                         />
 
-                                        {/* Turn Angle Annotation - Only if significant turn */}
-                                        {pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 15 && !isSelected && (
+                                        {/* Turn Angle Annotation - Above dot */}
+                                        {isTurn && !isSelected && (
                                             <text 
-                                                x={pt.x + 10} 
-                                                y={pt.y + 4} 
-                                                textAnchor="start" 
-                                                fill={pt.data.turnAngle > 0 ? "#22d3ee" : "#ef4444"} 
-                                                fontSize="9" 
+                                                x={pt.x} 
+                                                y={pt.y - 10} 
+                                                textAnchor="middle" 
+                                                fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} 
+                                                fontSize="10" 
+                                                fontWeight="bold"
                                                 fontFamily="monospace"
                                                 style={{textShadow: '0px 1px 1px black'}}
                                             >
-                                                {pt.data.turnAngle > 0 ? '+' : ''}{pt.data.turnAngle}°
+                                                {pt.data.turnAngle! > 0 ? '+' : ''}{pt.data.turnAngle}°
                                             </text>
                                         )}
 
-                                        {/* Labels */}
+                                        {/* Labels - Below dot */}
                                         {isLabeled && pt.data.isGroupStart && !isSelected && (
                                             <g pointerEvents="none">
-                                                <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y - 20} stroke={dotColor} strokeWidth="1" />
-                                                <text x={pt.x} y={pt.y - 25} textAnchor="middle" fill={dotColor} fontSize="10" fontWeight="bold" style={{textShadow: '0px 1px 2px black'}}>
+                                                <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y + 15} stroke={dotColor} strokeWidth="1" />
+                                                <text x={pt.x} y={pt.y + 25} textAnchor="middle" fill={dotColor} fontSize="10" fontWeight="bold" style={{textShadow: '0px 1px 2px black'}}>
                                                     {pt.data.label}
                                                 </text>
                                             </g>
