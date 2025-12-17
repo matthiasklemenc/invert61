@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Session, SessionDataPoint, Motion, GpsPoint } from '../types';
 
@@ -41,8 +40,9 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       rotationStartValue: 0,
       stopTicks: 0,
       lastG: 1.0,
-      isSettling: true, // Used to ignore initial sensor drift
-      settleTimer: 0
+      isSettling: true,
+      settleTimer: 0,
+      hasStartedMoving: false
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -72,36 +72,31 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
 
-      // 1. Calculate Rotation Delta
+      // 1. Calculate Rotation Delta (Inverted for: Left = Negative, Right = Positive)
       let delta = track.lastAlpha - data.alpha;
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
 
-      // 2. Handle Initial Drift/Settling
-      if (track.isSettling) {
-          track.settleTimer += 0.1;
-          // During the first 2 seconds, we constantly reset the baseline to '0'
-          // unless the user is actually jumping/moving (G-force change)
-          const isUserMoving = Math.abs(data.gForce - 1.0) > 0.2;
-          if (!isUserMoving) {
-              track.lastAlpha = data.alpha;
-              track.accumulatedTurn = 0;
-              if (track.settleTimer > 2.5) track.isSettling = false;
-              return; // Don't record during warm-up
-          } else {
-              // User started early! Stop settling immediately
-              track.isSettling = false;
-          }
+      // 2. Intelligent Auto-Zero (Dynamic Calibration)
+      const gMovement = Math.abs(data.gForce - 1.0) > 0.3;
+      const rotMovement = Math.abs(delta) > 5;
+      
+      if (!track.hasStartedMoving && (gMovement || rotMovement)) {
+          track.hasStartedMoving = true;
+          track.isSettling = false;
       }
 
-      // Filter out impossible noise (jumps > 30deg in 100ms while still)
-      if (Math.abs(delta) > 30 && Math.abs(data.gForce - 1.0) < 0.1) {
+      if (track.isSettling) {
+          track.settleTimer += 0.1;
           track.lastAlpha = data.alpha;
-          return;
+          track.accumulatedTurn = 0;
+          // After 3 seconds of stillness, we stop settling anyway
+          if (track.settleTimer > 3.0) track.isSettling = false;
+          return; 
       }
 
       const absDelta = Math.abs(delta);
-      if (absDelta > 0.3) {
+      if (absDelta > 0.2) {
           track.accumulatedTurn += delta;
       }
       track.lastAlpha = data.alpha;
@@ -111,10 +106,12 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       let turnAngle: number | undefined = undefined;
       let isGroupStart = false;
 
-      // 3. Rotation Commit Logic
+      // 3. Concurrent Tracking logic
+      
+      // A) ROTATION DETECTION
       if (!track.isRotating) {
           const diffFromStable = Math.abs(track.accumulatedTurn - track.lastStableAngle);
-          if (diffFromStable > 15) { // Lowered to 15 to catch pumps and small turns
+          if (diffFromStable > 12) { // Sensitive to small turns/pumps
               track.isRotating = true;
               track.rotationStartValue = track.lastStableAngle;
               track.stopTicks = 0;
@@ -122,16 +119,16 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
               isGroupStart = true;
           }
       } else {
-          // If actively rotating, commit points every 500ms for detail
-          if (timeSec - track.lastRecordTime > 0.5) shouldRecord = true;
+          // If actively turning, record frequently (detail)
+          if (timeSec - track.lastRecordTime > 0.4) shouldRecord = true;
 
-          if (absDelta < 1.0) {
+          if (absDelta < 0.8) {
               track.stopTicks++;
           } else {
               track.stopTicks = 0;
           }
 
-          if (track.stopTicks >= 5) { // Still for ~500ms
+          if (track.stopTicks >= 4) { // Reached a stable angle
               track.isRotating = false;
               track.stopTicks = 0;
               shouldRecord = true;
@@ -140,15 +137,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           }
       }
 
-      // 4. Intensity / Pump Logic
-      // Record any significant G-force change (pumps/landings)
+      // B) IMPACT / G-FORCE DETECTION (Pumps, Ollies, Drop-ins)
       const gDiff = Math.abs(data.gForce - track.lastG);
-      if (gDiff > 0.4 || data.gForce > 2.5) {
+      if (gDiff > 0.35 || data.gForce > 2.0) {
           shouldRecord = true;
       }
       track.lastG = data.gForce;
 
-      // 5. Heartbeat
+      // C) HEARTBEAT (Ensure we have background points every 2 seconds)
       if (timeSec - track.lastRecordTime > 2.0) {
           shouldRecord = true;
       }
@@ -169,13 +165,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
   };
 
+  // Fix: Renamed Greek variables to consistent Latin names to resolve "Cannot find name 'phi1'" and 'phi2' errors.
   const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
       const R = 6371e3;
-      const φ1 = lat1 * Math.PI/180;
-      const φ2 = lat2 * Math.PI/180;
-      const Δφ = (lat2-lat1) * Math.PI/180;
-      const Δλ = (lon2-lon1) * Math.PI/180;
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const phi1 = lat1 * Math.PI/180;
+      const phi2 = lat2 * Math.PI/180;
+      const dPhi = (lat2-lat1) * Math.PI/180;
+      const dLambda = (lon2-lon1) * Math.PI/180;
+      const a = Math.sin(dPhi/2) * Math.sin(dPhi/2) + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda/2) * Math.sin(dLambda/2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return R * c;
   }
@@ -202,7 +199,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           stopTicks: 0,
           lastG: 1.0,
           isSettling: true,
-          settleTimer: 0
+          settleTimer: 0,
+          hasStartedMoving: false
       };
       
       setPointsRecorded(0);

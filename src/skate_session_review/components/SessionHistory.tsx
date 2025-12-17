@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Session, Page, SessionDataPoint, SessionHistoryProps, Motion } from '../types';
 import SkateMap from '../../maptiler/SkateMap';
@@ -126,19 +127,19 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                             {/* Data Line */}
                             <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
 
-                            {/* Points - Render circles ONLY for event points (turns, tricks, impacts) */}
+                            {/* Points - Render circles for event points (turns, tricks, impacts) */}
                             {pointCoords.map((pt) => {
                                 const isSelected = selectedIndices.has(pt.index);
                                 const isLabeled = !!pt.data.label;
                                 const isTurn = pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 0;
-                                const isImpact = pt.data.intensity > 2.0;
+                                const isImpact = pt.data.intensity > 1.8; // Lowered threshold to match recorded spikes
 
-                                // If it's just a heartbeat point with no interesting data, skip drawing the circle
+                                // We want to show a dot if it's an event OR selected
                                 if (!isTurn && !isLabeled && !isImpact && !isSelected) return null;
 
                                 // Turn Logic: Negative = Left (Red), Positive = Right (Blue)
                                 let dotColor = isTurn ? (pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444") : (isImpact ? "#f59e0b" : "#4b5563"); 
-                                let dotRadius = 4;
+                                let dotRadius = isImpact ? 5 : 4;
                                 let strokeColor = "#fff";
                                 let strokeWidth = 1;
 
@@ -180,7 +181,6 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                         {isTurn && !isSelected && (
                                             <g>
                                                 {/* Left / Right Label */}
-                                                {/* Fix: Moved textTransform to style object as it is not a valid SVG attribute in React */}
                                                 <text 
                                                     x={pt.x} 
                                                     y={pt.y - 22} 
