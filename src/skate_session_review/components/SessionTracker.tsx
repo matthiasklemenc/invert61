@@ -17,6 +17,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const [currentSpeed, setCurrentSpeed] = useState(0); // km/h
   const [pointsRecorded, setPointsRecorded] = useState(0);
   
+  // Live feedback for the current "in-progress" turn
+  const [liveTurnAngle, setLiveTurnAngle] = useState(0); 
+  const [isTurningUI, setIsTurningUI] = useState(false);
+
   // Real Data Stores
   const timelineRef = useRef<SessionDataPoint[]>([]);
   const speedReadingsRef = useRef<number[]>([]);
@@ -28,7 +32,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   // --- EVENT DETECTION STATE ---
   const lastIntegrationTimeRef = useRef(0);
   
-  // Turn Detection
+  // Turn Detection Refs
   const isTurningRef = useRef(false);
   const turnStartYawRef = useRef(0);
   const cumulativeYawRef = useRef(0); // Continuous absolute yaw
@@ -48,6 +52,9 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     
     const gForce = Math.sqrt((x||0)**2 + (y||0)**2 + (z||0)**2) / 9.8;
     const rotMag = Math.sqrt((alpha||0)**2 + (beta||0)**2 + (gamma||0)**2); 
+    // Alpha is usually Z-axis (Yaw). 
+    // Note: On some Android devices in Chrome, alpha might be absolute 0-360. 
+    // rotationRate is usually deg/s.
     const yawRate = alpha || 0; // deg/s
 
     // UI Updates
@@ -65,8 +72,9 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     // --- EVENT LOGIC ---
 
     // A. IMPACT DETECTION (Instant)
-    // If G-Force spikes, record immediately
-    if (gForce > 2.5) { 
+    // If G-Force spikes, record immediately (e.g. landing a trick)
+    // Increased threshold slightly to filter table bumps
+    if (gForce > 2.0) { 
        // Debounce impacts slightly
        if (nowSec - lastRecordTimeRef.current > 0.2) {
            recordPoint(nowSec, gForce, rotMag, undefined);
@@ -75,17 +83,24 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     }
 
     // B. TURN DETECTION (State Machine)
-    const TURN_START_THRESHOLD = 80; // deg/s
-    const TURN_END_THRESHOLD = 30;   // deg/s
+    // Lowered thresholds significantly for table testing
+    const TURN_START_THRESHOLD = 15; // deg/s (Start detecting turn)
+    const TURN_END_THRESHOLD = 5;    // deg/s (Stop detecting turn)
 
     if (!isTurningRef.current) {
-        // Start a turn if rotating fast
+        // Start a turn if rotating fast enough
         if (Math.abs(yawRate) > TURN_START_THRESHOLD) {
             isTurningRef.current = true;
             turnStartYawRef.current = cumulativeYawRef.current;
+            setIsTurningUI(true);
         }
     } else {
         // We are currently in a turn
+        
+        // Update UI for live angle
+        const currentDelta = cumulativeYawRef.current - turnStartYawRef.current;
+        setLiveTurnAngle(Math.round(currentDelta));
+
         // Check if rotation has slowed down enough to consider the turn "finished"
         if (Math.abs(yawRate) < TURN_END_THRESHOLD) {
             finishTurn(nowSec, gForce, rotMag);
@@ -93,21 +108,24 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     }
 
     // C. HEARTBEAT (Keep graph alive)
-    // If nothing happened for 1 second, record a "boring" point just to draw the line
-    if (nowSec - lastRecordTimeRef.current > 1.0 && !isTurningRef.current) {
-        recordPoint(nowSec, gForce, rotMag, undefined); // No angle, just flow
+    // Record a boring point every 2 seconds if nothing else happens
+    if (nowSec - lastRecordTimeRef.current > 2.0 && !isTurningRef.current) {
+        recordPoint(nowSec, gForce, rotMag, undefined); 
         lastRecordTimeRef.current = nowSec;
     }
   };
 
   const finishTurn = (time: number, g: number, rot: number) => {
       isTurningRef.current = false;
+      setIsTurningUI(false);
+      setLiveTurnAngle(0);
       
       // Calculate total angle change during the event
       const totalTurn = cumulativeYawRef.current - turnStartYawRef.current;
       
-      // Only record if it was a significant turn (> 30 degrees)
-      if (Math.abs(totalTurn) > 30) {
+      // Only record if it was a real turn (> 15 degrees)
+      // This filters out jitter when just picking up the phone
+      if (Math.abs(totalTurn) > 15) {
           // Round to nearest 5 for cleaner UI (e.g. 87 -> 90)
           const cleanAngle = Math.round(totalTurn / 5) * 5;
           recordPoint(time, g, rot, cleanAngle);
@@ -220,6 +238,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
              lastIntegrationTimeRef.current = performance.now();
              
              let simTime = 0;
+             let simYaw = 0;
 
              simInterval = window.setInterval(() => {
                    simTime += 0.016;
@@ -233,6 +252,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                    if (cycle > 1.0 && cycle < 1.5) {
                        alpha = 180;
                    }
+                   
+                   simYaw += alpha * 0.016;
 
                    handleMotion({ 
                        accelerationIncludingGravity: { x:0, y: 9.8, z: 0 },
@@ -258,24 +279,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     }
   }, [status]);
   
-  const startSession = async () => {
-    if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
-      try {
-        const response = await (DeviceMotionEvent as any).requestPermission();
-        if (response === 'granted') {
-          setStatus('tracking');
-        } else {
-          alert("Permission to access motion sensors is required to track tricks.");
-        }
-      } catch (e) {
-        console.error(e);
-        setStatus('tracking');
-      }
-    } else {
-      setStatus('tracking');
-    }
+  const startSession = () => {
+    setStatus('tracking');
   };
-  
+
   const stopSession = () => {
     setStatus('idle');
     
@@ -319,13 +326,23 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       // Basic auto-labeling based on angles
       return timeline.map((p, index) => {
           // If we have a specific turn angle recorded, maybe we can guess a trick?
-          if (p.turnAngle && Math.abs(p.turnAngle) >= 160) {
-              return { 
-                  ...p, 
-                  label: "180 Turn", 
-                  isGroupStart: true, 
-                  groupId: `auto-${Date.now()}-${index}` 
-              };
+          if (p.turnAngle) {
+              const absAngle = Math.abs(p.turnAngle);
+              if (absAngle >= 160 && absAngle <= 200) {
+                  return { 
+                      ...p, 
+                      label: "180 Turn", 
+                      isGroupStart: true, 
+                      groupId: `auto-${Date.now()}-${index}` 
+                  };
+              } else if (absAngle >= 330) {
+                   return { 
+                      ...p, 
+                      label: "360 Spin", 
+                      isGroupStart: true, 
+                      groupId: `auto-${Date.now()}-${index}` 
+                  };
+              }
           }
           if (p.intensity > 3.0) {
                return { 
@@ -370,9 +387,11 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="text-6xl font-bold text-cyan-400 my-4">{formatTime(elapsedTime)}</div>
             
             <div className="grid grid-cols-2 gap-4 text-center mb-6">
-                <div className="bg-gray-900 p-2 rounded border border-gray-700">
-                    <p className="text-xs text-gray-500 uppercase">Rotation</p>
-                    <p className="text-xl font-bold text-white">{currentRot.toFixed(0)} <span className="text-xs text-gray-500">deg/s</span></p>
+                <div className={`p-2 rounded border transition-colors duration-200 ${isTurningUI ? 'bg-cyan-900 border-cyan-400' : 'bg-gray-900 border-gray-700'}`}>
+                    <p className="text-xs text-gray-500 uppercase">Turn Angle</p>
+                    <p className={`text-xl font-bold ${isTurningUI ? 'text-cyan-300' : 'text-white'}`}>
+                        {isTurningUI ? liveTurnAngle : currentRot.toFixed(0)} <span className="text-xs text-gray-500">deg</span>
+                    </p>
                 </div>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
                     <p className="text-xs text-gray-500 uppercase">Impact</p>
