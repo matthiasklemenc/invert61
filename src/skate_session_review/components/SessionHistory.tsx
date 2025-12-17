@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Session, Page, SessionDataPoint, SessionHistoryProps, Motion } from '../types';
 import SkateMap from '../../maptiler/SkateMap';
@@ -422,6 +421,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
         }
     };
 
+    // Fix: Using explicit narrowing and local variables to fix index type and arithmetic errors.
     const saveGroupLabel = (newLabel: string) => {
         if (!editingSessionId || selectedPointIndices.size === 0) return;
         
@@ -438,27 +438,33 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
         const sortedIndices = Array.from(selectedPointIndices).sort((a,b) => a - b);
         
         sortedIndices.forEach((idx, i) => {
-            const oldLabel = updatedSession.timelineData[idx].label;
-            const wasGroupStart = updatedSession.timelineData[idx].isGroupStart;
+            const point = updatedSession.timelineData[idx];
+            const oldLabel = point.label;
+            const wasGroupStart = point.isGroupStart;
 
             // If overwriting a previous trick start, decrement count
             if (oldLabel && wasGroupStart) {
-                 if (updatedSession.trickSummary[oldLabel]) updatedSession.trickSummary[oldLabel]--;
-                 if (updatedSession.trickSummary[oldLabel] <= 0) delete updatedSession.trickSummary[oldLabel];
+                 const narrowedLabel: string = oldLabel;
+                 const currentCount = updatedSession.trickSummary[narrowedLabel] || 0;
+                 if (currentCount > 0) {
+                    updatedSession.trickSummary[narrowedLabel] = currentCount - 1;
+                 }
+                 if (updatedSession.trickSummary[narrowedLabel] <= 0) delete updatedSession.trickSummary[narrowedLabel];
             }
 
-            updatedSession.timelineData[idx].label = newLabel;
-            updatedSession.timelineData[idx].groupId = groupId;
+            point.label = newLabel;
+            point.groupId = groupId;
             // Only the first point in the selection gets the visual label text
-            updatedSession.timelineData[idx].isGroupStart = (i === 0);
+            point.isGroupStart = (i === 0);
         });
 
         // 3. Update Summary Stats (Increment for the new trick group)
         const summary = updatedSession.trickSummary;
-        summary[newLabel] = (summary[newLabel] || 0) + 1;
+        const currentLabelCount = summary[newLabel] || 0;
+        summary[newLabel] = currentLabelCount + 1;
 
         // Recalculate Total
-        updatedSession.totalTricks = Object.values(summary).reduce((a: number, b: number) => a + b, 0);
+        updatedSession.totalTricks = Object.values(summary).reduce((acc: number, val: number) => acc + val, 0);
 
         // 4. Propagate Update
         onSessionUpdate(updatedSession);
@@ -591,12 +597,13 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                 <div className="mt-4">
                                     <p className="text-gray-400 text-xs font-bold mb-2 uppercase">Detected Tricks</p>
                                     <div className="flex flex-wrap gap-2">
-                                        {Object.entries(s.trickSummary).length > 0 ? Object.entries(s.trickSummary).map(([trick, count]) => {
-                                            if ((count as number) <= 0) return null;
+                                        {/* Fix: casting entries to specific types to fix unknown index errors. */}
+                                        {(Object.entries(s.trickSummary) as [string, number][]).length > 0 ? (Object.entries(s.trickSummary) as [string, number][]).map(([trick, count]) => {
+                                            if (count <= 0) return null;
                                             return (
                                                 <span key={trick} className="px-3 py-1 rounded-full text-xs text-white border border-gray-600 flex items-center gap-2" style={{backgroundColor: stringToColor(trick)}}>
                                                     <span style={{textShadow: '0 1px 2px black'}}>{trick}</span>
-                                                    <span className="bg-black/40 px-1.5 rounded-full text-[10px] text-white font-mono">{count as number}</span>
+                                                    <span className="bg-black/40 px-1.5 rounded-full text-[10px] text-white font-mono">{count}</span>
                                                 </span>
                                             );
                                         }) : (
