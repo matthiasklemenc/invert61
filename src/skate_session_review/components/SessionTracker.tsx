@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Session, SessionDataPoint, Motion, GpsPoint } from '../types';
 
@@ -40,9 +41,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       rotationStartValue: 0,
       stopTicks: 0,
       lastG: 1.0,
-      isSettling: true,
-      settleTimer: 0,
-      hasStartedMoving: false
+      isFirstSample: true // Used for instant calibration
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -59,44 +58,33 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
   const handleOrientation = (event: DeviceOrientationEvent) => {
       if (event.alpha !== null) {
+          // INSTANT CALIBRATION:
+          // The moment recording starts, the first heading reading is our 0 point.
+          if (trackingStateRef.current.isFirstSample && status === 'tracking') {
+              trackingStateRef.current.lastAlpha = event.alpha;
+              trackingStateRef.current.isFirstSample = false;
+          }
           sensorDataRef.current.alpha = event.alpha;
           sensorDataRef.current.hasOrientation = true;
       }
   };
 
   const sampleSensors = () => {
-      if (status !== 'tracking') return;
+      if (status !== 'tracking' || trackingStateRef.current.isFirstSample) return;
 
       const now = Date.now();
       const timeSec = (now - startTimeRef.current) / 1000;
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
 
-      // 1. Calculate Rotation Delta (Inverted for: Left = Negative, Right = Positive)
+      // 1. Calculate Rotation Delta (The "Perfect" Logic Reverted)
       let delta = track.lastAlpha - data.alpha;
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
 
-      // 2. Intelligent Auto-Zero (Dynamic Calibration)
-      const gMovement = Math.abs(data.gForce - 1.0) > 0.3;
-      const rotMovement = Math.abs(delta) > 5;
-      
-      if (!track.hasStartedMoving && (gMovement || rotMovement)) {
-          track.hasStartedMoving = true;
-          track.isSettling = false;
-      }
-
-      if (track.isSettling) {
-          track.settleTimer += 0.1;
-          track.lastAlpha = data.alpha;
-          track.accumulatedTurn = 0;
-          // After 3 seconds of stillness, we stop settling anyway
-          if (track.settleTimer > 3.0) track.isSettling = false;
-          return; 
-      }
-
+      // Filter micro-noise but keep turns responsive
       const absDelta = Math.abs(delta);
-      if (absDelta > 0.2) {
+      if (absDelta > 0.4) {
           track.accumulatedTurn += delta;
       }
       track.lastAlpha = data.alpha;
@@ -106,12 +94,12 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       let turnAngle: number | undefined = undefined;
       let isGroupStart = false;
 
-      // 3. Concurrent Tracking logic
+      // 2. Detection logic
       
-      // A) ROTATION DETECTION
+      // A) ROTATION DETECTION (Boundaries logic)
       if (!track.isRotating) {
           const diffFromStable = Math.abs(track.accumulatedTurn - track.lastStableAngle);
-          if (diffFromStable > 12) { // Sensitive to small turns/pumps
+          if (diffFromStable > 15) { // Responsive threshold for turns
               track.isRotating = true;
               track.rotationStartValue = track.lastStableAngle;
               track.stopTicks = 0;
@@ -119,16 +107,16 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
               isGroupStart = true;
           }
       } else {
-          // If actively turning, record frequently (detail)
-          if (timeSec - track.lastRecordTime > 0.4) shouldRecord = true;
+          // If moving, record more points for the line plot
+          if (absDelta > 1.0) shouldRecord = true;
 
-          if (absDelta < 0.8) {
+          if (absDelta < 1.0) {
               track.stopTicks++;
           } else {
               track.stopTicks = 0;
           }
 
-          if (track.stopTicks >= 4) { // Reached a stable angle
+          if (track.stopTicks >= 4) { // Reached a new stable heading
               track.isRotating = false;
               track.stopTicks = 0;
               shouldRecord = true;
@@ -137,14 +125,15 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           }
       }
 
-      // B) IMPACT / G-FORCE DETECTION (Pumps, Ollies, Drop-ins)
+      // B) G-FORCE SENSITIVITY (Ensure Pumps & Impacts show up as circles)
+      // We lowered this to 0.15G to capture small "pumps" as distinct points
       const gDiff = Math.abs(data.gForce - track.lastG);
-      if (gDiff > 0.35 || data.gForce > 2.0) {
+      if (gDiff > 0.15 || data.gForce > 1.8) {
           shouldRecord = true;
       }
       track.lastG = data.gForce;
 
-      // C) HEARTBEAT (Ensure we have background points every 2 seconds)
+      // C) Heartbeat (Max 2s gap between points)
       if (timeSec - track.lastRecordTime > 2.0) {
           shouldRecord = true;
       }
@@ -165,7 +154,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
   };
 
-  // Fix: Renamed Greek variables to consistent Latin names to resolve "Cannot find name 'phi1'" and 'phi2' errors.
   const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
       const R = 6371e3;
       const phi1 = lat1 * Math.PI/180;
@@ -198,9 +186,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           rotationStartValue: 0,
           stopTicks: 0,
           lastG: 1.0,
-          isSettling: true,
-          settleTimer: 0,
-          hasStartedMoving: false
+          isFirstSample: true
       };
       
       setPointsRecorded(0);
@@ -259,6 +245,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                    }
                    sensorDataRef.current.alpha = alpha;
                    sensorDataRef.current.gForce = 1.0 + (Math.random() * 0.1);
+                   sensorDataRef.current.hasOrientation = true;
              }, 100); 
           }
       }, 2000);
@@ -359,12 +346,11 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="text-6xl font-bold text-cyan-400 my-4">{formatTime(elapsedTime)}</div>
             
             <div className="grid grid-cols-2 gap-4 text-center mb-6">
-                <div className={`p-2 rounded border transition-colors duration-200 bg-gray-900 ${trackingStateRef.current.isSettling ? 'border-yellow-600' : 'border-gray-700'}`}>
+                <div className={`p-2 rounded border transition-colors duration-200 bg-gray-900 border-gray-700`}>
                     <p className="text-xs text-gray-500 uppercase">Live Angle</p>
                     <p className="text-xl font-bold text-white">
                         {liveYaw}°
                     </p>
-                    {trackingStateRef.current.isSettling && <p className="text-[9px] text-yellow-500 animate-pulse">SETTLING...</p>}
                 </div>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
                     <p className="text-xs text-gray-500 uppercase">Impact</p>

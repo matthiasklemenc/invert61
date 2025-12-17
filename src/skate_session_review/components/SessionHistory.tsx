@@ -132,7 +132,8 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                 const isSelected = selectedIndices.has(pt.index);
                                 const isLabeled = !!pt.data.label;
                                 const isTurn = pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 0;
-                                const isImpact = pt.data.intensity > 1.8; // Lowered threshold to match recorded spikes
+                                // LOWERED THRESHOLD: Show a circle for any point with 1.5G+ intensity (Pumps)
+                                const isImpact = pt.data.intensity > 1.5; 
 
                                 // We want to show a dot if it's an event OR selected
                                 if (!isTurn && !isLabeled && !isImpact && !isSelected) return null;
