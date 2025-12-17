@@ -23,14 +23,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const startTimeRef = useRef(0);
   
   const handleMotion = (event: DeviceMotionEvent) => {
-    // 1. Calculate Linear G-Force
+    // 1. Calculate Linear G-Force (Impact)
     const { x, y, z } = event.accelerationIncludingGravity || {x:0,y:0,z:0};
     const gForce = Math.sqrt((x||0)**2 + (y||0)**2 + (z||0)**2) / 9.8;
     
-    // 2. Calculate Rotation Magnitude (Turn Intensity)
+    // 2. Calculate Rotation Magnitude (Turn Intensity in deg/s)
     const { alpha, beta, gamma } = event.rotationRate || {alpha:0, beta:0, gamma:0};
-    // Simple magnitude of rotation
-    const rotMag = Math.sqrt((alpha||0)**2 + (beta||0)**2 + (gamma||0)**2) / 10; // Normalized roughly
+    // Magnitude of rotation vector
+    const rotMag = Math.sqrt((alpha||0)**2 + (beta||0)**2 + (gamma||0)**2); 
 
     setCurrentG(gForce);
     setCurrentRot(rotMag);
@@ -39,19 +39,26 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     if (status !== 'tracking') return;
 
     const now = (Date.now() - startTimeRef.current) / 1000;
-    
-    // Throttle data recording to approx 10Hz (every 0.1s)
     const lastPoint = timelineRef.current[timelineRef.current.length - 1];
     
-    // RECORD IF: Time passed OR significant event (G-force OR Rotation)
-    // This ensures we catch low-G turns (like carving) or 50-50 stalls
-    if (!lastPoint || (now - lastPoint.timestamp > 0.1)) {
+    // Throttle data recording to approx 10Hz (every 0.1s) to avoid flooding
+    // But we want to capture PEAKS immediately
+    
+    const timeSinceLast = lastPoint ? now - lastPoint.timestamp : 1.0;
+
+    if (timeSinceLast > 0.1) {
         
-        // We only save points that have "meaningful" movement to save memory, 
-        // unless it's just a periodic heartbeat
-        const isSignificant = gForce > 1.2 || gForce < 0.8 || rotMag > 5.0; // 5.0 rad/s is a decent turn start
+        // --- LOGIC UPDATE ---
+        // 1. G-Force changes (Ollies, landings)
+        const isImpact = gForce > 1.3 || gForce < 0.8;
         
-        if (isSignificant || (now - lastPoint.timestamp > 0.5)) {
+        // 2. Rapid Rotation (Snaps, 180s, 90deg turns)
+        // User requested detection for > 20 degrees rapid change.
+        // If we sample at ~10Hz (0.1s), a rate of 200 deg/s means 20 degrees change in that frame.
+        // We set threshold to 180 to be safe and catch snaps, but avoid smooth carving (usually < 100 deg/s).
+        const isRapidRotation = rotMag > 180; 
+
+        if (isImpact || isRapidRotation || timeSinceLast > 0.5) {
             timelineRef.current.push({
                 timestamp: parseFloat(now.toFixed(2)),
                 intensity: parseFloat(gForce.toFixed(2)),
@@ -102,12 +109,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
            const simInterval = setInterval(() => {
                const simG = 1 + Math.random() * 0.5;
                const finalG = Math.random() > 0.95 ? 3.0 : simG;
-               // Simulate rotation occasionally
-               const simRot = Math.random() > 0.9 ? 200 : 0; 
                
+               // Simulate rotation occasionally (Snap)
+               const isSnap = Math.random() > 0.92;
+               const simAlpha = isSnap ? 300 : Math.random() * 20;
+
                handleMotion({ 
                    accelerationIncludingGravity: { x:0, y: finalG * 9.8, z: 0 },
-                   rotationRate: { alpha: simRot, beta: 0, gamma: 0 }
+                   rotationRate: { alpha: simAlpha, beta: 0, gamma: 0 }
                } as any);
                
                const simSpeed = Math.random() * 15;
@@ -191,44 +200,45 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       // Basic logic: if user labeled a G-force of 2.5 as "Ollie", assume 2.5 is Ollie.
       // This is simple; real implementation would use DTW (Dynamic Time Warping) in future steps.
       
-      const knownPatterns: { intensity: number, label: string }[] = [];
+      const knownPatterns: { intensity: number, rotation: number, label: string }[] = [];
       history.forEach(s => {
           s.timelineData.forEach(p => {
               if (p.label && p.isGroupStart) {
-                  knownPatterns.push({ intensity: p.intensity, label: p.label });
+                  knownPatterns.push({ intensity: p.intensity, rotation: p.rotation || 0, label: p.label });
               }
           });
       });
 
       return timeline.map((p, index, arr) => {
           // Check for significant events
-          const isEvent = p.intensity > 1.5 || (p.rotation && p.rotation > 10);
+          const isEvent = p.intensity > 1.5 || (p.rotation && p.rotation > 180);
           
           if (!isEvent) return p;
 
-          const prev = arr[index - 1]?.intensity || 0;
-          const next = arr[index + 1]?.intensity || 0;
-          
-          // Simple peak detection
-          if (p.intensity > prev && p.intensity > next) {
-              let bestMatchLabel: string | undefined = undefined;
-              let minDiff = 0.5;
+          // Simple peak matching against history
+          let bestMatchLabel: string | undefined = undefined;
+          let minDiff = 1000;
 
-              for (const pattern of knownPatterns) {
-                  const diff = Math.abs(p.intensity - pattern.intensity);
-                  if (diff < minDiff) {
-                      minDiff = diff;
-                      bestMatchLabel = pattern.label;
-                  }
-              }
+          for (const pattern of knownPatterns) {
+              // Compare G-Force and Rotation similarity
+              const gDiff = Math.abs(p.intensity - pattern.intensity);
+              const rDiff = Math.abs((p.rotation || 0) - pattern.rotation);
+              // Normalize diff score
+              const totalDiff = gDiff + (rDiff / 100); 
 
-              if (bestMatchLabel) {
-                  return { ...p, label: bestMatchLabel, isGroupStart: true, groupId: `auto-${Date.now()}-${index}` };
-              } else if (p.intensity > 2.0) {
-                  // Mark high impact as unknown trick attempt
-                  return { ...p, label: undefined, isGroupStart: false };
+              if (totalDiff < minDiff && totalDiff < 1.0) {
+                  minDiff = totalDiff;
+                  bestMatchLabel = pattern.label;
               }
           }
+
+          if (bestMatchLabel) {
+              return { ...p, label: bestMatchLabel, isGroupStart: true, groupId: `auto-${Date.now()}-${index}` };
+          } else if (p.intensity > 2.0) {
+              // Mark high impact as unknown trick attempt
+              return { ...p, label: undefined, isGroupStart: false };
+          }
+          
           return p;
       });
   };
@@ -266,7 +276,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="grid grid-cols-2 gap-4 text-center mb-6">
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
                     <p className="text-xs text-gray-500 uppercase">Rotation</p>
-                    <p className="text-xl font-bold text-white">{currentRot.toFixed(0)} <span className="text-xs text-gray-500">rad/s</span></p>
+                    <p className="text-xl font-bold text-white">{currentRot.toFixed(0)} <span className="text-xs text-gray-500">deg/s</span></p>
                 </div>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
                     <p className="text-xs text-gray-500 uppercase">Impact</p>
