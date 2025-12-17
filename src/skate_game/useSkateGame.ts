@@ -675,42 +675,6 @@ export function useSkateGame() {
                      }
                 }
 
-                if (isArrested) {
-                     state.arrestTimer += dt;
-                     const policeCar = state.obstacles.find(o => o.type === 'police_car' && o.doorOpen);
-                     if (policeCar) {
-                          const targetX = policeCar.x + policeCar.w / 2;
-                          if (state.player.x < targetX) state.player.x += 2 * dt;
-                          if (state.arrestTimer > 120) {
-                              const resetAfterArrest = () => {
-                                const s = stateRef.current;
-                                s.player.state = 'RUNNING';
-                                s.player.x = 100;
-                                s.player.y = 0;
-                                s.player.vy = 0;
-                                s.player.rotation = 0;
-                                s.player.isCrouching = false;
-                                s.obstacles = s.obstacles.filter(o => o.x > 400); 
-                                s.arrestTimer = 0;
-                              };
-                              resetAfterArrest();
-                          }
-                     } else {
-                          const resetAfterArrest = () => {
-                            const s = stateRef.current;
-                            s.player.state = 'RUNNING';
-                            s.player.x = 100;
-                            s.player.y = 0;
-                            s.player.vy = 0;
-                            s.player.rotation = 0;
-                            s.player.isCrouching = false;
-                            s.obstacles = s.obstacles.filter(o => o.x > 400); 
-                            s.arrestTimer = 0;
-                          };
-                          resetAfterArrest();
-                     }
-                }
-
                 if (state.player.state === 'RUNNING') {
                     if (state.player.isFakie) {
                         state.player.state = 'COASTING';
@@ -1852,7 +1816,17 @@ export function useSkateGame() {
                  addFloatingText(state.player.x, state.currentFloorY - 100, "BOOST +500", "#3b82f6");
                  enterSpace(); 
              } else {
-                 state.player.vy = JUMP_FORCE;
+                 // Variable Jump Height Logic
+                 const maxChargeMs = 350; // Max height reached at 350ms hold
+                 const minJumpRatio = 0.45; // Tapping results in 45% of max jump force
+                 
+                 // Normalize press duration to 0-1 range
+                 const charge = Math.min(pressDuration, maxChargeMs) / maxChargeMs;
+                 
+                 // Linear interpolation: minJump + (diff * charge)
+                 const force = JUMP_FORCE * (minJumpRatio + (1 - minJumpRatio) * charge);
+                 
+                 state.player.vy = force;
                  getSoundManager().playJump();
              }
 
@@ -1864,7 +1838,6 @@ export function useSkateGame() {
              // Determine if this was a long press to ready a spin
              if (pressDuration > 200) {
                  state.player.isSpinReady = true;
-                 // Maybe add visual cue?
              } else {
                  state.player.isSpinReady = false;
              }

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Session, SessionDataPoint, Motion } from '../types';
+import { Session, SessionDataPoint, Motion, GpsPoint } from '../types';
 
 interface SessionTrackerProps {
   onSessionComplete: (session: Session) => void;
@@ -13,18 +13,27 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const [status, setStatus] = useState<'idle' | 'tracking'>('idle');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [currentG, setCurrentG] = useState(1.0);
+  const [currentRot, setCurrentRot] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0); // km/h
   
   // Real Data Stores
   const timelineRef = useRef<SessionDataPoint[]>([]);
   const speedReadingsRef = useRef<number[]>([]);
+  const pathRef = useRef<GpsPoint[]>([]);
   const startTimeRef = useRef(0);
   
   const handleMotion = (event: DeviceMotionEvent) => {
+    // 1. Calculate Linear G-Force
     const { x, y, z } = event.accelerationIncludingGravity || {x:0,y:0,z:0};
     const gForce = Math.sqrt((x||0)**2 + (y||0)**2 + (z||0)**2) / 9.8;
     
+    // 2. Calculate Rotation Magnitude (Turn Intensity)
+    const { alpha, beta, gamma } = event.rotationRate || {alpha:0, beta:0, gamma:0};
+    // Simple magnitude of rotation
+    const rotMag = Math.sqrt((alpha||0)**2 + (beta||0)**2 + (gamma||0)**2) / 10; // Normalized roughly
+
     setCurrentG(gForce);
+    setCurrentRot(rotMag);
 
     // Only record data if tracking
     if (status !== 'tracking') return;
@@ -33,11 +42,22 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     
     // Throttle data recording to approx 10Hz (every 0.1s)
     const lastPoint = timelineRef.current[timelineRef.current.length - 1];
+    
+    // RECORD IF: Time passed OR significant event (G-force OR Rotation)
+    // This ensures we catch low-G turns (like carving) or 50-50 stalls
     if (!lastPoint || (now - lastPoint.timestamp > 0.1)) {
-        timelineRef.current.push({
-            timestamp: parseFloat(now.toFixed(2)),
-            intensity: parseFloat(gForce.toFixed(2)),
-        });
+        
+        // We only save points that have "meaningful" movement to save memory, 
+        // unless it's just a periodic heartbeat
+        const isSignificant = gForce > 1.2 || gForce < 0.8 || rotMag > 5.0; // 5.0 rad/s is a decent turn start
+        
+        if (isSignificant || (now - lastPoint.timestamp > 0.5)) {
+            timelineRef.current.push({
+                timestamp: parseFloat(now.toFixed(2)),
+                intensity: parseFloat(gForce.toFixed(2)),
+                rotation: parseFloat(rotMag.toFixed(2))
+            });
+        }
     }
   };
 
@@ -48,6 +68,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       startTimeRef.current = Date.now();
       timelineRef.current = []; // Clear previous data
       speedReadingsRef.current = [];
+      pathRef.current = [];
       
       const interval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
@@ -62,6 +83,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             const speedKmh = (position.coords.speed || 0) * 3.6;
             setCurrentSpeed(speedKmh);
             speedReadingsRef.current.push(speedKmh);
+
+            // Record GPS Point
+            pathRef.current.push({
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                timestamp: position.timestamp,
+                speed: speedKmh
+            });
           },
           (err) => console.warn('GPS Error', err),
           { enableHighAccuracy: true, maximumAge: 0 }
@@ -73,7 +102,13 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
            const simInterval = setInterval(() => {
                const simG = 1 + Math.random() * 0.5;
                const finalG = Math.random() > 0.95 ? 3.0 : simG;
-               handleMotion({ accelerationIncludingGravity: { x:0, y: finalG * 9.8, z: 0 } } as any);
+               // Simulate rotation occasionally
+               const simRot = Math.random() > 0.9 ? 200 : 0; 
+               
+               handleMotion({ 
+                   accelerationIncludingGravity: { x:0, y: finalG * 9.8, z: 0 },
+                   rotationRate: { alpha: simRot, beta: 0, gamma: 0 }
+               } as any);
                
                const simSpeed = Math.random() * 15;
                setCurrentSpeed(simSpeed);
@@ -125,7 +160,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     
     let totalTricks = 0;
     processedTimeline.forEach(p => {
-        if (p.label) {
+        if (p.label && p.isGroupStart) {
             if (!summary[p.label]) summary[p.label] = 0;
             summary[p.label]++;
             totalTricks++;
@@ -145,28 +180,36 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       totalTricks: totalTricks,
       maxSpeed: parseFloat(maxSpeed.toFixed(1)), 
       avgSpeed: parseFloat(avgSpeed.toFixed(1)),
-      timelineData: processedTimeline
+      timelineData: processedTimeline,
+      path: pathRef.current.length > 1 ? [...pathRef.current] : undefined
     };
     onSessionComplete(newSession);
   };
   
   // --- AI / PATTERN MATCHING LOGIC ---
   const autoLabelTimeline = (timeline: SessionDataPoint[], history: Session[]): SessionDataPoint[] => {
+      // Basic logic: if user labeled a G-force of 2.5 as "Ollie", assume 2.5 is Ollie.
+      // This is simple; real implementation would use DTW (Dynamic Time Warping) in future steps.
+      
       const knownPatterns: { intensity: number, label: string }[] = [];
       history.forEach(s => {
           s.timelineData.forEach(p => {
-              if (p.label && p.label !== 'Trick Attempt') {
+              if (p.label && p.isGroupStart) {
                   knownPatterns.push({ intensity: p.intensity, label: p.label });
               }
           });
       });
 
       return timeline.map((p, index, arr) => {
-          if (p.intensity < 1.5) return p;
+          // Check for significant events
+          const isEvent = p.intensity > 1.5 || (p.rotation && p.rotation > 10);
+          
+          if (!isEvent) return p;
 
           const prev = arr[index - 1]?.intensity || 0;
           const next = arr[index + 1]?.intensity || 0;
           
+          // Simple peak detection
           if (p.intensity > prev && p.intensity > next) {
               let bestMatchLabel: string | undefined = undefined;
               let minDiff = 0.5;
@@ -180,9 +223,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
               }
 
               if (bestMatchLabel) {
-                  return { ...p, label: bestMatchLabel };
+                  return { ...p, label: bestMatchLabel, isGroupStart: true, groupId: `auto-${Date.now()}-${index}` };
               } else if (p.intensity > 2.0) {
-                  return { ...p, label: 'Trick Attempt' };
+                  // Mark high impact as unknown trick attempt
+                  return { ...p, label: undefined, isGroupStart: false };
               }
           }
           return p;
@@ -221,8 +265,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             
             <div className="grid grid-cols-2 gap-4 text-center mb-6">
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
-                    <p className="text-xs text-gray-500 uppercase">Speed</p>
-                    <p className="text-xl font-bold text-white">{currentSpeed.toFixed(1)} <span className="text-xs text-gray-500">km/h</span></p>
+                    <p className="text-xs text-gray-500 uppercase">Rotation</p>
+                    <p className="text-xl font-bold text-white">{currentRot.toFixed(0)} <span className="text-xs text-gray-500">rad/s</span></p>
                 </div>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
                     <p className="text-xs text-gray-500 uppercase">Impact</p>

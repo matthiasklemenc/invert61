@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Session, Page, SessionDataPoint, SessionHistoryProps, Motion } from '../types';
+import SkateMap from '../../maptiler/SkateMap';
 
 // --- UTILS ---
 const stringToColor = (str: string) => {
@@ -737,6 +738,13 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                         )}
                                     </div>
                                 </div>
+
+                                {/* MAP */}
+                                {s.path && s.path.length > 1 && (
+                                    <div className="mt-4 h-48 rounded-lg overflow-hidden border border-gray-700">
+                                        <SkateMap path={s.path} />
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

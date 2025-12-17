@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useSkateGame } from "./useSkateGame";
 import GameHUD from "./GameHUD";
@@ -92,71 +93,40 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     } = useSkateGame();
 
     // -------------------------------------------------------
-    // 🔥 REAL MOBILE CANVAS FIX — NEVER INVISIBLE AGAIN
+    // 🔥 REAL MOBILE CANVAS FIX — RESIZE OBSERVER
     // -------------------------------------------------------
-    function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement) {
-        const dpr = window.devicePixelRatio || 1;
-        const rect = canvas.getBoundingClientRect();
-
-        // Prevent invisible 0-height/0-width bug
-        if (rect.width === 0 || rect.height === 0) return;
-
-        const displayWidth = Math.round(rect.width * dpr);
-        const displayHeight = Math.round(rect.height * dpr);
-
-        if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-            canvas.width = displayWidth;
-            canvas.height = displayHeight;
-        }
-
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-            ctx.scale(dpr, dpr);
-        }
-    }
-
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        resizeCanvasToDisplaySize(canvas);
+        const resizeCanvasToDisplaySize = (entries: ResizeObserverEntry[]) => {
+            for (let entry of entries) {
+                const width = entry.contentRect.width;
+                const height = entry.contentRect.height;
+                const dpr = window.devicePixelRatio || 1;
 
-        const sync = () => resizeCanvasToDisplaySize(canvas);
-        window.addEventListener("resize", sync);
-        window.addEventListener("orientationchange", sync);
+                if (width === 0 || height === 0) continue;
 
-        return () => {
-            window.removeEventListener("resize", sync);
-            window.removeEventListener("orientationchange", sync);
-        };
-    }, [canvasRef]);
+                const displayWidth = Math.round(width * dpr);
+                const displayHeight = Math.round(height * dpr);
 
-    // -------------------------------------------------------
-    // OPTIONAL: Your own logical-resolution system (kept)
-    // -------------------------------------------------------
-    useEffect(() => {
-        const updateResolution = () => {
-            const canvas = canvasRef.current;
-            if (!canvas) return;
-
-            const TARGET_HEIGHT = 360;
-
-            const rect = canvas.getBoundingClientRect();
-            if (rect.height === 0) return;
-
-            const aspect = rect.width / rect.height;
-
-            canvas.height = TARGET_HEIGHT;
-            canvas.width = TARGET_HEIGHT * aspect;
+                // Resize only if needed to avoid clearing canvas unnecessarily
+                if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                    canvas.width = displayWidth;
+                    canvas.height = displayHeight;
+                    const ctx = canvas.getContext("2d");
+                    if (ctx) {
+                         ctx.scale(dpr, dpr);
+                    }
+                }
+            }
         };
 
-        updateResolution();
-        window.addEventListener("resize", updateResolution);
-        window.addEventListener("orientationchange", updateResolution);
+        const observer = new ResizeObserver(resizeCanvasToDisplaySize);
+        observer.observe(canvas);
 
         return () => {
-            window.removeEventListener("resize", updateResolution);
-            window.removeEventListener("orientationchange", updateResolution);
+            observer.disconnect();
         };
     }, [canvasRef]);
 
