@@ -12,16 +12,14 @@ interface SessionTrackerProps {
 const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, previousSessions, onBack, motions }) => {
   const [status, setStatus] = useState<'idle' | 'tracking'>('idle');
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [currentG, setCurrentG] = useState(1.0);
-  const [currentRot, setCurrentRot] = useState(0);
-  const [currentSpeed, setCurrentSpeed] = useState(0); // km/h
-  const [pointsRecorded, setPointsRecorded] = useState(0);
   
-  // Live feedback vars
-  const [liveYaw, setLiveYaw] = useState(0); // Total accumulated yaw since start
-  const [lastSavedYawDisplay, setLastSavedYawDisplay] = useState(0);
-
-  // Real Data Stores
+  // UI Live Feedback
+  const [currentG, setCurrentG] = useState(1.0);
+  const [liveYaw, setLiveYaw] = useState(0); 
+  const [pointsRecorded, setPointsRecorded] = useState(0);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
+  
+  // --- REFS FOR RAW DATA ---
   const timelineRef = useRef<SessionDataPoint[]>([]);
   const speedReadingsRef = useRef<number[]>([]);
   const pathRef = useRef<GpsPoint[]>([]);
@@ -29,124 +27,119 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const startTimeRef = useRef(0);
   const lastPositionRef = useRef<GpsPoint | null>(null);
 
-  // --- MOTION PROCESSING STATE ---
-  const lastTimestampRef = useRef<number>(0);
-  
-  // The absolute accumulated yaw (Z-axis rotation) since session start
-  const cumulativeYawRef = useRef(0); 
-  
-  // The yaw value at the last time we "saved" an event (to calc deltas)
-  const lastSavedYawRef = useRef(0);
-  
-  // Timer to detect when motion has stopped
-  const stillnessTimerRef = useRef<number | null>(null);
+  // --- SENSOR STATE ---
+  // We use Refs for sensor data to avoid re-renders in the sampling loop
+  const sensorDataRef = useRef({
+      gForce: 1.0,
+      rotRate: 0,
+      alpha: 0, // Absolute compass heading (0-360)
+      hasOrientation: false
+  });
 
+  // --- TRACKING STATE ---
+  // Used to calculate deltas between samples
+  const trackingStateRef = useRef({
+      lastAlpha: 0,
+      accumulatedTurn: 0,
+      lastRecordTime: 0,
+      baseYaw: 0 // The angle we started the session at (to zero it out)
+  });
+
+  // 1. Device Motion Listener (Gravity / Impact)
   const handleMotion = (event: DeviceMotionEvent) => {
-    // 1. Time Delta
-    // Use event.interval if available (it's the hardware polling rate in seconds), otherwise calc manually
-    // Note: event.interval is usually in seconds, but sometimes milliseconds on different browsers.
-    // Standard is seconds. We fallback to performance.now delta if needed.
-    const now = performance.now();
-    let dt = 0;
-    
-    if (event.interval && event.interval > 0) {
-        // Some Androids report interval in ms, iOS in s. 
-        // Typically < 1.0 means seconds.
-        dt = event.interval < 1.0 ? event.interval : event.interval / 1000;
-    } else {
-        if (lastTimestampRef.current > 0) {
-            dt = (now - lastTimestampRef.current) / 1000;
-        }
-        lastTimestampRef.current = now;
-    }
-    
-    // Sanity check dt to prevent huge jumps on lag
-    if (dt > 0.5) dt = 0; 
-
-    // 2. Sensor Data extraction
     const { x, y, z } = event.accelerationIncludingGravity || {x:0,y:0,z:0};
     const { alpha, beta, gamma } = event.rotationRate || {alpha:0, beta:0, gamma:0};
     
+    // G-Force = Magnitude of acceleration / 9.8
     const gForce = Math.sqrt((x||0)**2 + (y||0)**2 + (z||0)**2) / 9.8;
     const rotMag = Math.sqrt((alpha||0)**2 + (beta||0)**2 + (gamma||0)**2); 
+
+    sensorDataRef.current.gForce = gForce;
+    sensorDataRef.current.rotRate = rotMag;
     
-    // Alpha is Z-axis (Yaw). We rely on this for table turns and general spins.
-    let yawRate = alpha || 0; 
-
-    // 3. DEADZONE / NOISE GATE
-    // If rotation is extremely slow (jitter), ignore it to prevent drift
-    if (Math.abs(yawRate) < 1.0) {
-        yawRate = 0;
-    }
-
-    // 4. INTEGRATION
-    cumulativeYawRef.current += yawRate * dt;
-
-    // UI Updates (throttled slightly by React state, but that's fine)
+    // Update UI immediately for responsiveness
     setCurrentG(gForce);
-    setCurrentRot(rotMag);
-    setLiveYaw(Math.round(cumulativeYawRef.current));
-
-    if (status !== 'tracking') return;
-
-    const sessionTime = (Date.now() - startTimeRef.current) / 1000;
-
-    // --- LOGIC: "Move then Stop" Detection ---
-    
-    const IS_MOVING_THRESHOLD = 5.0; // deg/s. If rate is below this, we consider it "stopped".
-    const MIN_ANGLE_TO_RECORD = 15.0; // Degrees. Must turn at least this much to matter.
-    const IMPACT_THRESHOLD = 2.5; // Gs.
-
-    // A. IMPACT DETECTION (Immediate)
-    if (gForce > IMPACT_THRESHOLD) {
-        recordPoint(sessionTime, gForce, rotMag, undefined, "Impact");
-        // Reset stillness check if we just slammed
-        if (stillnessTimerRef.current) clearTimeout(stillnessTimerRef.current);
-    }
-
-    // B. ROTATION COMMIT LOGIC
-    if (Math.abs(yawRate) > IS_MOVING_THRESHOLD) {
-        // We are moving. Cancel any pending "stop" checks.
-        if (stillnessTimerRef.current) {
-            clearTimeout(stillnessTimerRef.current);
-            stillnessTimerRef.current = null;
-        }
-    } else {
-        // We are NOT moving (or moving very slowly).
-        // If we haven't started a timer to check for "settling", start one now.
-        if (!stillnessTimerRef.current) {
-            stillnessTimerRef.current = window.setTimeout(() => {
-                // The timer finished! Meaning we stayed still for X ms.
-                
-                // Check how much we turned since the last save
-                const deltaYaw = cumulativeYawRef.current - lastSavedYawRef.current;
-                
-                if (Math.abs(deltaYaw) > MIN_ANGLE_TO_RECORD) {
-                    // It was a significant turn. Record it.
-                    const cleanAngle = Math.round(deltaYaw);
-                    recordPoint(sessionTime, gForce, rotMag, cleanAngle, "Turn");
-                    
-                    // Update our baseline so we start counting from 0 for the next trick
-                    lastSavedYawRef.current = cumulativeYawRef.current;
-                    setLastSavedYawDisplay(Math.round(cumulativeYawRef.current));
-                }
-                
-                stillnessTimerRef.current = null;
-            }, 400); // Wait 0.4s of stillness before committing the turn
-        }
-    }
   };
 
-  const recordPoint = (time: number, g: number, rot: number, angle?: number, debugLabel?: string) => {
-      const point: SessionDataPoint = {
-          timestamp: parseFloat(time.toFixed(2)),
-          intensity: parseFloat(g.toFixed(2)),
-          rotation: parseFloat(rot.toFixed(2)),
-          turnAngle: angle
-      };
-      timelineRef.current.push(point);
-      setPointsRecorded(prev => prev + 1);
-      // console.log(`Recorded: ${debugLabel} | Angle: ${angle}`);
+  // 2. Device Orientation Listener (Absolute Angles - Critical for Table Turns)
+  const handleOrientation = (event: DeviceOrientationEvent) => {
+      // Alpha is the compass heading (0-360)
+      if (event.alpha !== null) {
+          sensorDataRef.current.alpha = event.alpha;
+          sensorDataRef.current.hasOrientation = true;
+      }
+  };
+
+  // 3. The Sampling Loop (Runs every 100ms)
+  // This ensures we capture data even if moving slowly, and handles the logic
+  const sampleSensors = () => {
+      if (status !== 'tracking') return;
+
+      const now = Date.now();
+      const timeSec = (now - startTimeRef.current) / 1000;
+      const data = sensorDataRef.current;
+      const track = trackingStateRef.current;
+
+      // --- ANGLE CALCULATION ---
+      let currentAlpha = data.alpha;
+      
+      // Calculate minimal difference (handling 0/360 wrap)
+      // e.g. moving from 359 to 1 is a +2 degree turn, not -358
+      let delta = currentAlpha - track.lastAlpha;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+
+      // Ignore tiny jitter (deadzone)
+      if (Math.abs(delta) > 1.0) {
+          track.accumulatedTurn += delta;
+      }
+      track.lastAlpha = currentAlpha;
+      
+      // Update UI with total turn relative to start
+      setLiveYaw(Math.round(track.accumulatedTurn));
+
+      // --- RECORDING LOGIC ---
+      // We record a point if:
+      // A. Big Impact (Jump/Land)
+      // B. Significant Rotation Change (> 5 deg since last save)
+      // C. Heartbeat (every 1s) to keep graph alive
+
+      const lastPoint = timelineRef.current[timelineRef.current.length - 1];
+      const lastAngle = lastPoint?.turnAngle || 0;
+      const angleDiff = Math.abs(track.accumulatedTurn - lastAngle);
+      const timeDiff = timeSec - track.lastRecordTime;
+
+      let shouldRecord = false;
+      let angleToRecord: number | undefined = undefined;
+
+      // A. Impact
+      if (data.gForce > 2.0) {
+          shouldRecord = true;
+      }
+
+      // B. Turn (record the accumulated angle)
+      if (angleDiff > 5.0) {
+          shouldRecord = true;
+          angleToRecord = Math.round(track.accumulatedTurn);
+      }
+
+      // C. Heartbeat
+      if (timeDiff > 1.0) {
+          shouldRecord = true;
+      }
+
+      if (shouldRecord) {
+          const newPoint: SessionDataPoint = {
+              timestamp: parseFloat(timeSec.toFixed(2)),
+              intensity: parseFloat(data.gForce.toFixed(2)),
+              rotation: parseFloat(data.rotRate.toFixed(2)),
+              turnAngle: angleToRecord // Undefined if just an impact/heartbeat
+          };
+
+          timelineRef.current.push(newPoint);
+          setPointsRecorded(prev => prev + 1);
+          track.lastRecordTime = timeSec;
+      }
   };
 
   // Helper to calc distance between two coords
@@ -166,6 +159,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
   useEffect(() => {
     let watchId: number;
+    let sampleInterval: number;
     let simInterval: number;
 
     if (status === 'tracking') {
@@ -175,19 +169,28 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       pathRef.current = [];
       lastPositionRef.current = null;
       
-      // Reset State
-      cumulativeYawRef.current = 0;
-      lastSavedYawRef.current = 0;
-      lastTimestampRef.current = performance.now();
-      setLiveYaw(0);
-      setLastSavedYawDisplay(0);
-      setPointsRecorded(0);
+      // Reset Tracking State
+      trackingStateRef.current = {
+          lastAlpha: sensorDataRef.current.alpha,
+          accumulatedTurn: 0,
+          lastRecordTime: 0,
+          baseYaw: sensorDataRef.current.alpha
+      };
       
-      const interval = setInterval(() => {
+      setPointsRecorded(0);
+      setLiveYaw(0);
+      setCurrentSpeed(0);
+      
+      const timerInterval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 1000);
 
+      // Start Listeners
       window.addEventListener('devicemotion', handleMotion);
+      window.addEventListener('deviceorientation', handleOrientation);
+
+      // Start Sampling Loop (100ms = 10Hz)
+      sampleInterval = window.setInterval(sampleSensors, 100);
 
       // --- GPS TRACKING ---
       if (navigator.geolocation) {
@@ -236,69 +239,64 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         );
       }
 
-      // Simulation for Desktop Testing
+      // Simulation for Desktop Testing (if no sensors detected after 2s)
       const checkForSensors = setTimeout(() => {
-          // If no events received after 2s, assume no sensors (desktop) and simulate
-          if (timelineRef.current.length === 0 && cumulativeYawRef.current === 0) {
-             console.log("No motion detected, starting simulation...");
-             lastTimestampRef.current = performance.now();
+          if (!sensorDataRef.current.hasOrientation && timelineRef.current.length === 0) {
+             console.log("No sensors detected (Desktop?), starting simulation...");
              
              let simTime = 0;
-
              simInterval = window.setInterval(() => {
-                   simTime += 0.016; // 60fps
-                   const now = performance.now();
+                   simTime += 0.1;
+                   const now = Date.now();
                    
-                   // Simulate a turn: 
-                   // 0-2s: Nothing
-                   // 2-3s: Turn 90 deg (90 deg/s for 1s)
-                   // 3-5s: Stop (should trigger record)
+                   // Simulate a turn: 0->90 degrees over 2 seconds
                    let alpha = 0;
                    const cycle = simTime % 5;
-                   
-                   if (cycle > 2.0 && cycle < 3.0) {
-                       alpha = 90;
+                   if (cycle > 1 && cycle < 3) {
+                       alpha = (cycle - 1) * 90; // 0 to 180
+                   } else if (cycle >= 3) {
+                       alpha = 180;
                    }
-
-                   handleMotion({ 
-                       accelerationIncludingGravity: { x:0, y: 9.8, z: 0 },
-                       rotationRate: { alpha: alpha, beta: 0, gamma: 0 },
-                       timeStamp: now,
-                       interval: 0.016 // Provide interval for simulation accuracy
-                   } as any);
                    
-                   const simSpeed = 5 + Math.random() * 2;
-                   setCurrentSpeed(simSpeed);
-                   if (Math.random() > 0.95) speedReadingsRef.current.push(simSpeed);
-
-             }, 16); 
+                   // Update the ref directly as if the event happened
+                   sensorDataRef.current.alpha = alpha;
+                   sensorDataRef.current.gForce = 1.0; // Flat table
+                   
+                   // Trigger sampling manually since the interval is running separately
+                   // (Actually sampleInterval handles this, we just updated the data source)
+             }, 100); 
           }
       }, 2000);
 
       return () => {
         window.removeEventListener('devicemotion', handleMotion);
-        clearInterval(interval);
+        window.removeEventListener('deviceorientation', handleOrientation);
+        clearInterval(timerInterval);
+        clearInterval(sampleInterval);
         clearTimeout(checkForSensors);
         if (simInterval) clearInterval(simInterval);
         if (watchId) navigator.geolocation.clearWatch(watchId);
-        if (stillnessTimerRef.current) clearTimeout(stillnessTimerRef.current);
       };
     }
   }, [status]);
   
   const startSession = async () => {
+    // Request permissions for iOS 13+
     if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
       try {
         const response = await (DeviceMotionEvent as any).requestPermission();
         if (response === 'granted') {
-          setStatus('tracking');
+           // Also try orientation
+           if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+               await (DeviceOrientationEvent as any).requestPermission();
+           }
+           setStatus('tracking');
         } else {
           alert("Permission to access motion sensors is required.");
         }
       } catch (e) {
         console.error(e);
-        // Sometimes non-iOS devices throw error on requestPermission, just try starting
-        setStatus('tracking');
+        setStatus('tracking'); // Try anyway (Android/Desktop)
       }
     } else {
       setStatus('tracking');
@@ -308,6 +306,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const stopSession = () => {
     setStatus('idle');
     
+    // Process final timeline
     const processedTimeline = autoLabelTimeline(timelineRef.current, previousSessions);
     
     const summary: Record<string, number> = {};
@@ -341,27 +340,36 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   };
   
   const autoLabelTimeline = (timeline: SessionDataPoint[], history: Session[]): SessionDataPoint[] => {
+      // Basic auto-labeling based on the recorded turnAngle
+      let lastLabelIndex = -100;
+
       return timeline.map((p, index) => {
-          if (p.turnAngle) {
+          if (p.turnAngle !== undefined && p.turnAngle !== null) {
               const absAngle = Math.abs(p.turnAngle);
-              // Simple heuristic for labels
-              if (absAngle >= 160 && absAngle <= 200) {
-                  return { 
-                      ...p, 
-                      label: "180 Turn", 
-                      isGroupStart: true, 
-                      groupId: `auto-${Date.now()}-${index}` 
-                  };
-              } else if (absAngle >= 330) {
-                   return { 
-                      ...p, 
-                      label: "360 Spin", 
-                      isGroupStart: true, 
-                      groupId: `auto-${Date.now()}-${index}` 
-                  };
+              
+              // Only label if it's a "peak" or significant change and we haven't labeled recently
+              if (index - lastLabelIndex > 10) { // Don't label every single point
+                  if (absAngle >= 160 && absAngle <= 200) {
+                      lastLabelIndex = index;
+                      return { 
+                          ...p, 
+                          label: "180 Turn", 
+                          isGroupStart: true, 
+                          groupId: `auto-${Date.now()}-${index}` 
+                      };
+                  } else if (absAngle >= 330) {
+                       lastLabelIndex = index;
+                       return { 
+                          ...p, 
+                          label: "360 Spin", 
+                          isGroupStart: true, 
+                          groupId: `auto-${Date.now()}-${index}` 
+                      };
+                  }
               }
           }
-          if (p.intensity > 3.0) {
+          if (p.intensity > 3.0 && index - lastLabelIndex > 5) {
+               lastLabelIndex = index;
                return { 
                   ...p, 
                   label: "Impact", 
@@ -407,10 +415,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                 <div className={`p-2 rounded border transition-colors duration-200 bg-gray-900 border-gray-700`}>
                     <p className="text-xs text-gray-500 uppercase">Live Angle</p>
                     <p className="text-xl font-bold text-white">
-                        {/* Show current accumulation relative to last save */}
-                        {Math.round(liveYaw - lastSavedYawDisplay)}°
+                        {liveYaw}°
                     </p>
-                    <p className="text-[10px] text-gray-600">Abs: {liveYaw}°</p>
                 </div>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
                     <p className="text-xs text-gray-500 uppercase">Impact</p>
@@ -429,7 +435,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                  ></div>
             </div>
             
-            <p className="text-xs text-gray-600 mt-4 font-mono">{pointsRecorded} events recorded</p>
+            <p className="text-xs text-gray-600 mt-4 font-mono">{pointsRecorded} data points recorded</p>
 
             <p className="text-sm text-gray-400 mt-6">Screen can be turned off.</p>
         </div>
