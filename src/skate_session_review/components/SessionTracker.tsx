@@ -9,8 +9,8 @@ interface SessionTrackerProps {
   motions: Motion[];
 }
 
-const CALIBRATION_DURATION_SEC = 5; // Reduced calibration time
-const SLAP_THRESHOLD = 1.15; // Extremely sensitive - light taps will work
+const CALIBRATION_DURATION_SEC = 5; 
+const SLAP_THRESHOLD = 1.6; // USER SPECIFIED: 1.6G
 const SLAP_WINDOW_MS = 1200; 
 
 const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, previousSessions, onBack, motions }) => {
@@ -22,7 +22,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const [pointsRecorded, setPointsRecorded] = useState(0);
   const [firstSlapDetected, setFirstSlapDetected] = useState(false);
   
-  // Refs for logic to avoid closure staleness in setInterval
+  // REFS ARE CRITICAL FOR BACKGROUND LOOPS IN REACT
   const statusRef = useRef(status);
   const timelineRef = useRef<SessionDataPoint[]>([]);
   const speedReadingsRef = useRef<number[]>([]);
@@ -48,6 +48,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const trackingStateRef = useRef({
       lastAlpha: 0,
       accumulatedTurn: 0,
+      lastStableAngle: 0,
       isFirstSample: true
   });
 
@@ -55,6 +56,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     const acc = event.accelerationIncludingGravity || { x: 0, y: 0, z: 0 };
     const rot = event.rotationRate || { alpha: 0, beta: 0, gamma: 0 };
     
+    // Calculate total G-Force
     const gForce = Math.sqrt((acc.x || 0) ** 2 + (acc.y || 0) ** 2 + (acc.z || 0) ** 2) / 9.81;
     const rotMag = Math.sqrt((rot.alpha || 0) ** 2 + (rot.beta || 0) ** 2 + (rot.gamma || 0) ** 2); 
 
@@ -64,6 +66,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     
     setCurrentG(gForce);
 
+    // SLAP DETECTION LOGIC
     if (statusRef.current === 'armed') {
         if (gForce > SLAP_THRESHOLD) {
             const now = Date.now();
@@ -84,6 +87,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       if (event.alpha !== null) {
           if (trackingStateRef.current.isFirstSample) {
               trackingStateRef.current.lastAlpha = event.alpha;
+              trackingStateRef.current.lastStableAngle = event.alpha;
               trackingStateRef.current.isFirstSample = false;
           }
           sensorDataRef.current.alpha = event.alpha;
@@ -91,31 +95,42 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
   };
 
+  // THIS FUNCTION RUNS EVERY 100MS TO CAPTURE DATA
   const sampleSensors = () => {
       const now = Date.now();
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
+      let turnToRecord: number | undefined = undefined;
 
-      // 1. Process Heading
+      // 1. Restore Rotation/Turn Detection Logic
       if (data.hasOrientation) {
           let delta = track.lastAlpha - data.alpha;
           if (delta > 180) delta -= 360;
           if (delta < -180) delta += 360;
-          if (Math.abs(delta) > 0.3) {
+
+          if (Math.abs(delta) > 0.2) {
               track.accumulatedTurn += delta;
           }
           track.lastAlpha = data.alpha;
           setLiveYaw(Math.round(track.accumulatedTurn));
+
+          // Turn Event Detection (Landed/Completed Turn)
+          // If rotation rate is low (board is stable) and we've moved > 25 deg since last mark
+          if (data.rotRate < 50 && Math.abs(track.accumulatedTurn - track.lastStableAngle) > 25) {
+              turnToRecord = Math.round(track.accumulatedTurn - track.lastStableAngle);
+              track.lastStableAngle = track.accumulatedTurn;
+          }
       }
 
-      // 2. Record Data (CRITICAL FIX: uses statusRef.current)
+      // 2. Continuous Data Recording (FIX: Uses statusRef.current to avoid closure bug)
       if (statusRef.current === 'tracking') {
           const timeSec = (now - startTimeRef.current) / 1000;
           
           const newPoint: SessionDataPoint = {
               timestamp: parseFloat(timeSec.toFixed(2)),
               intensity: parseFloat(data.gForce.toFixed(2)),
-              rotation: parseFloat(data.rotRate.toFixed(2))
+              rotation: parseFloat(data.rotRate.toFixed(2)),
+              turnAngle: turnToRecord // Saved to data point for History graph
           };
 
           timelineRef.current.push(newPoint);
@@ -123,6 +138,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
   };
 
+  // Calibration Countdown
   useEffect(() => {
       if (status === 'calibrating' && calibrationLeft > 0) {
           const timer = setTimeout(() => setCalibrationLeft(l => l - 1), 1000);
@@ -135,29 +151,41 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const startRecording = () => {
       if (statusRef.current === 'tracking') return;
       
+      // Reset buffers and timers
       timelineRef.current = []; 
       speedReadingsRef.current = [];
       pathRef.current = [];
       startTimeRef.current = Date.now();
       
+      // Reset rotation state
+      trackingStateRef.current.accumulatedTurn = 0;
+      trackingStateRef.current.lastStableAngle = sensorDataRef.current.alpha;
+
       setPointsRecorded(0);
       setElapsedTime(0);
       setStatus('tracking');
 
       if (navigator.vibrate) navigator.vibrate([150, 100, 150]);
 
+      // Start GPS watch
       if (navigator.geolocation) {
         watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => {
             const speedKmh = (pos.coords.speed || 0) * 3.6;
             speedReadingsRef.current.push(speedKmh);
-            pathRef.current.push({ lat: pos.coords.latitude, lon: pos.coords.longitude, timestamp: pos.timestamp, speed: speedKmh });
+            pathRef.current.push({ 
+                lat: pos.coords.latitude, 
+                lon: pos.coords.longitude, 
+                timestamp: pos.timestamp, 
+                speed: speedKmh 
+            });
           },
           null, { enableHighAccuracy: true }
         );
       }
   };
 
+  // Tracking timer display update
   useEffect(() => {
     if (status === 'tracking') {
         const timer = setInterval(() => {
@@ -195,6 +223,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   };
 
   const stopSession = () => {
+    // Cleanup listeners and intervals
     if (sampleIntervalRef.current) clearInterval(sampleIntervalRef.current);
     if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
     window.removeEventListener('devicemotion', handleMotion, true);
@@ -204,6 +233,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : 0;
     const avgSpeed = speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
 
+    // Build the final Session object
     const newSession: Session = {
       id: `session-${Date.now()}`,
       date: new Date().toISOString(),
@@ -212,7 +242,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       totalTricks: 0,
       maxSpeed: parseFloat(maxSpeed.toFixed(1)), 
       avgSpeed: parseFloat(avgSpeed.toFixed(1)),
-      timelineData: [...timelineRef.current],
+      timelineData: [...timelineRef.current], // Copy the recorded buffer
       path: pathRef.current.length > 1 ? [...pathRef.current] : undefined
     };
     
@@ -250,7 +280,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
       {status === 'armed' && (
         <div className="text-center w-full">
-            <div className={`w-32 h-32 border-4 rounded-full mx-auto flex items-center justify-center mb-8 transition-all duration-75 ${firstSlapDetected ? 'bg-yellow-500 border-yellow-300 scale-110' : 'bg-red-600/20 border-red-600 shadow-[0_0_30px_rgba(220,38,38,0.4)] animate-pulse'}`}>
+            <div className={`w-32 h-32 border-4 rounded-full mx-auto flex items-center justify-center mb-8 transition-all duration-75 ${firstSlapDetected ? 'bg-yellow-500 border-yellow-300 scale-110' : 'bg-red-600/10 border-red-600 shadow-[0_0_30px_rgba(220,38,38,0.4)] animate-pulse'}`}>
                 <div className={`w-16 h-16 rounded-full ${firstSlapDetected ? 'bg-white' : 'bg-red-600'}`}></div>
             </div>
             
