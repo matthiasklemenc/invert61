@@ -387,7 +387,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
         const updatedSession = JSON.parse(JSON.stringify(session)) as Session;
         const groupId = `group-${Date.now()}`;
         
-        // Fix: Explicitly type indices from selectedPointIndices to prevent 'unknown' indexing error on timelineData.
+        // Explicitly type indices to prevent indexing errors
         const sortedIndices: number[] = Array.from(selectedPointIndices).sort((a: number, b: number) => a - b);
         
         sortedIndices.forEach((idx) => {
@@ -408,10 +408,9 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
 
             point.label = newLabel;
             point.groupId = groupId;
-            point.isGroupStart = false; // Reset; will be re-set below.
+            point.isGroupStart = false;
         });
 
-        // Ensure only the first point in the grouped sequence acts as the visible label anchor.
         if (sortedIndices.length > 0) {
             updatedSession.timelineData[sortedIndices[0]].isGroupStart = true;
         }
@@ -516,7 +515,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                     <div><p className="text-gray-500 text-xs">AVG SPEED</p><p className="font-mono font-bold text-white text-lg">{s.avgSpeed || 0} km/h</p></div>
                                 </div>
                                 <div className="mt-4">
-                                    <p className="text-gray-400 text-xs font-bold mb-2 uppercase">Detected Tricks</p>
+                                    <p className="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest">Detected Tricks</p>
                                     <div className="flex flex-wrap gap-2">
                                         {Object.entries(s.trickSummary).length > 0 ? Object.entries(s.trickSummary).map(([trick, count]) => (
                                             (typeof count === 'number' && count > 0) && (
@@ -527,6 +526,14 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                         )) : <p className="text-gray-500 text-xs">No tricks named yet.</p>}
                                     </div>
                                 </div>
+                                {s.path && s.path.length > 0 && (
+                                    <div className="mt-6">
+                                        <p className="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest">Route Map</p>
+                                        <div className="rounded-lg overflow-hidden border border-gray-700 bg-gray-900 shadow-lg">
+                                            <SkateMap path={s.path} className="h-56 w-full" />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

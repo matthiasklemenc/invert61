@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Session, SessionDataPoint, Motion, GpsPoint } from '../types';
 
@@ -42,7 +41,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       lastStableAngle: 0,
       isRotating: false,
       rotationStartValue: 0,
-      stopTicks: 0,
       lastG: 1.0,
       isFirstSample: true,
       lastDeltaSign: 0 // 1 for right, -1 for left
@@ -91,7 +89,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       const currentDeltaSign = delta > 0.6 ? 1 : (delta < -0.6 ? -1 : 0);
 
       if (!calibrating) {
-          // DRIFT FILTER: Prevent counting noise
+          // DRIFT FILTER: Prevent noise from accumulating when stationary
           if (absDelta > 0.6) {
               track.accumulatedTurn += delta;
           } else if (!track.isRotating) {
@@ -133,8 +131,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
               if (timeSec - track.lastRecordTime > 0.2) shouldRecord = true;
 
               // IMMEDIATE COMMIT LOGIC:
-              // Per request: if speed drops below 3 degrees/sample, finalize the turn INSTANTLY (0 delay).
-              // Also finalize if direction flips (e.g. pivoting back).
+              // Per request: if speed drops below 3.0° per sample, finalize turn INSTANTLY.
               const directionChanged = currentDeltaSign !== 0 && track.lastDeltaSign !== 0 && currentDeltaSign !== track.lastDeltaSign;
               const hasSlowedDown = absDelta < 3.0;
 
@@ -155,7 +152,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           }
           track.lastG = data.gForce;
 
-          // C) Continuity Heartbeat
+          // C) continuity heartbeat
           if (timeSec - track.lastRecordTime > 2.0) {
               shouldRecord = true;
           }
@@ -207,7 +204,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           lastStableAngle: 0,
           isRotating: false,
           rotationStartValue: 0,
-          stopTicks: 0,
           lastG: 1.0,
           isFirstSample: true,
           lastDeltaSign: 0
