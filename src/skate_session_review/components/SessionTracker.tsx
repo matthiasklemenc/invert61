@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Session, SessionDataPoint, Motion, GpsPoint } from '../types';
 
@@ -10,8 +9,8 @@ interface SessionTrackerProps {
 }
 
 const CALIBRATION_DURATION_SEC = 10;
-const SLAP_THRESHOLD = 5.0; // G-Force magnitude to count as a slap
-const SLAP_WINDOW_MS = 700; // Time allowed between two slaps
+const SLAP_THRESHOLD = 4.5; // G-Force magnitude spike
+const SLAP_WINDOW_MS = 800; // Time allowed between two slaps
 
 const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, previousSessions, onBack, motions }) => {
   const [status, setStatus] = useState<'uninitialized' | 'calibrating' | 'armed' | 'tracking'>('uninitialized');
@@ -30,6 +29,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const startTimeRef = useRef(0);
   const lastPositionRef = useRef<GpsPoint | null>(null);
   const lastSlapTimeRef = useRef<number>(0);
+  const sampleIntervalRef = useRef<number | null>(null);
 
   const sensorDataRef = useRef({
       gForce: 1.0,
@@ -45,7 +45,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       lastStableAngle: 0,
       isRotating: false,
       rotationStartValue: 0,
-      stopTicks: 0,
       lastG: 1.0,
       isFirstSample: true,
       lastDeltaSign: 0 
@@ -66,7 +65,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     if (status === 'armed') {
         if (gForce > SLAP_THRESHOLD) {
             const now = Date.now();
-            if (now - lastSlapTimeRef.current < SLAP_WINDOW_MS && now - lastSlapTimeRef.current > 100) {
+            const diff = now - lastSlapTimeRef.current;
+            if (diff < SLAP_WINDOW_MS && diff > 150) {
                 // Double slap detected!
                 startRecording();
             }
@@ -77,7 +77,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
   const handleOrientation = (event: DeviceOrientationEvent) => {
       if (event.alpha !== null) {
-          if (trackingStateRef.current.isFirstSample && status === 'tracking') {
+          if (trackingStateRef.current.isFirstSample) {
               trackingStateRef.current.lastAlpha = event.alpha;
               trackingStateRef.current.isFirstSample = false;
           }
@@ -87,10 +87,10 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   };
 
   const sampleSensors = () => {
-      if (status !== 'tracking' || trackingStateRef.current.isFirstSample) return;
+      // Run sampling regardless of tracking status to update Live UI
+      if (status === 'uninitialized' || trackingStateRef.current.isFirstSample) return;
 
       const now = Date.now();
-      const timeSec = (now - startTimeRef.current) / 1000;
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
 
@@ -111,11 +111,15 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       track.lastAlpha = data.alpha;
       setLiveYaw(Math.round(track.accumulatedTurn));
 
+      // 2. Only record to timeline if status is 'tracking'
+      if (status !== 'tracking') return;
+
+      const timeSec = (now - startTimeRef.current) / 1000;
       let shouldRecord = false;
       let turnAngle: number | undefined = undefined;
       let isGroupStart = false;
 
-      // DETECTION LOGIC
+      // ROTATION DETECTION
       if (!track.isRotating) {
           const diffFromStable = Math.abs(track.accumulatedTurn - track.lastStableAngle);
           if (diffFromStable > 12) { 
@@ -126,7 +130,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
               isGroupStart = true;
           }
       } else {
-          if (timeSec - track.lastRecordTime > 0.2) shouldRecord = true;
+          if (now - track.lastRecordTime > 200) shouldRecord = true;
 
           const directionChanged = currentDeltaSign !== 0 && track.lastDeltaSign !== 0 && currentDeltaSign !== track.lastDeltaSign;
           const hasSlowedDown = absDelta < 3.0;
@@ -148,7 +152,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
       track.lastG = data.gForce;
 
-      if (timeSec - track.lastRecordTime > 2.0) {
+      // Heartbeat
+      if (now - track.lastRecordTime > 1500) {
           shouldRecord = true;
       }
 
@@ -163,8 +168,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           };
 
           timelineRef.current.push(newPoint);
-          setPointsRecorded(prev => prev + 1);
-          track.lastRecordTime = timeSec;
+          setPointsRecorded(timelineRef.current.length);
+          track.lastRecordTime = now;
       }
   };
 
@@ -189,9 +194,9 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
   }, [status, calibrationLeft]);
 
+  // Session Timers and GPS
   useEffect(() => {
     let watchId: number;
-    let sampleInterval: number;
 
     if (status === 'tracking') {
       startTimeRef.current = Date.now();
@@ -200,28 +205,12 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       pathRef.current = [];
       lastPositionRef.current = null;
       
-      trackingStateRef.current = {
-          lastAlpha: sensorDataRef.current.alpha,
-          accumulatedTurn: 0,
-          lastRecordTime: 0,
-          lastStableAngle: 0,
-          isRotating: false,
-          rotationStartValue: 0,
-          stopTicks: 0,
-          lastG: 1.0,
-          isFirstSample: true,
-          lastDeltaSign: 0
-      };
-      
       setPointsRecorded(0);
-      setLiveYaw(0);
-      setCurrentSpeed(0);
+      setElapsedTime(0);
       
       const timerInterval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 1000);
-
-      sampleInterval = window.setInterval(sampleSensors, 100);
 
       if (navigator.geolocation) {
         watchId = navigator.geolocation.watchPosition(
@@ -253,17 +242,26 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
       return () => {
         clearInterval(timerInterval);
-        clearInterval(sampleInterval);
         if (watchId) navigator.geolocation.clearWatch(watchId);
       };
     }
   }, [status]);
   
   const initSensors = async () => {
-    // Attempt WakeLock to keep sensors alive
+    // Attempt WakeLock
     if ('wakeLock' in navigator) {
         try { (navigator as any).wakeLock.request('screen'); } catch(e){}
     }
+
+    const start = () => {
+        window.addEventListener('devicemotion', handleMotion);
+        window.addEventListener('deviceorientation', handleOrientation);
+        if (!sampleIntervalRef.current) {
+            sampleIntervalRef.current = window.setInterval(sampleSensors, 100);
+        }
+        setStatus('calibrating');
+        setCalibrationLeft(CALIBRATION_DURATION_SEC);
+    };
 
     if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
       try {
@@ -272,47 +270,30 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
            if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
                await (DeviceOrientationEvent as any).requestPermission();
            }
-           window.addEventListener('devicemotion', handleMotion);
-           window.addEventListener('deviceorientation', handleOrientation);
-           setStatus('calibrating');
+           start();
         } else {
-          alert("Permission to access motion sensors is required.");
+          alert("Motion sensor permission is required.");
         }
       } catch (e) {
-        window.addEventListener('devicemotion', handleMotion);
-        window.addEventListener('deviceorientation', handleOrientation);
-        setStatus('calibrating');
+        start();
       }
     } else {
-      window.addEventListener('devicemotion', handleMotion);
-      window.addEventListener('deviceorientation', handleOrientation);
-      setStatus('calibrating');
+      start();
     }
   };
 
   const startRecording = () => {
       setStatus('tracking');
+      trackingStateRef.current.lastRecordTime = Date.now();
   };
 
   const stopSession = () => {
+    if (sampleIntervalRef.current) {
+        clearInterval(sampleIntervalRef.current);
+        sampleIntervalRef.current = null;
+    }
     window.removeEventListener('devicemotion', handleMotion);
     window.removeEventListener('deviceorientation', handleOrientation);
-
-    if (trackingStateRef.current.isRotating) {
-        const track = trackingStateRef.current;
-        const turnAngle = Math.round(track.accumulatedTurn - track.rotationStartValue);
-        const data = sensorDataRef.current;
-        const now = Date.now();
-        const timeSec = (now - startTimeRef.current) / 1000;
-
-        timelineRef.current.push({
-            timestamp: parseFloat(timeSec.toFixed(2)),
-            intensity: parseFloat(data.gForce.toFixed(2)),
-            rotation: parseFloat(data.rotRate.toFixed(2)),
-            turnAngle,
-            isGroupStart: false
-        });
-    }
 
     const processedTimeline = timelineRef.current;
     const summary: Record<string, number> = {};
@@ -353,14 +334,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   };
 
   return (
-    <div className="flex flex-col items-center justify-center p-6 bg-gray-800 rounded-lg shadow-lg min-h-[440px]">
+    <div className="flex flex-col items-center justify-center p-6 bg-gray-800 rounded-lg shadow-lg min-h-[460px]">
       <h2 className="text-2xl font-bold mb-4 text-cyan-300">Track a Session</h2>
       
       {status === 'uninitialized' && (
         <div className="w-full mb-6 text-center">
             <p className="text-gray-400 text-sm mb-6">
-               Sensor initialization required.<br/>
-               The app will calibrate for 10 seconds.
+               Place phone on a flat surface or in pocket.<br/>
+               Calibration takes 10 seconds.
             </p>
             <button
               onClick={initSensors}
@@ -393,59 +374,79 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                 </div>
             </div>
             <p className="text-cyan-400 animate-pulse font-bold">STAY STILL...</p>
-            <p className="text-xs text-gray-500 mt-4 uppercase tracking-widest">Calibrating internal gyroscope</p>
+            
+            <div className="mt-8 space-y-3">
+                <button disabled className="w-full bg-gray-700 text-gray-500 font-bold py-4 text-xl rounded-lg cursor-not-allowed">
+                    RECORD SESSION
+                </button>
+                <button onClick={onBack} className="w-full bg-gray-700 text-gray-300 font-bold py-2 rounded-lg">
+                    CANCEL
+                </button>
+            </div>
         </div>
       )}
 
       {status === 'armed' && (
         <div className="text-center w-full">
             <div className="w-24 h-24 bg-red-600/20 border-4 border-red-600 rounded-full mx-auto flex items-center justify-center mb-6 animate-pulse">
-                <div className="w-12 h-12 bg-red-600 rounded-full"></div>
+                <div className="w-12 h-12 bg-red-600 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.8)]"></div>
             </div>
-            <h3 className="text-2xl font-black text-red-500 mb-2">SYSTEM ARMED</h3>
+            <h3 className="text-2xl font-black text-red-500 mb-2 tracking-tighter">SYSTEM ARMED</h3>
             <p className="text-gray-300 text-sm mb-6 px-4">
-                Put phone in your pocket now.<br/>
-                <span className="text-white font-bold">Double-slap your pocket</span> to start, or press record.
+                Put phone in pocket now.<br/>
+                <span className="text-white font-bold underline decoration-red-500">Double-slap your pocket</span> to start recording hands-free.
             </p>
+
+            <div className="grid grid-cols-2 gap-4 text-center mb-6">
+                <div className="bg-gray-900 p-2 rounded border border-gray-700">
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Live Angle</p>
+                    <p className="text-xl font-bold text-white">{liveYaw}°</p>
+                </div>
+                <div className="bg-gray-900 p-2 rounded border border-gray-700">
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Ambient G</p>
+                    <p className="text-xl font-bold text-white">{currentG.toFixed(1)}</p>
+                </div>
+            </div>
+
             <button
               onClick={startRecording}
               className="w-full bg-green-500 text-gray-900 font-bold py-4 text-xl rounded-lg hover:bg-green-400 transition-colors shadow-lg mb-3"
             >
-              RECORD SESSION
+              START NOW
             </button>
         </div>
       )}
 
       {status === 'tracking' && (
         <div className="text-center w-full">
-            <div className="inline-block px-3 py-1 rounded-full text-xs text-white font-bold mb-4 bg-red-900 animate-pulse">
+            <div className="inline-block px-3 py-1 rounded-full text-xs text-white font-bold mb-4 bg-red-900 animate-pulse border border-red-500">
                 ● RECORDING LIVE
             </div>
-            <div className="text-6xl font-bold text-cyan-400 my-4">{formatTime(elapsedTime)}</div>
+            <div className="text-6xl font-bold text-cyan-400 my-4 tabular-nums">{formatTime(elapsedTime)}</div>
             
             <div className="grid grid-cols-2 gap-4 text-center mb-6">
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
-                    <p className="text-xs text-gray-500 uppercase">Live Angle</p>
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Heading</p>
                     <p className="text-xl font-bold text-white">{liveYaw}°</p>
                 </div>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
-                    <p className="text-xs text-gray-500 uppercase">Impact</p>
-                    <p className="text-xl font-bold text-white">{currentG.toFixed(1)} <span className="text-xs text-gray-500">G</span></p>
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Current G</p>
+                    <p className="text-xl font-bold text-white">{currentG.toFixed(1)}</p>
                 </div>
             </div>
             
-            <p className="text-xs text-gray-600 font-mono">{pointsRecorded} data points recorded</p>
+            <p className="text-xs text-gray-600 font-mono mb-6">{pointsRecorded} motion data points recorded</p>
             
             <button
               onClick={stopSession}
-              className="w-full bg-red-500 text-white font-bold py-4 text-xl rounded-lg hover:bg-red-400 transition-colors shadow-lg mt-8"
+              className="w-full bg-red-500 text-white font-bold py-4 text-xl rounded-lg hover:bg-red-400 transition-colors shadow-lg"
             >
               STOP & SAVE
             </button>
         </div>
       )}
 
-      {(status === 'uninitialized' || status === 'calibrating' || status === 'armed') && (
+      {status === 'uninitialized' && (
         <div className="mt-auto w-full">
             <button
               onClick={onBack}
