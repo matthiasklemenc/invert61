@@ -9,6 +9,8 @@ interface SessionTrackerProps {
   motions: Motion[];
 }
 
+const CALIBRATION_DURATION_SEC = 5;
+
 const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, previousSessions, onBack, motions }) => {
   const [status, setStatus] = useState<'idle' | 'tracking'>('idle');
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -17,6 +19,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const [liveYaw, setLiveYaw] = useState(0); 
   const [pointsRecorded, setPointsRecorded] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0);
+  const [isCalibrating, setIsCalibrating] = useState(false);
   
   const timelineRef = useRef<SessionDataPoint[]>([]);
   const speedReadingsRef = useRef<number[]>([]);
@@ -41,7 +44,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       rotationStartValue: 0,
       stopTicks: 0,
       lastG: 1.0,
-      isFirstSample: true
+      isFirstSample: true,
+      lastDeltaSign: 0 // 1 for right, -1 for left
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -58,7 +62,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
   const handleOrientation = (event: DeviceOrientationEvent) => {
       if (event.alpha !== null) {
-          // INSTANT ZEROING: The very first reading becomes the 0 baseline.
           if (trackingStateRef.current.isFirstSample && status === 'tracking') {
               trackingStateRef.current.lastAlpha = event.alpha;
               trackingStateRef.current.isFirstSample = false;
@@ -76,65 +79,86 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
 
-      // 1. Calculate Rotation Delta (The "Perfect" Logic)
+      const calibrating = timeSec < CALIBRATION_DURATION_SEC;
+      setIsCalibrating(calibrating);
+
+      // 1. Calculate Rotation Delta
       let delta = track.lastAlpha - data.alpha;
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
 
       const absDelta = Math.abs(delta);
-      // Filter micro-noise but keep turns responsive
-      if (absDelta > 0.4) {
-          track.accumulatedTurn += delta;
+      const currentDeltaSign = delta > 0.6 ? 1 : (delta < -0.6 ? -1 : 0);
+
+      if (!calibrating) {
+          // DRIFT FILTER: Prevent counting noise
+          if (absDelta > 0.6) {
+              track.accumulatedTurn += delta;
+          } else if (!track.isRotating) {
+              track.accumulatedTurn = track.lastStableAngle;
+          }
+      } else {
+          track.accumulatedTurn = 0;
+          track.lastStableAngle = 0;
+          track.lastAlpha = data.alpha;
       }
+      
       track.lastAlpha = data.alpha;
       setLiveYaw(Math.round(track.accumulatedTurn));
 
       let shouldRecord = false;
       let turnAngle: number | undefined = undefined;
       let isGroupStart = false;
+      let customLabel: string | undefined = undefined;
 
-      // 2. Detection logic
-      
-      // A) ROTATION DETECTION
-      if (!track.isRotating) {
-          const diffFromStable = Math.abs(track.accumulatedTurn - track.lastStableAngle);
-          if (diffFromStable > 15) { // Sensitivity threshold
-              track.isRotating = true;
-              track.rotationStartValue = track.lastStableAngle;
-              track.stopTicks = 0;
+      if (calibrating) {
+          if (timeSec - track.lastRecordTime > 1.0) {
               shouldRecord = true;
-              isGroupStart = true;
+              customLabel = "Calibration";
           }
       } else {
-          // While rotating, record points frequently for path resolution
-          if (absDelta > 1.0) shouldRecord = true;
-
-          // END CONDITION: Only 2 frames (200ms) of near-stillness required to split tricks
-          if (absDelta < 0.8) {
-              track.stopTicks++;
+          // 2. DETECTION LOGIC
+          
+          // A) ROTATION DETECTION
+          if (!track.isRotating) {
+              const diffFromStable = Math.abs(track.accumulatedTurn - track.lastStableAngle);
+              if (diffFromStable > 12) { 
+                  track.isRotating = true;
+                  track.rotationStartValue = track.lastStableAngle;
+                  track.lastDeltaSign = currentDeltaSign;
+                  shouldRecord = true;
+                  isGroupStart = true;
+              }
           } else {
-              track.stopTicks = 0;
+              if (timeSec - track.lastRecordTime > 0.2) shouldRecord = true;
+
+              // IMMEDIATE COMMIT LOGIC:
+              // Per request: if speed drops below 3 degrees/sample, finalize the turn INSTANTLY (0 delay).
+              // Also finalize if direction flips (e.g. pivoting back).
+              const directionChanged = currentDeltaSign !== 0 && track.lastDeltaSign !== 0 && currentDeltaSign !== track.lastDeltaSign;
+              const hasSlowedDown = absDelta < 3.0;
+
+              if (hasSlowedDown || directionChanged) { 
+                  track.isRotating = false;
+                  shouldRecord = true;
+                  turnAngle = Math.round(track.accumulatedTurn - track.rotationStartValue);
+                  track.lastStableAngle = track.accumulatedTurn;
+              }
+              
+              if (currentDeltaSign !== 0) track.lastDeltaSign = currentDeltaSign;
           }
 
-          if (track.stopTicks >= 2) { 
-              track.isRotating = false;
-              track.stopTicks = 0;
+          // B) IMPACT DETECTION
+          const gDiff = Math.abs(data.gForce - track.lastG);
+          if (gDiff > 0.2 || data.gForce > 1.8) {
               shouldRecord = true;
-              turnAngle = Math.round(track.accumulatedTurn - track.rotationStartValue);
-              track.lastStableAngle = track.accumulatedTurn;
           }
-      }
+          track.lastG = data.gForce;
 
-      // B) IMPACT DETECTION (Pumps, Drop-ins, Landings)
-      const gDiff = Math.abs(data.gForce - track.lastG);
-      if (gDiff > 0.15 || data.gForce > 1.8) {
-          shouldRecord = true;
-      }
-      track.lastG = data.gForce;
-
-      // C) Heartbeat (Maintain graph continuity)
-      if (timeSec - track.lastRecordTime > 2.0) {
-          shouldRecord = true;
+          // C) Continuity Heartbeat
+          if (timeSec - track.lastRecordTime > 2.0) {
+              shouldRecord = true;
+          }
       }
 
       if (shouldRecord) {
@@ -143,8 +167,9 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
               intensity: parseFloat(data.gForce.toFixed(2)),
               rotation: parseFloat(data.rotRate.toFixed(2)),
               turnAngle,
-              isGroupStart,
-              groupId: track.isRotating ? `rot-${track.rotationStartValue}` : undefined
+              isGroupStart: isGroupStart || !!customLabel,
+              label: customLabel,
+              groupId: track.isRotating ? `rot-${track.rotationStartValue}` : (customLabel ? 'calib' : undefined)
           };
 
           timelineRef.current.push(newPoint);
@@ -167,7 +192,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   useEffect(() => {
     let watchId: number;
     let sampleInterval: number;
-    let simInterval: number;
 
     if (status === 'tracking') {
       startTimeRef.current = Date.now();
@@ -185,12 +209,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           rotationStartValue: 0,
           stopTicks: 0,
           lastG: 1.0,
-          isFirstSample: true
+          isFirstSample: true,
+          lastDeltaSign: 0
       };
       
       setPointsRecorded(0);
       setLiveYaw(0);
       setCurrentSpeed(0);
+      setIsCalibrating(true);
       
       const timerInterval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
@@ -228,34 +254,11 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         );
       }
 
-      const checkForSensors = setTimeout(() => {
-          if (!sensorDataRef.current.hasOrientation && timelineRef.current.length === 0) {
-             let simTime = 0;
-             simInterval = window.setInterval(() => {
-                   simTime += 0.1;
-                   let alpha = 0;
-                   const cycle = simTime % 10;
-                   if (cycle > 2 && cycle < 4) {
-                       alpha = (cycle - 2) * 90; 
-                   } else if (cycle >= 4 && cycle < 6) {
-                       alpha = 180;
-                   } else if (cycle >= 6 && cycle < 8) {
-                       alpha = 180 - (cycle - 6) * 90;
-                   }
-                   sensorDataRef.current.alpha = alpha;
-                   sensorDataRef.current.gForce = 1.0 + (Math.random() * 0.1);
-                   sensorDataRef.current.hasOrientation = true;
-             }, 100); 
-          }
-      }, 2000);
-
       return () => {
         window.removeEventListener('devicemotion', handleMotion);
         window.removeEventListener('deviceorientation', handleOrientation);
         clearInterval(timerInterval);
         clearInterval(sampleInterval);
-        clearTimeout(checkForSensors);
-        if (simInterval) clearInterval(simInterval);
         if (watchId) navigator.geolocation.clearWatch(watchId);
       };
     }
@@ -282,6 +285,22 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   };
 
   const stopSession = () => {
+    if (trackingStateRef.current.isRotating) {
+        const track = trackingStateRef.current;
+        const turnAngle = Math.round(track.accumulatedTurn - track.rotationStartValue);
+        const data = sensorDataRef.current;
+        const now = Date.now();
+        const timeSec = (now - startTimeRef.current) / 1000;
+
+        timelineRef.current.push({
+            timestamp: parseFloat(timeSec.toFixed(2)),
+            intensity: parseFloat(data.gForce.toFixed(2)),
+            rotation: parseFloat(data.rotRate.toFixed(2)),
+            turnAngle,
+            isGroupStart: false
+        });
+    }
+
     setStatus('idle');
     const processedTimeline = timelineRef.current;
     const summary: Record<string, number> = {};
@@ -289,7 +308,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     
     let totalTricks = 0;
     processedTimeline.forEach(p => {
-        if (p.label && p.isGroupStart) {
+        if (p.label && p.isGroupStart && p.label !== "Calibration") {
             if (!summary[p.label]) summary[p.label] = 0;
             summary[p.label]++;
             totalTricks++;
@@ -339,16 +358,16 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
       {status === 'tracking' && (
         <div className="text-center w-full">
-            <div className="inline-block px-3 py-1 rounded-full bg-red-900 text-xs text-white font-bold mb-4 animate-pulse">
-                ● RECORDING LIVE SENSORS
+            <div className={`inline-block px-3 py-1 rounded-full text-xs text-white font-bold mb-4 animate-pulse ${isCalibrating ? 'bg-yellow-600' : 'bg-red-900'}`}>
+                ● {isCalibrating ? 'CALIBRATING SENSORS' : 'RECORDING LIVE SENSORS'}
             </div>
             <div className="text-6xl font-bold text-cyan-400 my-4">{formatTime(elapsedTime)}</div>
             
             <div className="grid grid-cols-2 gap-4 text-center mb-6">
                 <div className={`p-2 rounded border transition-colors duration-200 bg-gray-900 border-gray-700`}>
                     <p className="text-xs text-gray-500 uppercase">Live Angle</p>
-                    <p className="text-xl font-bold text-white">
-                        {liveYaw}°
+                    <p className={`text-xl font-bold ${isCalibrating ? 'text-yellow-500 animate-pulse' : 'text-white'}`}>
+                        {isCalibrating ? 'WAIT' : `${liveYaw}°`}
                     </p>
                 </div>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">

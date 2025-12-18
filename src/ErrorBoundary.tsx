@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from "react";
+import React, { ErrorInfo, ReactNode } from "react";
 
 interface Props {
   children?: ReactNode;
@@ -10,8 +10,8 @@ interface State {
   errorInfo: ErrorInfo | null;
 }
 
-// Fix: Explicitly extend Component and add constructor to ensure props and setState are correctly recognized.
-class ErrorBoundary extends Component<Props, State> {
+// Fix: Using React.Component explicitly ensures that instance properties like state, props, and setState are correctly recognized by TypeScript.
+class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = {
@@ -27,11 +27,12 @@ class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    // Fix: setState is now correctly inherited from Component.
+    // Fix: Inherited setState is now recognized from React.Component base class.
     this.setState({ error, errorInfo });
   }
 
   public render() {
+    // Fix: state property is correctly defined on the instance via React.Component.
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-6 text-center">
@@ -61,7 +62,7 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // Fix: props.children is now correctly recognized.
+    // Fix: props property is correctly defined on the instance via React.Component.
     return this.props.children;
   }
 }
