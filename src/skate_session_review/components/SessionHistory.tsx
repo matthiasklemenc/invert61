@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Session, Page, SessionDataPoint, SessionHistoryProps, Motion } from '../types';
 import SkateMap from '../../maptiler/SkateMap';
 
@@ -82,28 +82,18 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
     return (
         <div className="relative w-full bg-gray-900 rounded-lg mb-4 border border-gray-700 overflow-hidden shadow-inner">
             <div className="flex justify-between items-center bg-gray-800/50 p-2 border-b border-gray-700 relative z-20">
-                <h5 className="text-xs text-gray-400 font-mono uppercase ml-2">
-                    Motion Sequence
-                </h5>
-                <div className="text-[10px] text-gray-500 mr-2">
-                    Click points to select • Use Group to combine
-                </div>
+                <h5 className="text-xs text-gray-400 font-mono uppercase ml-2">Motion Sequence</h5>
+                <div className="text-[10px] text-gray-500 mr-2">Click points to select • Use Group to combine</div>
             </div>
 
             <div ref={wrapperRef} className="relative w-full h-64">
-                <div 
-                    ref={scrollContainerRef}
-                    className="w-full h-full overflow-x-auto overflow-y-hidden"
-                    style={{ scrollBehavior: 'smooth' }}
-                >
+                <div ref={scrollContainerRef} className="w-full h-full overflow-x-auto overflow-y-hidden" style={{ scrollBehavior: 'smooth' }}>
                     <div style={{ width: contentWidth, height: '100%' }} className="relative">
                         <svg width={contentWidth} height={containerSize.height} className="absolute inset-0">
                             {(() => {
                                 const graphHeight = containerSize.height - 60; 
                                 const y1g = (40 + graphHeight) - (1.0 / maxIntensity) * graphHeight;
-                                return (
-                                    <line x1="0" y1={y1g} x2={contentWidth} y2={y1g} stroke="#374151" strokeDasharray="4" strokeWidth="1" />
-                                );
+                                return <line x1="0" y1={y1g} x2={contentWidth} y2={y1g} stroke="#374151" strokeDasharray="4" strokeWidth="1" />;
                             })()}
 
                             <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
@@ -139,22 +129,18 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                 return (
                                     <g key={pt.index} style={{cursor: 'pointer'}} onClick={(e) => { e.stopPropagation(); onTogglePoint(pt.index); }}>
                                         <circle cx={pt.x} cy={pt.y} r={20} fill="transparent" />
-                                        
                                         {isSelected && (
                                             <circle cx={pt.x} cy={pt.y} r={14} fill="#ef4444" fillOpacity="0.3">
                                                 <animate attributeName="r" values="12;14;12" dur="2s" repeatCount="indefinite" />
                                             </circle>
                                         )}
-                                        
                                         <circle cx={pt.x} cy={pt.y} r={dotRadius} fill={dotColor} stroke={strokeColor} strokeWidth={strokeWidth} />
-
                                         {isTurn && !isSelected && !isCalibration && (
                                             <g>
                                                 <text x={pt.x} y={pt.y - 22} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="9" fontWeight="800" style={{textShadow: '0px 1px 1px black', textTransform: 'uppercase'}}>{pt.data.turnAngle! > 0 ? 'right' : 'left'}</text>
                                                 <text x={pt.x} y={pt.y - 10} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="10" fontWeight="bold" fontFamily="monospace" style={{textShadow: '0px 1px 1px black'}}>{pt.data.turnAngle! > 0 ? '+' : ''}{pt.data.turnAngle}°</text>
                                             </g>
                                         )}
-
                                         {isLabeled && pt.data.isGroupStart && !isSelected && (
                                             <g pointerEvents="none">
                                                 <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y + 15} stroke={dotColor} strokeWidth="1" />
@@ -172,14 +158,16 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
     );
 };
 
+// --- CALENDAR COMPONENT ---
+interface CalendarProps {
+    sessions: Session[];
+    onDateSelect: (date: Date) => void;
+    selectedDate: Date | null;
+    currentMonth: Date;
+    setCurrentMonth: (date: Date) => void;
+}
 
-const Calendar: React.FC<{
-    sessions: Session[],
-    onDateSelect: (date: Date) => void,
-    selectedDate: Date | null,
-    currentMonth: Date,
-    setCurrentMonth: (date: Date) => void
-}> = ({ sessions, onDateSelect, selectedDate, currentMonth, setCurrentMonth }) => {
+const Calendar: React.FC<CalendarProps> = ({ sessions, onDateSelect, selectedDate, currentMonth, setCurrentMonth }) => {
     const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
     const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
     
@@ -220,6 +208,7 @@ const Calendar: React.FC<{
     );
 };
 
+// --- TRICK EDIT MODAL ---
 interface EditModalProps {
     onSave: (label: string) => void;
     onClose: () => void;
@@ -261,73 +250,45 @@ const TrickEditModal: React.FC<EditModalProps> = ({ onSave, onClose, motions, on
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-md border border-cyan-500 shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-cyan-500 shadow-2xl flex flex-col max-h-[90vh]">
                 <h3 className="text-xl font-bold text-white mb-2">Define Trick</h3>
-                <p className="text-gray-400 text-sm mb-4">
-                    Grouping <span className="text-cyan-400 font-bold">{selectionCount}</span> motion points. 
-                    Name this sequence:
-                </p>
-                
+                <p className="text-gray-400 text-sm mb-4">Grouping <span className="text-cyan-400 font-bold">{selectionCount}</span> motion points.</p>
                 <div className="flex-1 overflow-y-auto mb-6 pr-2">
                     <div className="grid grid-cols-1 gap-2">
                         {motions.map(m => (
                             <div key={m.id} className="flex gap-1">
                                 <button
                                     onClick={() => setSelectedMotion(m.name)}
-                                    className={`flex-1 text-left px-3 py-3 rounded border transition-colors text-sm font-medium ${
-                                        selectedMotion === m.name 
-                                        ? 'bg-cyan-900 border-cyan-400 text-cyan-400 font-bold' 
-                                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                                    }`}
-                                >
-                                    {m.name}
-                                </button>
-                                <button 
-                                    onClick={(e) => handleDelete(e, m.id)}
-                                    className="px-3 rounded border border-gray-600 bg-gray-800 text-gray-500 hover:text-red-400 hover:border-red-400 transition-colors"
-                                >
-                                    🗑
-                                </button>
+                                    className={`flex-1 text-left px-3 py-3 rounded border transition-colors text-sm font-medium ${selectedMotion === m.name ? 'bg-cyan-900 border-cyan-400 text-cyan-400 font-bold' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'}`}
+                                >{m.name}</button>
+                                <button onClick={(e) => handleDelete(e, m.id)} className="px-3 rounded border border-gray-600 bg-gray-800 text-gray-500 hover:text-red-400 hover:border-red-400 transition-colors">🗑</button>
                             </div>
                         ))}
                     </div>
-
                     <div className="mt-4 pt-4 border-t border-gray-700">
                         {isAdding ? (
                              <div className="flex flex-col gap-2">
-                                <input 
-                                    type="text" 
-                                    value={newTrickName}
-                                    onChange={(e) => setNewTrickName(e.target.value)}
-                                    placeholder="Enter new trick name..."
-                                    className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-cyan-400 outline-none"
-                                    autoFocus
-                                />
+                                <input type="text" value={newTrickName} onChange={(e) => setNewTrickName(e.target.value)} placeholder="Enter new trick name..." className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-cyan-400 outline-none" autoFocus />
                                 <div className="flex gap-2">
                                     <button onClick={() => setIsAdding(false)} className="flex-1 py-1 text-gray-400 text-xs">Cancel</button>
                                     <button onClick={handleAddNew} className="flex-1 py-1 bg-green-600 text-white rounded text-xs font-bold">Confirm Add</button>
                                 </div>
                              </div>
                         ) : (
-                            <button 
-                                onClick={() => setIsAdding(true)}
-                                className="w-full py-2 border border-dashed border-gray-500 text-gray-400 hover:text-cyan-400 hover:border-cyan-400 rounded text-sm transition-colors"
-                            >
-                                + Add New Trick Name
-                            </button>
+                            <button onClick={() => setIsAdding(true)} className="w-full py-2 border border-dashed border-gray-500 text-gray-400 hover:text-cyan-400 hover:border-cyan-400 rounded text-sm transition-colors">+ Add New Trick Name</button>
                         )}
                     </div>
                 </div>
-
                 <div className="flex gap-2 mt-auto pt-4 border-t border-gray-700">
                     <button onClick={onClose} className="flex-1 bg-gray-600 py-3 rounded text-gray-200 font-bold">Cancel</button>
-                    <button onClick={handleSave} disabled={!selectedMotion} className="flex-1 bg-cyan-500 py-3 rounded text-gray-900 font-bold hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed">Save Group</button>
+                    <button onClick={handleSave} disabled={!selectedMotion} className="flex-1 bg-cyan-500 py-3 rounded text-gray-900 font-bold hover:bg-cyan-400 disabled:opacity-50">Save Group</button>
                 </div>
             </div>
         </div>
     );
 };
 
+// --- SESSION DETAILS ---
 interface SessionDetailsProps {
     sessions: Session[];
     onSessionUpdate: (s: Session) => void;
@@ -341,7 +302,6 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
     const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
     const [selectedPointIndices, setSelectedPointIndices] = useState<Set<number>>(new Set());
     const [showGroupModal, setShowGroupModal] = useState(false);
-    
     const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
 
     const toggleExpansion = (sessionId: string) => {
@@ -363,62 +323,36 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
             setSelectedPointIndices(new Set([index]));
         } else {
             const newSet = new Set(selectedPointIndices);
-            if (newSet.has(index)) {
-                newSet.delete(index);
-            } else {
-                newSet.add(index);
-            }
+            if (newSet.has(index)) newSet.delete(index);
+            else newSet.add(index);
             setSelectedPointIndices(newSet);
-        }
-    };
-
-    const handleGroupClick = () => {
-        if (selectedPointIndices.size > 0) {
-            setShowGroupModal(true);
         }
     };
 
     const saveGroupLabel = (newLabel: string) => {
         if (!editingSessionId || selectedPointIndices.size === 0) return;
-        
         const session = sessions.find(s => s.id === editingSessionId);
         if (!session) return;
 
         const updatedSession = JSON.parse(JSON.stringify(session)) as Session;
         const groupId = `group-${Date.now()}`;
-        
-        // Explicitly type indices to prevent indexing errors
-        const sortedIndices: number[] = Array.from(selectedPointIndices).sort((a: number, b: number) => a - b);
+        const sortedIndices = Array.from<number>(selectedPointIndices).sort((a, b) => a - b);
         
         sortedIndices.forEach((idx) => {
             const point = updatedSession.timelineData[idx];
-            const oldLabel = point.label;
-            const wasGroupStart = point.isGroupStart;
-
-            if (oldLabel && wasGroupStart) {
-                 const labelKey: string = String(oldLabel);
-                 const currentCount = updatedSession.trickSummary[labelKey] || 0;
-                 if (currentCount > 0) {
-                    updatedSession.trickSummary[labelKey] = currentCount - 1;
-                 }
-                 if (updatedSession.trickSummary[labelKey] <= 0) {
-                    delete updatedSession.trickSummary[labelKey];
-                 }
+            if (point.label && point.isGroupStart) {
+                 const currentCount = updatedSession.trickSummary[point.label] || 0;
+                 if (currentCount > 0) updatedSession.trickSummary[point.label] = (currentCount as number) - 1;
+                 if ((updatedSession.trickSummary[point.label] as number) <= 0) delete updatedSession.trickSummary[point.label];
             }
-
             point.label = newLabel;
             point.groupId = groupId;
             point.isGroupStart = false;
         });
 
-        if (sortedIndices.length > 0) {
-            updatedSession.timelineData[sortedIndices[0]].isGroupStart = true;
-        }
-
-        const currentLabelCount = updatedSession.trickSummary[newLabel] || 0;
-        updatedSession.trickSummary[newLabel] = currentLabelCount + 1;
-
-        updatedSession.totalTricks = (Object.values(updatedSession.trickSummary) as number[]).reduce((acc: number, val: number) => acc + val, 0);
+        if (sortedIndices.length > 0) updatedSession.timelineData[sortedIndices[0]].isGroupStart = true;
+        updatedSession.trickSummary[newLabel] = ((updatedSession.trickSummary[newLabel] as number) || 0) + 1;
+        updatedSession.totalTricks = Object.values(updatedSession.trickSummary).reduce((acc, val) => (acc as number) + (val as number), 0) as number;
 
         onSessionUpdate(updatedSession);
         setShowGroupModal(false);
@@ -427,87 +361,31 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
 
     return (
         <div className="mt-4 space-y-4">
-            {showGroupModal && (
-                <TrickEditModal 
-                    onSave={saveGroupLabel} 
-                    onClose={() => setShowGroupModal(false)}
-                    motions={motions}
-                    onAddMotion={onAddMotion}
-                    onDeleteMotion={id => onDeleteMotion(id)}
-                    selectionCount={selectedPointIndices.size}
-                />
-            )}
-
+            {showGroupModal && <TrickEditModal onSave={saveGroupLabel} onClose={() => setShowGroupModal(false)} motions={motions} onAddMotion={onAddMotion} onDeleteMotion={onDeleteMotion} selectionCount={selectedPointIndices.size} />}
             {sessions.map((s, i) => {
                 const isExpanded = !!expandedSessions[s.id];
                 const isThisSessionEditing = editingSessionId === s.id;
                 const hasSelection = isThisSessionEditing && selectedPointIndices.size > 0;
-                
-                let buttonLabel = "SELECT";
-                if (hasSelection && selectedPointIndices.size > 1) {
-                    buttonLabel = `GROUP SELECTION (${selectedPointIndices.size})`;
-                }
+                let buttonLabel = hasSelection && selectedPointIndices.size > 1 ? `GROUP SELECTION (${selectedPointIndices.size})` : "SELECT";
 
                 return (
                     <div key={s.id} className="bg-gray-800 rounded-lg border-l-4 border-cyan-500 overflow-hidden shadow-sm mb-4">
                         <div className="flex">
-                            <div 
-                                className="flex-grow flex justify-between items-center p-4 cursor-pointer hover:bg-gray-700/50 transition-colors"
-                                onClick={() => toggleExpansion(s.id)}
-                            >
+                            <div className="flex-grow flex justify-between items-center p-4 cursor-pointer hover:bg-gray-700/50 transition-colors" onClick={() => toggleExpansion(s.id)}>
                                  <div className="flex items-center gap-3">
-                                    <span className={`text-cyan-500 text-xs font-bold transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
-                                        ▶
-                                    </span>
-                                    <div>
-                                        <h4 className="font-bold text-white text-lg">Session {i + 1}</h4>
-                                        <span className="text-sm text-gray-400">{new Date(s.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                    </div>
+                                    <span className={`text-cyan-500 text-xs font-bold transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>▶</span>
+                                    <div><h4 className="font-bold text-white text-lg">Session {i + 1}</h4><span className="text-sm text-gray-400">{new Date(s.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>
                                  </div>
-                                 <div className="flex items-center gap-3">
-                                    {!isExpanded && (
-                                        <span className="hidden sm:inline-block text-xs text-gray-400 bg-gray-900 px-3 py-1.5 rounded-full border border-gray-700">
-                                            <span className="text-green-400 font-bold">{s.totalTricks}</span> Tricks • <span className="text-cyan-400 font-bold">{formatTime(s.duration)}</span>
-                                        </span>
-                                    )}
-                                 </div>
+                                 {!isExpanded && <span className="hidden sm:inline-block text-xs text-gray-400 bg-gray-900 px-3 py-1.5 rounded-full border border-gray-700"><span className="text-green-400 font-bold">{s.totalTricks}</span> Tricks • <span className="text-cyan-400 font-bold">{formatTime(s.duration)}</span></span>}
                             </div>
-
                             <div className="flex items-center px-2 border-l border-gray-700 bg-gray-800">
-                                <button 
-                                    type="button"
-                                    onClick={(e) => { 
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        onDeleteSession(s.id); 
-                                    }}
-                                    className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-900/30 rounded-full transition-all active:scale-95"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                </button>
+                                <button onClick={() => onDeleteSession(s.id)} className="p-3 text-gray-400 hover:text-red-500 transition-all"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
                             </div>
                         </div>
-
                         {isExpanded && (
                             <div className="p-4 border-t border-gray-700 bg-gray-800">
-                                {s.timelineData && (
-                                    <>
-                                        <SessionGraph 
-                                            data={s.timelineData} 
-                                            selectedIndices={isThisSessionEditing ? selectedPointIndices : new Set()}
-                                            onTogglePoint={(idx) => handleTogglePoint(s.id, idx)}
-                                        />
-                                        <div className="flex justify-end mb-4">
-                                            <button
-                                                onClick={handleGroupClick}
-                                                disabled={!hasSelection}
-                                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all duration-200 ${hasSelection ? 'bg-cyan-500 text-gray-900 hover:bg-cyan-400 shadow-lg transform active:scale-95' : 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-50'}`}
-                                            >
-                                                {buttonLabel}
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
+                                <SessionGraph data={s.timelineData} selectedIndices={isThisSessionEditing ? selectedPointIndices : new Set()} onTogglePoint={(idx) => handleTogglePoint(s.id, idx)} />
+                                <div className="flex justify-end mb-4"><button onClick={() => setShowGroupModal(true)} disabled={!hasSelection} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${hasSelection ? 'bg-cyan-500 text-gray-900' : 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-50'}`}>{buttonLabel}</button></div>
                                 <div className="grid grid-cols-2 gap-4 text-sm mt-4 bg-gray-900 p-3 rounded">
                                     <div><p className="text-gray-500 text-xs">DURATION</p><p className="font-mono font-bold text-cyan-400 text-lg">{formatTime(s.duration)}</p></div>
                                     <div><p className="text-gray-500 text-xs">TOTAL TRICKS</p><p className="font-mono font-bold text-green-400 text-lg">{s.totalTricks}</p></div>
@@ -518,22 +396,11 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                     <p className="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest">Detected Tricks</p>
                                     <div className="flex flex-wrap gap-2">
                                         {Object.entries(s.trickSummary).length > 0 ? Object.entries(s.trickSummary).map(([trick, count]) => (
-                                            (typeof count === 'number' && count > 0) && (
-                                                <span key={trick} className="px-3 py-1 rounded-full text-xs text-white border border-gray-600 flex items-center gap-2" style={{backgroundColor: stringToColor(trick)}}>
-                                                    {trick} <span className="bg-black/40 px-1.5 rounded-full text-[10px]">{count}</span>
-                                                </span>
-                                            )
+                                            (count as number) > 0 && <span key={trick} className="px-3 py-1 rounded-full text-xs text-white border border-gray-600 flex items-center gap-2" style={{backgroundColor: stringToColor(trick)}}>{trick} <span className="bg-black/40 px-1.5 rounded-full text-[10px]">{count}</span></span>
                                         )) : <p className="text-gray-500 text-xs">No tricks named yet.</p>}
                                     </div>
                                 </div>
-                                {s.path && s.path.length > 0 && (
-                                    <div className="mt-6">
-                                        <p className="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest">Route Map</p>
-                                        <div className="rounded-lg overflow-hidden border border-gray-700 bg-gray-900 shadow-lg">
-                                            <SkateMap path={s.path} className="h-56 w-full" />
-                                        </div>
-                                    </div>
-                                )}
+                                {s.path && s.path.length > 0 && <div className="mt-6"><p className="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest">Route Map</p><div className="rounded-lg overflow-hidden border border-gray-700 bg-gray-900 shadow-lg"><SkateMap path={s.path} className="h-56 w-full" /></div></div>}
                             </div>
                         )}
                     </div>
@@ -543,7 +410,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
     );
 };
 
-
+// --- MAIN SESSION HISTORY COMPONENT ---
 const SessionHistory: React.FC<SessionHistoryProps> = ({ sessions, navigate, onSessionUpdate, onDeleteSession, motions, onAddMotion, onDeleteMotion, onBack }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
@@ -553,18 +420,14 @@ const SessionHistory: React.FC<SessionHistoryProps> = ({ sessions, navigate, onS
     return sessions.filter(s => new Date(s.date).toDateString() === selectedDate.toDateString());
   }, [sessions, selectedDate]);
   
-  const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
-  };
+  const handleDateSelect = (date: Date) => setSelectedDate(date);
 
   return (
     <div className="w-full">
         <Calendar sessions={sessions} onDateSelect={handleDateSelect} selectedDate={selectedDate} currentMonth={currentMonth} setCurrentMonth={setCurrentMonth} />
         {selectedDate && <SessionDetails sessions={sessionsOnSelectedDate} onSessionUpdate={onSessionUpdate} onDeleteSession={onDeleteSession} motions={motions} onAddMotion={onAddMotion} onDeleteMotion={onDeleteMotion} />}
          <div className="mt-8 flex flex-col gap-3">
-             <button onClick={() => navigate(Page.SessionTracker)} className="w-full bg-green-500 text-gray-900 font-bold py-4 rounded-lg hover:bg-green-400 transition-colors shadow-lg flex items-center justify-center gap-2">
-                <span>●</span> START NEW SESSION
-            </button>
+             <button onClick={() => navigate(Page.SessionTracker)} className="w-full bg-green-500 text-gray-900 font-bold py-4 rounded-lg hover:bg-green-400 transition-colors shadow-lg flex items-center justify-center gap-2"><span>●</span> START NEW SESSION</button>
             <button onClick={onBack} className="w-full bg-gray-700 text-gray-300 font-bold py-3 rounded-lg hover:bg-gray-600 transition-colors">BACK</button>
          </div>
     </div>

@@ -7,7 +7,9 @@ export async function fetchDisclaimerFromRemoteConfig(lang: string, ai: any): Pr
 
   try {
     const prompt = `Translate the following legal disclaimer into ${targetLanguage}. Keep the formatting, including line breaks and spacing. Do not add any introductory text like "Here is the translation:".\n\n${english}`;
-    const res = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+    // Fix: Use 'gemini-3-flash-preview' for basic text tasks (e.g., translation) as per guidelines.
+    const res = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
+    // Fix: Access the .text property directly on the response object.
     const text = res.text;
     if (!text) throw new Error('No text in Gemini response.');
     return text;

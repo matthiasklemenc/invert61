@@ -10,16 +10,18 @@ interface State {
   errorInfo: ErrorInfo | null;
 }
 
-// Fix: Using React.Component explicitly ensures that instance properties like state, props, and setState are correctly recognized by TypeScript.
+/**
+ * ErrorBoundary component to catch rendering errors and show a fallback UI.
+ * Fix: Extending React.Component explicitly ensures that instance methods like setState 
+ * and properties like props are correctly inherited and recognized by the TypeScript type system.
+ */
 class ErrorBoundary extends React.Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    };
-  }
+  // Fix: Defining state as a class property ensures it's correctly recognized through inheritance.
+  public state: State = {
+    hasError: false,
+    error: null,
+    errorInfo: null,
+  };
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error, errorInfo: null };
@@ -27,12 +29,12 @@ class ErrorBoundary extends React.Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    // Fix: Inherited setState is now recognized from React.Component base class.
+    // Fix: setState is a built-in method of the React.Component class.
     this.setState({ error, errorInfo });
   }
 
   public render() {
-    // Fix: state property is correctly defined on the instance via React.Component.
+    // Fix: state is a member of the inherited React.Component class.
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-6 text-center">
@@ -44,9 +46,11 @@ class ErrorBoundary extends React.Component<Props, State> {
             
             <div className="bg-black/50 p-4 rounded-lg text-left overflow-auto max-h-64 mb-6 border border-white/10">
               <p className="text-red-400 font-mono text-sm font-bold mb-2">
+                {/* Fix: Accessing inherited state members correctly. */}
                 {this.state.error && this.state.error.toString()}
               </p>
               <pre className="text-gray-500 font-mono text-xs whitespace-pre-wrap">
+                {/* Fix: Accessing inherited state members correctly. */}
                 {this.state.errorInfo?.componentStack}
               </pre>
             </div>
@@ -62,7 +66,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Fix: props property is correctly defined on the instance via React.Component.
+    // Fix: props is a standard property accessible through inheritance from React.Component.
     return this.props.children;
   }
 }
