@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Session, SessionDataPoint, Motion, GpsPoint } from '../types';
 
@@ -46,7 +47,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const trackingStateRef = useRef({
       accumulatedTurn: 0,
       lastStableAngle: 0,
-      sampleCount: 0
+      sampleCount: 0,
+      pendingTurn: null as number | null // NEW: Buffer to prevent missing 100Hz events
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -83,7 +85,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       const now = Date.now();
       const data = sensorDataRef.current;
       const track = trackingStateRef.current;
-      let turnToRecord: number | undefined = undefined;
 
       track.sampleCount++;
 
@@ -92,39 +93,46 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           const rot = data.rotRaw;
           const gTotal = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
           
-          if (gTotal > 0.5) {
-              // Thinner dt for 100Hz frequency
+          if (gTotal > 0.4) { // Increased sensitivity to allow lower-energy movement
+              // Gravity-Relative Projection
               const projectedRate = (rot.beta * acc.x + rot.gamma * acc.y + rot.alpha * acc.z) / gTotal;
               const dt = 0.01; 
               
-              if (Math.abs(projectedRate) > 3) {
+              // Only integrate if moving faster than 2 deg/sec (noise floor)
+              if (Math.abs(projectedRate) > 2) {
                   track.accumulatedTurn += projectedRate * dt;
               }
               
-              // Throttled UI update (20Hz) to keep preview snappy without burning CPU
+              // Smooth preview update
               if (track.sampleCount % 5 === 0) {
                 setLiveYaw(Math.round(track.accumulatedTurn));
               }
 
-              // Snappy detection: trigger if moved 20+ degrees and speed drops below 60 deg/s
+              // TURN DETECTION: 
+              // 1. Must be > 20 degrees total movement
+              // 2. Must slow down below 80 deg/s (increased for instant logging)
               const delta = track.accumulatedTurn - track.lastStableAngle;
-              if (Math.abs(delta) > 20 && Math.abs(projectedRate) < 60) {
-                  turnToRecord = Math.round(delta);
+              if (Math.abs(delta) > 20 && Math.abs(projectedRate) < 80) {
+                  track.pendingTurn = Math.round(delta);
                   track.lastStableAngle = track.accumulatedTurn;
               }
           }
       }
 
       if (statusRef.current === 'tracking') {
-          // Log at 10Hz to save memory, while math runs at 100Hz
+          // Data log runs at 10Hz (every 100ms)
           if (track.sampleCount % 10 === 0) {
               const timeSec = (now - startTimeRef.current) / 1000;
               const newPoint: SessionDataPoint = {
                   timestamp: parseFloat(timeSec.toFixed(2)),
                   intensity: parseFloat(data.gForce.toFixed(2)),
                   rotation: parseFloat(data.rotRate.toFixed(2)),
-                  turnAngle: turnToRecord
+                  turnAngle: track.pendingTurn || undefined // Use buffered turn
               };
+              
+              // Reset buffer once consumed by the log
+              track.pendingTurn = null;
+
               timelineRef.current.push(newPoint);
               setPointsRecorded(timelineRef.current.length);
           }
@@ -149,6 +157,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       trackingStateRef.current.accumulatedTurn = 0;
       trackingStateRef.current.lastStableAngle = 0;
       trackingStateRef.current.sampleCount = 0;
+      trackingStateRef.current.pendingTurn = null;
       setPointsRecorded(0);
       setElapsedTime(0);
       setStatus('tracking');
@@ -178,7 +187,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         window.removeEventListener('devicemotion', handleMotion, true);
         window.addEventListener('devicemotion', handleMotion, true);
         if (sampleIntervalRef.current) clearInterval(sampleIntervalRef.current);
-        // INCREASED SAMPLING RATE TO 100HZ (10ms)
+        // 100Hz Engine
         sampleIntervalRef.current = window.setInterval(sampleSensors, 10);
         setStatus('calibrating');
         setCalibrationLeft(CALIBRATION_DURATION_SEC);
