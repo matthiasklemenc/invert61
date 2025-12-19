@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Session, SessionDataPoint, Motion, GpsPoint } from '../types';
 
@@ -48,7 +47,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       accumulatedTurn: 0,
       lastStableAngle: 0,
       sampleCount: 0,
-      pendingTurn: null as number | null // NEW: Buffer to prevent missing 100Hz events
+      pendingTurn: null as number | null
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -93,26 +92,25 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           const rot = data.rotRaw;
           const gTotal = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
           
-          if (gTotal > 0.4) { // Increased sensitivity to allow lower-energy movement
-              // Gravity-Relative Projection
+          if (gTotal > 0.3) { // High sensitivity for low energy turns
+              // Project rotation onto gravity vector
               const projectedRate = (rot.beta * acc.x + rot.gamma * acc.y + rot.alpha * acc.z) / gTotal;
-              const dt = 0.01; 
+              const dt = 0.01; // 100Hz integration
               
-              // Only integrate if moving faster than 2 deg/sec (noise floor)
-              if (Math.abs(projectedRate) > 2) {
+              if (Math.abs(projectedRate) > 1.5) { // Filter out extremely tiny noise
                   track.accumulatedTurn += projectedRate * dt;
               }
               
-              // Smooth preview update
+              // Throttled UI update (20Hz)
               if (track.sampleCount % 5 === 0) {
                 setLiveYaw(Math.round(track.accumulatedTurn));
               }
 
               // TURN DETECTION: 
-              // 1. Must be > 20 degrees total movement
-              // 2. Must slow down below 80 deg/s (increased for instant logging)
+              // 1. Move magnitude > 20 degrees
+              // 2. Velocity drops below 100 deg/s (pocket-tolerant threshold)
               const delta = track.accumulatedTurn - track.lastStableAngle;
-              if (Math.abs(delta) > 20 && Math.abs(projectedRate) < 80) {
+              if (Math.abs(delta) >= 20 && Math.abs(projectedRate) < 100) {
                   track.pendingTurn = Math.round(delta);
                   track.lastStableAngle = track.accumulatedTurn;
               }
@@ -120,17 +118,17 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
 
       if (statusRef.current === 'tracking') {
-          // Data log runs at 10Hz (every 100ms)
+          // Data log runs at 10Hz (every 100ms) to save memory
           if (track.sampleCount % 10 === 0) {
               const timeSec = (now - startTimeRef.current) / 1000;
               const newPoint: SessionDataPoint = {
                   timestamp: parseFloat(timeSec.toFixed(2)),
                   intensity: parseFloat(data.gForce.toFixed(2)),
                   rotation: parseFloat(data.rotRate.toFixed(2)),
-                  turnAngle: track.pendingTurn || undefined // Use buffered turn
+                  turnAngle: track.pendingTurn || undefined
               };
               
-              // Reset buffer once consumed by the log
+              // Clear buffer after logging
               track.pendingTurn = null;
 
               timelineRef.current.push(newPoint);
@@ -187,7 +185,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         window.removeEventListener('devicemotion', handleMotion, true);
         window.addEventListener('devicemotion', handleMotion, true);
         if (sampleIntervalRef.current) clearInterval(sampleIntervalRef.current);
-        // 100Hz Engine
+        // FORCE 100HZ SAMPLING
         sampleIntervalRef.current = window.setInterval(sampleSensors, 10);
         setStatus('calibrating');
         setCalibrationLeft(CALIBRATION_DURATION_SEC);
@@ -273,7 +271,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                 <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">Rotation</p><p className="text-3xl font-black text-cyan-400 tabular-nums">{liveYaw}°</p></div>
                 <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">Last Force</p><p className="text-3xl font-black text-white tabular-nums">{currentG.toFixed(1)}G</p></div>
             </div>
-            <div className="flex items-center justify-center gap-2 text-xs text-gray-500 font-mono mb-8 uppercase"><span className="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>{pointsRecorded} data points captured</div>
+            <div className="flex items-center justify-center gap-2 text-xs text-gray-500 font-mono mb-8 uppercase"><span className="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>{pointsRecorded} data captured</div>
             <button onClick={stopSession} className="w-full bg-red-600 text-white font-black py-5 text-2xl rounded-2xl shadow-2xl active:scale-95 transition-all">STOP & SAVE</button>
         </div>
       )}
