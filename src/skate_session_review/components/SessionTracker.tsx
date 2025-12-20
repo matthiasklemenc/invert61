@@ -48,7 +48,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       lastStableAngle: 0,
       sampleCount: 0,
       pendingTurn: null as number | null,
-      isUsingRadians: true // Default to true until proven otherwise
+      isUsingRadians: true // Default to true for safety
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -93,15 +93,19 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           const rot = data.rotRaw;
           const gTotal = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
           
-          if (gTotal > 0.1) { 
+          if (gTotal > 0.1) {
               const RAD_TO_DEG = 57.2958;
               
-              // Project rotation onto gravity vector (Yaw detection regardless of tilt)
-              let projectedRate = (rot.alpha * acc.z + rot.beta * acc.y + rot.gamma * acc.x) / gTotal;
+              // Correct 3D Dot-Product Projection:
+              // rot.beta  is rotation around X
+              // rot.gamma is rotation around Y
+              // rot.alpha is rotation around Z
+              // We project the rotation vector onto the gravity vector to get "True Yaw"
+              let projectedRate = (rot.beta * acc.x + rot.gamma * acc.y + rot.alpha * acc.z) / gTotal;
               
-              // AUTO-UNIT CORRECTION:
-              // If the raw rate is > 10, it's definitely Degrees.
-              // If it's < 10 but we have significant movement, it's likely Radians.
+              // UNIT INTELLIGENCE:
+              // If we see high energy (G-Force) but tiny rotation numbers, the device is sending Radians.
+              // Skaters rotate faster than 10 deg/sec. If max rate is < 6.28 (2PI), it's likely rads.
               if (Math.abs(projectedRate) > 10) {
                   track.isUsingRadians = false;
               }
@@ -110,22 +114,22 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                   projectedRate *= RAD_TO_DEG;
               }
 
-              const dt = 0.01; // 100Hz integration
+              const dt = 0.01; // 100Hz
               
-              // Filter jitter
-              if (Math.abs(projectedRate) > 0.5) { 
+              // Noise floor filter (0.8 deg/sec)
+              if (Math.abs(projectedRate) > 0.8) { 
                   track.accumulatedTurn += projectedRate * dt;
               }
               
-              // UI update (20Hz)
+              // Update live UI display every 5th sample (20Hz)
               if (track.sampleCount % 5 === 0) {
                 setLiveYaw(Math.round(track.accumulatedTurn));
               }
 
-              // TURN DETECTION:
-              // Lowered to 10 degrees to ensure 90-degree turns are never missed.
+              // TURN DETECTION: 
+              // Now sensitive to 10 degree changes to ensure no 90-degree turns are missed.
               const delta = track.accumulatedTurn - track.lastStableAngle;
-              if (Math.abs(delta) >= 10 && Math.abs(projectedRate) < 150) {
+              if (Math.abs(delta) >= 10 && Math.abs(projectedRate) < 120) {
                   track.pendingTurn = Math.round(delta);
                   track.lastStableAngle = track.accumulatedTurn;
               }
@@ -133,7 +137,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
 
       if (statusRef.current === 'tracking') {
-          // Log data at 10Hz
+          // Log data point at 10Hz
           if (track.sampleCount % 10 === 0) {
               const timeSec = (now - startTimeRef.current) / 1000;
               const newPoint: SessionDataPoint = {
@@ -143,7 +147,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                   turnAngle: track.pendingTurn || undefined
               };
               
-              track.pendingTurn = null;
+              track.pendingTurn = null; 
               timelineRef.current.push(newPoint);
               setPointsRecorded(timelineRef.current.length);
           }
@@ -237,7 +241,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
   return (
     <div className="flex flex-col items-center justify-center p-6 bg-gray-800 rounded-lg shadow-lg min-h-[520px]">
-      <h2 className="text-2xl font-bold mb-4 text-cyan-300 uppercase tracking-tighter">Skate Sense Tracker</h2>
+      <h2 className="text-2xl font-bold mb-4 text-cyan-300 uppercase tracking-tighter text-center">Skate Sense Tracker</h2>
       {status === 'uninitialized' && (
         <div className="w-full text-center">
             <div className="mb-10 p-6 bg-gray-900 rounded-xl border border-gray-700">
@@ -260,8 +264,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className={`w-32 h-32 border-4 rounded-full mx-auto flex items-center justify-center mb-8 transition-all duration-75 ${firstSlapDetected ? 'bg-yellow-500 border-yellow-300 scale-110' : 'bg-red-600/10 border-red-600 shadow-[0_0_30px_rgba(220,38,38,0.4)] animate-pulse'}`}>
                 <div className={`w-16 h-16 rounded-full ${firstSlapDetected ? 'bg-white' : 'bg-red-600'}`}></div>
             </div>
-            <h3 className="text-3xl font-black text-white mb-2 italic uppercase">Armed</h3>
-            <p className="text-gray-400 text-sm mb-8 leading-relaxed">Put phone in pocket.<br/><span className={`${firstSlapDetected ? 'text-yellow-400 scale-110 font-black' : 'text-red-500 font-bold'} inline-block transition-all underline decoration-2`}>Double-tap phone</span> to start.</p>
+            <h3 className="text-3xl font-black text-white mb-2 italic uppercase">System Armed</h3>
+            <p className="text-gray-400 text-sm mb-8 leading-relaxed text-center px-4">Place phone in pocket or board.<br/><span className={`${firstSlapDetected ? 'text-yellow-400 scale-110 font-black' : 'text-red-500 font-bold'} inline-block transition-all underline decoration-2`}>Double-tap phone</span> to start.</p>
             <div className="bg-black/40 p-4 rounded-xl border border-gray-700 mb-6">
                 <div className="flex justify-between items-center mb-2">
                     <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Sensor Activity</span>
@@ -279,8 +283,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             </div>
             <div className="text-8xl font-black text-white mb-10 tabular-nums tracking-tighter">{Math.floor(elapsedTime / 60).toString().padStart(2, '0')}:{(elapsedTime % 60).toString().padStart(2, '0')}</div>
             <div className="grid grid-cols-2 gap-4 mb-8">
-                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">Total Rotation</p><p className="text-3xl font-black text-cyan-400 tabular-nums">{liveYaw}°</p></div>
-                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">G-Force</p><p className="text-3xl font-black text-white tabular-nums">{currentG.toFixed(1)}G</p></div>
+                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">Rotation</p><p className="text-3xl font-black text-cyan-400 tabular-nums">{liveYaw}°</p></div>
+                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">Impact G</p><p className="text-3xl font-black text-white tabular-nums">{currentG.toFixed(1)}G</p></div>
             </div>
             <div className="flex items-center justify-center gap-2 text-xs text-gray-500 font-mono mb-8 uppercase"><span className="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>{pointsRecorded} events captured</div>
             <button onClick={stopSession} className="w-full bg-red-600 text-white font-black py-5 text-2xl rounded-2xl shadow-2xl active:scale-95 transition-all">STOP & SAVE</button>

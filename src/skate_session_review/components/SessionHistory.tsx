@@ -27,7 +27,7 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
 
     const contentWidth = useMemo(() => {
         if (!data.length) return containerSize.width || 300;
-        const minPxPerPoint = 16; 
+        const minPxPerPoint = 20; 
         const calcWidth = data.length * minPxPerPoint;
         return Math.max(containerSize.width || 300, calcWidth);
     }, [data.length, containerSize.width]);
@@ -55,9 +55,9 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
     const pointCoords = useMemo(() => {
         if (!contentWidth || !containerSize.height) return [];
         
-        const paddingX = 20;
-        const paddingTop = 40; 
-        const paddingBottom = 20;
+        const paddingX = 30;
+        const paddingTop = 60; 
+        const paddingBottom = 40;
         const graphHeight = containerSize.height - paddingTop - paddingBottom;
         const graphWidth = contentWidth - paddingX * 2;
 
@@ -86,55 +86,57 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
         <div className="relative w-full bg-gray-900 rounded-lg mb-4 border border-gray-700 overflow-hidden shadow-inner">
             <div className="flex justify-between items-center bg-gray-800/50 p-2 border-b border-gray-700 relative z-20">
                 <h5 className="text-xs text-gray-400 font-mono uppercase ml-2 tracking-tighter font-bold">Motion Log</h5>
-                <div className="text-[9px] text-gray-500 mr-2 uppercase font-bold">Tap markers to tag tricks</div>
+                <div className="text-[9px] text-gray-500 mr-2 uppercase font-bold">Tap markers to tag moves</div>
             </div>
 
             <div ref={wrapperRef} className="relative w-full h-64">
                 <div ref={scrollContainerRef} className="w-full h-full overflow-x-auto overflow-y-hidden" style={{ scrollBehavior: 'smooth' }}>
                     <div style={{ width: contentWidth, height: '100%' }} className="relative">
                         <svg width={contentWidth} height={containerSize.height} className="absolute inset-0">
-                            {/* Horizontal grid lines */}
+                            {/* Horizontal base line */}
                             {(() => {
-                                const graphHeight = containerSize.height - 60; 
-                                const y1g = (40 + graphHeight) - (1.0 / maxIntensity) * graphHeight;
+                                const graphHeight = containerSize.height - 100; 
+                                const y1g = (60 + graphHeight) - (1.0 / maxIntensity) * graphHeight;
                                 return <line x1="0" y1={y1g} x2={contentWidth} y2={y1g} stroke="#374151" strokeDasharray="4" strokeWidth="1" />;
                             })()}
 
-                            <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="1.5" strokeLinejoin="round" />
+                            {/* Signal Line */}
+                            <path d={svgPathD} fill="none" stroke="#4b5563" strokeWidth="2" strokeLinejoin="round" />
 
+                            {/* Markers rendered LAST to ensure they are on top */}
                             {pointCoords.map((pt) => {
                                 const isSelected = selectedIndices.has(pt.index);
                                 const isLabeled = !!pt.data.label;
                                 const isTurn = pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 0;
                                 const isImpact = pt.data.intensity > 1.4; 
 
-                                // Render for any significant event or selection
                                 if (!isTurn && !isLabeled && !isImpact && !isSelected) return null;
 
                                 let dotColor = isTurn ? (pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444") : (isImpact ? "#f59e0b" : "#4b5563"); 
-                                let dotRadius = isTurn ? 6 : (isImpact ? 5 : 4);
+                                let dotRadius = isTurn ? 8 : (isImpact ? 7 : 6);
                                 let strokeColor = "#fff";
-                                let strokeWidth = 1.5;
+                                let strokeWidth = 2;
 
                                 if (isLabeled) {
                                     dotColor = stringToColor(pt.data.label!);
-                                    if (pt.data.isGroupStart) dotRadius = 8;
+                                    if (pt.data.isGroupStart) dotRadius = 11;
                                 }
 
                                 if (isSelected) {
                                     dotColor = "#ef4444"; 
-                                    dotRadius = 9;
+                                    dotRadius = 12;
                                     strokeColor = "#fff";
-                                    strokeWidth = 2;
+                                    strokeWidth = 3;
                                 }
 
                                 return (
                                     <g key={pt.index} style={{cursor: 'pointer'}} onClick={(e) => { e.stopPropagation(); onTogglePoint(pt.index); }}>
-                                        <circle cx={pt.x} cy={pt.y} r={24} fill="transparent" />
+                                        {/* Large invisible hit area */}
+                                        <circle cx={pt.x} cy={pt.y} r={32} fill="transparent" />
                                         
                                         {isSelected && (
-                                            <circle cx={pt.x} cy={pt.y} r={16} fill="#ef4444" fillOpacity="0.3">
-                                                <animate attributeName="r" values="14;16;14" dur="1.5s" repeatCount="indefinite" />
+                                            <circle cx={pt.x} cy={pt.y} r={20} fill="#ef4444" fillOpacity="0.3">
+                                                <animate attributeName="r" values="18;22;18" dur="1s" repeatCount="indefinite" />
                                             </circle>
                                         )}
                                         
@@ -142,15 +144,15 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                         
                                         {isTurn && !isSelected && (
                                             <g>
-                                                <text x={pt.x} y={pt.y - 26} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="10" fontWeight="900" style={{textShadow: '0px 1px 3px black', textTransform: 'uppercase'}}>{pt.data.turnAngle! > 0 ? 'R' : 'L'}</text>
-                                                <text x={pt.x} y={pt.y - 14} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="11" fontWeight="bold" fontFamily="monospace" style={{textShadow: '0px 1px 3px black'}}>{Math.abs(pt.data.turnAngle!)}°</text>
+                                                <text x={pt.x} y={pt.y - 34} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="12" fontWeight="900" style={{textShadow: '0px 1px 3px black', textTransform: 'uppercase'}}>{pt.data.turnAngle! > 0 ? 'R' : 'L'}</text>
+                                                <text x={pt.x} y={pt.y - 18} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="12" fontWeight="black" fontFamily="monospace" style={{textShadow: '0px 1px 3px black'}}>{Math.abs(pt.data.turnAngle!)}°</text>
                                             </g>
                                         )}
                                         
                                         {isLabeled && pt.data.isGroupStart && !isSelected && (
                                             <g pointerEvents="none">
-                                                <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y + 18} stroke={dotColor} strokeWidth="2" />
-                                                <text x={pt.x} y={pt.y + 30} textAnchor="middle" fill={dotColor} fontSize="11" fontWeight="bold" style={{textShadow: '0px 1px 3px black'}}>{pt.data.label}</text>
+                                                <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y + 24} stroke={dotColor} strokeWidth="3" />
+                                                <text x={pt.x} y={pt.y + 40} textAnchor="middle" fill={dotColor} fontSize="12" fontWeight="black" style={{textShadow: '0px 1px 3px black', textTransform: 'uppercase'}}>{pt.data.label}</text>
                                             </g>
                                         )}
                                     </g>
@@ -187,7 +189,7 @@ const Calendar: React.FC<CalendarProps> = ({ sessions, onDateSelect, selectedDat
     };
 
     return (
-        <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+        <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-xl">
             <div className="flex justify-between items-center mb-4">
                 <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-gray-700 rounded-full transition-colors text-cyan-400">◀</button>
                 <h3 className="font-black text-white uppercase tracking-widest">{currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
@@ -255,7 +257,7 @@ const TrickEditModal: React.FC<EditModalProps> = ({ onSave, onClose, motions, on
     }
 
     return (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4 backdrop-blur-md">
             <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-md border border-cyan-500 shadow-2xl flex flex-col max-h-[90vh]">
                 <h3 className="text-xl font-black text-white mb-2 uppercase tracking-tighter italic">Tag Move</h3>
                 <p className="text-gray-400 text-[10px] uppercase font-bold mb-4 tracking-widest">Grouping <span className="text-cyan-400">{selectionCount}</span> points</p>
@@ -412,7 +414,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                     <div className="flex flex-wrap gap-2">
                                         {Object.entries(s.trickSummary).length > 0 ? Object.entries(s.trickSummary).map(([trick, count]) => (
                                             (count as number) > 0 && <span key={trick} className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-white border border-white/10 shadow-sm flex items-center gap-2" style={{backgroundColor: stringToColor(trick)}}>{trick} <span className="bg-black/30 px-2 py-0.5 rounded-full text-[9px]">{count}</span></span>
-                                        )) : <p className="text-gray-600 text-[10px] font-bold uppercase italic">Tag items in the graph to name them.</p>}
+                                        )) : <p className="text-gray-600 text-[10px] font-bold uppercase italic text-center w-full">Tag items in the graph to name them.</p>}
                                     </div>
                                 </div>
                                 {s.path && s.path.length > 0 && <div className="mt-8"><p className="text-gray-400 text-[10px] font-black mb-3 uppercase tracking-widest">Route Map</p><div className="rounded-2xl overflow-hidden border border-gray-700 bg-gray-900 shadow-2xl"><SkateMap path={s.path} className="h-60 w-full" /></div></div>}
