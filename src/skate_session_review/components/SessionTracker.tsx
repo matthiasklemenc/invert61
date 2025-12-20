@@ -47,7 +47,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       accumulatedTurn: 0,
       lastStableAngle: 0,
       sampleCount: 0,
-      pendingTurn: null as number | null
+      pendingTurn: null as number | null,
+      isUsingRadians: true // Default to true until proven otherwise
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
@@ -92,25 +93,39 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
           const rot = data.rotRaw;
           const gTotal = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
           
-          if (gTotal > 0.3) { // High sensitivity for low energy turns
-              // Project rotation onto gravity vector
-              const projectedRate = (rot.beta * acc.x + rot.gamma * acc.y + rot.alpha * acc.z) / gTotal;
+          if (gTotal > 0.1) { 
+              const RAD_TO_DEG = 57.2958;
+              
+              // Project rotation onto gravity vector (Yaw detection regardless of tilt)
+              let projectedRate = (rot.alpha * acc.z + rot.beta * acc.y + rot.gamma * acc.x) / gTotal;
+              
+              // AUTO-UNIT CORRECTION:
+              // If the raw rate is > 10, it's definitely Degrees.
+              // If it's < 10 but we have significant movement, it's likely Radians.
+              if (Math.abs(projectedRate) > 10) {
+                  track.isUsingRadians = false;
+              }
+              
+              if (track.isUsingRadians) {
+                  projectedRate *= RAD_TO_DEG;
+              }
+
               const dt = 0.01; // 100Hz integration
               
-              if (Math.abs(projectedRate) > 1.5) { // Filter out extremely tiny noise
+              // Filter jitter
+              if (Math.abs(projectedRate) > 0.5) { 
                   track.accumulatedTurn += projectedRate * dt;
               }
               
-              // Throttled UI update (20Hz)
+              // UI update (20Hz)
               if (track.sampleCount % 5 === 0) {
                 setLiveYaw(Math.round(track.accumulatedTurn));
               }
 
-              // TURN DETECTION: 
-              // 1. Move magnitude > 20 degrees
-              // 2. Velocity drops below 100 deg/s (pocket-tolerant threshold)
+              // TURN DETECTION:
+              // Lowered to 10 degrees to ensure 90-degree turns are never missed.
               const delta = track.accumulatedTurn - track.lastStableAngle;
-              if (Math.abs(delta) >= 20 && Math.abs(projectedRate) < 100) {
+              if (Math.abs(delta) >= 10 && Math.abs(projectedRate) < 150) {
                   track.pendingTurn = Math.round(delta);
                   track.lastStableAngle = track.accumulatedTurn;
               }
@@ -118,7 +133,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       }
 
       if (statusRef.current === 'tracking') {
-          // Data log runs at 10Hz (every 100ms) to save memory
+          // Log data at 10Hz
           if (track.sampleCount % 10 === 0) {
               const timeSec = (now - startTimeRef.current) / 1000;
               const newPoint: SessionDataPoint = {
@@ -128,9 +143,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                   turnAngle: track.pendingTurn || undefined
               };
               
-              // Clear buffer after logging
               track.pendingTurn = null;
-
               timelineRef.current.push(newPoint);
               setPointsRecorded(timelineRef.current.length);
           }
@@ -185,7 +198,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         window.removeEventListener('devicemotion', handleMotion, true);
         window.addEventListener('devicemotion', handleMotion, true);
         if (sampleIntervalRef.current) clearInterval(sampleIntervalRef.current);
-        // FORCE 100HZ SAMPLING
         sampleIntervalRef.current = window.setInterval(sampleSensors, 10);
         setStatus('calibrating');
         setCalibrationLeft(CALIBRATION_DURATION_SEC);
@@ -240,7 +252,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                 <span className="text-4xl font-black text-white">{calibrationLeft}</span>
             </div>
             <p className="text-cyan-400 font-bold tracking-widest text-xl uppercase">Calibrating...</p>
-            <p className="text-xs text-gray-500 mt-2">Hold phone completely still.</p>
+            <p className="text-xs text-gray-500 mt-2">Hold phone still.</p>
         </div>
       )}
       {status === 'armed' && (
@@ -248,30 +260,29 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className={`w-32 h-32 border-4 rounded-full mx-auto flex items-center justify-center mb-8 transition-all duration-75 ${firstSlapDetected ? 'bg-yellow-500 border-yellow-300 scale-110' : 'bg-red-600/10 border-red-600 shadow-[0_0_30px_rgba(220,38,38,0.4)] animate-pulse'}`}>
                 <div className={`w-16 h-16 rounded-full ${firstSlapDetected ? 'bg-white' : 'bg-red-600'}`}></div>
             </div>
-            <h3 className="text-3xl font-black text-white mb-2 italic uppercase">System Armed</h3>
+            <h3 className="text-3xl font-black text-white mb-2 italic uppercase">Armed</h3>
             <p className="text-gray-400 text-sm mb-8 leading-relaxed">Put phone in pocket.<br/><span className={`${firstSlapDetected ? 'text-yellow-400 scale-110 font-black' : 'text-red-500 font-bold'} inline-block transition-all underline decoration-2`}>Double-tap phone</span> to start.</p>
             <div className="bg-black/40 p-4 rounded-xl border border-gray-700 mb-6">
                 <div className="flex justify-between items-center mb-2">
                     <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Sensor Activity</span>
-                    <span className="text-[10px] text-cyan-400 font-mono">Angle: {liveYaw}°</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">Yaw: {liveYaw}°</span>
                 </div>
                 <div className="h-2 bg-gray-800 rounded-full overflow-hidden"><div className="h-full bg-cyan-500 transition-all duration-75" style={{ width: `${Math.min(100, (currentG / 3) * 100)}%` }}></div></div>
-                <div className="mt-2 text-left text-[9px] text-gray-600 font-mono">Input: {currentG.toFixed(3)} G</div>
             </div>
-            <button onClick={startRecording} className="w-full bg-green-500 text-gray-900 font-black py-4 text-xl rounded-xl shadow-lg active:scale-95 mb-4">START MANUALLY</button>
+            <button onClick={startRecording} className="w-full bg-green-500 text-gray-900 font-black py-4 text-xl rounded-xl shadow-lg active:scale-95 mb-4 uppercase">Manual Start</button>
         </div>
       )}
       {status === 'tracking' && (
         <div className="text-center w-full">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] text-white font-black mb-8 bg-red-600 animate-pulse uppercase tracking-widest">
-                <span className="w-2 h-2 bg-white rounded-full"></span> Tracking Active
+                <span className="w-2 h-2 bg-white rounded-full"></span> Live Tracking
             </div>
             <div className="text-8xl font-black text-white mb-10 tabular-nums tracking-tighter">{Math.floor(elapsedTime / 60).toString().padStart(2, '0')}:{(elapsedTime % 60).toString().padStart(2, '0')}</div>
             <div className="grid grid-cols-2 gap-4 mb-8">
-                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">Rotation</p><p className="text-3xl font-black text-cyan-400 tabular-nums">{liveYaw}°</p></div>
-                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">Last Force</p><p className="text-3xl font-black text-white tabular-nums">{currentG.toFixed(1)}G</p></div>
+                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">Total Rotation</p><p className="text-3xl font-black text-cyan-400 tabular-nums">{liveYaw}°</p></div>
+                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-700"><p className="text-[10px] text-gray-500 uppercase font-black mb-1">G-Force</p><p className="text-3xl font-black text-white tabular-nums">{currentG.toFixed(1)}G</p></div>
             </div>
-            <div className="flex items-center justify-center gap-2 text-xs text-gray-500 font-mono mb-8 uppercase"><span className="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>{pointsRecorded} data captured</div>
+            <div className="flex items-center justify-center gap-2 text-xs text-gray-500 font-mono mb-8 uppercase"><span className="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>{pointsRecorded} events captured</div>
             <button onClick={stopSession} className="w-full bg-red-600 text-white font-black py-5 text-2xl rounded-2xl shadow-2xl active:scale-95 transition-all">STOP & SAVE</button>
         </div>
       )}

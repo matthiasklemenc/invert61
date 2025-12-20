@@ -27,7 +27,7 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
 
     const contentWidth = useMemo(() => {
         if (!data.length) return containerSize.width || 300;
-        const minPxPerPoint = 14; 
+        const minPxPerPoint = 16; 
         const calcWidth = data.length * minPxPerPoint;
         return Math.max(containerSize.width || 300, calcWidth);
     }, [data.length, containerSize.width]);
@@ -79,14 +79,14 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
     }, [pointCoords]);
 
     if (data.length === 0) {
-        return <div className="text-gray-500 text-center py-8 text-xs font-mono uppercase">No movement logs found.</div>;
+        return <div className="text-gray-500 text-center py-8 text-xs font-mono uppercase tracking-widest">No movement logs recorded.</div>;
     }
 
     return (
         <div className="relative w-full bg-gray-900 rounded-lg mb-4 border border-gray-700 overflow-hidden shadow-inner">
             <div className="flex justify-between items-center bg-gray-800/50 p-2 border-b border-gray-700 relative z-20">
-                <h5 className="text-xs text-gray-400 font-mono uppercase ml-2 tracking-tighter font-bold">Motion Timeline</h5>
-                <div className="text-[9px] text-gray-500 mr-2 uppercase font-bold">Tap markers to name tricks</div>
+                <h5 className="text-xs text-gray-400 font-mono uppercase ml-2 tracking-tighter font-bold">Motion Log</h5>
+                <div className="text-[9px] text-gray-500 mr-2 uppercase font-bold">Tap markers to tag tricks</div>
             </div>
 
             <div ref={wrapperRef} className="relative w-full h-64">
@@ -106,36 +106,35 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                 const isSelected = selectedIndices.has(pt.index);
                                 const isLabeled = !!pt.data.label;
                                 const isTurn = pt.data.turnAngle !== undefined && Math.abs(pt.data.turnAngle) > 0;
-                                const isImpact = pt.data.intensity > 1.8; 
+                                const isImpact = pt.data.intensity > 1.4; 
 
-                                // Only render markers for significant events or selections
+                                // Render for any significant event or selection
                                 if (!isTurn && !isLabeled && !isImpact && !isSelected) return null;
 
                                 let dotColor = isTurn ? (pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444") : (isImpact ? "#f59e0b" : "#4b5563"); 
-                                let dotRadius = isImpact ? 5 : 4;
+                                let dotRadius = isTurn ? 6 : (isImpact ? 5 : 4);
                                 let strokeColor = "#fff";
-                                let strokeWidth = 1;
+                                let strokeWidth = 1.5;
 
                                 if (isLabeled) {
                                     dotColor = stringToColor(pt.data.label!);
-                                    if (pt.data.isGroupStart) dotRadius = 6;
+                                    if (pt.data.isGroupStart) dotRadius = 8;
                                 }
 
                                 if (isSelected) {
                                     dotColor = "#ef4444"; 
-                                    dotRadius = 7;
+                                    dotRadius = 9;
                                     strokeColor = "#fff";
                                     strokeWidth = 2;
                                 }
 
                                 return (
                                     <g key={pt.index} style={{cursor: 'pointer'}} onClick={(e) => { e.stopPropagation(); onTogglePoint(pt.index); }}>
-                                        {/* Hit area */}
-                                        <circle cx={pt.x} cy={pt.y} r={22} fill="transparent" />
+                                        <circle cx={pt.x} cy={pt.y} r={24} fill="transparent" />
                                         
                                         {isSelected && (
-                                            <circle cx={pt.x} cy={pt.y} r={14} fill="#ef4444" fillOpacity="0.3">
-                                                <animate attributeName="r" values="12;14;12" dur="2s" repeatCount="indefinite" />
+                                            <circle cx={pt.x} cy={pt.y} r={16} fill="#ef4444" fillOpacity="0.3">
+                                                <animate attributeName="r" values="14;16;14" dur="1.5s" repeatCount="indefinite" />
                                             </circle>
                                         )}
                                         
@@ -143,15 +142,15 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                         
                                         {isTurn && !isSelected && (
                                             <g>
-                                                <text x={pt.x} y={pt.y - 24} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="9" fontWeight="900" style={{textShadow: '0px 1px 2px black', textTransform: 'uppercase'}}>{pt.data.turnAngle! > 0 ? 'R' : 'L'}</text>
-                                                <text x={pt.x} y={pt.y - 12} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="10" fontWeight="bold" fontFamily="monospace" style={{textShadow: '0px 1px 2px black'}}>{Math.abs(pt.data.turnAngle!)}°</text>
+                                                <text x={pt.x} y={pt.y - 26} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="10" fontWeight="900" style={{textShadow: '0px 1px 3px black', textTransform: 'uppercase'}}>{pt.data.turnAngle! > 0 ? 'R' : 'L'}</text>
+                                                <text x={pt.x} y={pt.y - 14} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="11" fontWeight="bold" fontFamily="monospace" style={{textShadow: '0px 1px 3px black'}}>{Math.abs(pt.data.turnAngle!)}°</text>
                                             </g>
                                         )}
                                         
                                         {isLabeled && pt.data.isGroupStart && !isSelected && (
                                             <g pointerEvents="none">
-                                                <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y + 15} stroke={dotColor} strokeWidth="1" />
-                                                <text x={pt.x} y={pt.y + 25} textAnchor="middle" fill={dotColor} fontSize="10" fontWeight="bold" style={{textShadow: '0px 1px 2px black'}}>{pt.data.label}</text>
+                                                <line x1={pt.x} y1={pt.y} x2={pt.x} y2={pt.y + 18} stroke={dotColor} strokeWidth="2" />
+                                                <text x={pt.x} y={pt.y + 30} textAnchor="middle" fill={dotColor} fontSize="11" fontWeight="bold" style={{textShadow: '0px 1px 3px black'}}>{pt.data.label}</text>
                                             </g>
                                         )}
                                     </g>
@@ -259,7 +258,7 @@ const TrickEditModal: React.FC<EditModalProps> = ({ onSave, onClose, motions, on
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
             <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-md border border-cyan-500 shadow-2xl flex flex-col max-h-[90vh]">
                 <h3 className="text-xl font-black text-white mb-2 uppercase tracking-tighter italic">Tag Move</h3>
-                <p className="text-gray-400 text-[10px] uppercase font-bold mb-4 tracking-widest">Grouping <span className="text-cyan-400">{selectionCount}</span> data points</p>
+                <p className="text-gray-400 text-[10px] uppercase font-bold mb-4 tracking-widest">Grouping <span className="text-cyan-400">{selectionCount}</span> points</p>
                 <div className="flex-1 overflow-y-auto mb-6 pr-2 custom-scrollbar">
                     <div className="grid grid-cols-1 gap-2">
                         {motions.map(m => (
@@ -282,7 +281,7 @@ const TrickEditModal: React.FC<EditModalProps> = ({ onSave, onClose, motions, on
                                 </div>
                              </div>
                         ) : (
-                            <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-gray-600 text-gray-500 hover:text-cyan-400 hover:border-cyan-400 rounded-xl text-xs font-black uppercase tracking-widest transition-colors">+ Create New Label</button>
+                            <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-gray-600 text-gray-500 hover:text-cyan-400 hover:border-cyan-400 rounded-xl text-xs font-black uppercase tracking-widest transition-colors">+ Create Label</button>
                         )}
                     </div>
                 </div>
@@ -315,7 +314,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
         setExpandedSessions(prev => ({...prev, [sessionId]: !prev[sessionId]}));
     };
 
-    if (sessions.length === 0) return <p className="text-gray-500 mt-10 text-center font-bold uppercase tracking-widest text-xs">No sessions recorded for this date.</p>;
+    if (sessions.length === 0) return <p className="text-gray-500 mt-10 text-center font-bold uppercase tracking-widest text-xs">No sessions for this date.</p>;
 
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
@@ -368,7 +367,7 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
 
     return (
         <div className="mt-6 space-y-4">
-            {showGroupModal && <TrickEditModal onSave={saveGroupLabel} onClose={() => setShowGroupModal(false)} motions={motions} onAddMotion={onAddMotion} onDeleteMotion={onDeleteMotion} selectionCount={selectedPointIndices.size} />}
+            {showGroupModal && <TrickEditModal onSave={saveGroupLabel} onClose={() => setShowGroupModal(false)} motions={motions} onAddMotion={onAddMotion} onDeleteMotion={id => onDeleteMotion(id)} selectionCount={selectedPointIndices.size} />}
             {sessions.map((s, i) => {
                 const isExpanded = !!expandedSessions[s.id];
                 const isThisSessionEditing = editingSessionId === s.id;
@@ -409,14 +408,14 @@ const SessionDetails: React.FC<SessionDetailsProps> = ({sessions, onSessionUpdat
                                     <div><p className="text-gray-500 text-[9px] font-bold uppercase tracking-widest mb-1">Avg Speed</p><p className="font-mono font-bold text-white text-lg">{s.avgSpeed || 0} <span className="text-[10px]">km/h</span></p></div>
                                 </div>
                                 <div className="mt-6">
-                                    <p className="text-gray-400 text-[10px] font-black mb-3 uppercase tracking-widest">Move Breakdown</p>
+                                    <p className="text-gray-400 text-[10px] font-black mb-3 uppercase tracking-widest">Detected Moves</p>
                                     <div className="flex flex-wrap gap-2">
                                         {Object.entries(s.trickSummary).length > 0 ? Object.entries(s.trickSummary).map(([trick, count]) => (
                                             (count as number) > 0 && <span key={trick} className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-white border border-white/10 shadow-sm flex items-center gap-2" style={{backgroundColor: stringToColor(trick)}}>{trick} <span className="bg-black/30 px-2 py-0.5 rounded-full text-[9px]">{count}</span></span>
-                                        )) : <p className="text-gray-600 text-[10px] font-bold uppercase italic">No tricks tagged yet.</p>}
+                                        )) : <p className="text-gray-600 text-[10px] font-bold uppercase italic">Tag items in the graph to name them.</p>}
                                     </div>
                                 </div>
-                                {s.path && s.path.length > 0 && <div className="mt-8"><p className="text-gray-400 text-[10px] font-black mb-3 uppercase tracking-widest">Session Path</p><div className="rounded-2xl overflow-hidden border border-gray-700 bg-gray-900 shadow-2xl"><SkateMap path={s.path} className="h-60 w-full" /></div></div>}
+                                {s.path && s.path.length > 0 && <div className="mt-8"><p className="text-gray-400 text-[10px] font-black mb-3 uppercase tracking-widest">Route Map</p><div className="rounded-2xl overflow-hidden border border-gray-700 bg-gray-900 shadow-2xl"><SkateMap path={s.path} className="h-60 w-full" /></div></div>}
                             </div>
                         )}
                     </div>
@@ -443,8 +442,8 @@ const SessionHistory: React.FC<SessionHistoryProps> = ({ sessions, navigate, onS
         <Calendar sessions={sessions} onDateSelect={handleDateSelect} selectedDate={selectedDate} currentMonth={currentMonth} setCurrentMonth={setCurrentMonth} />
         {selectedDate && <SessionDetails sessions={sessionsOnSelectedDate} onSessionUpdate={onSessionUpdate} onDeleteSession={onDeleteSession} motions={motions} onAddMotion={onAddMotion} onDeleteMotion={onDeleteMotion} />}
          <div className="mt-10 flex flex-col gap-3">
-             <button onClick={() => navigate(Page.SessionTracker)} className="w-full bg-green-500 text-gray-900 font-black py-5 rounded-2xl hover:bg-green-400 transition-all shadow-xl flex items-center justify-center gap-2 uppercase tracking-widest italic"><span>●</span> Start Tracking</button>
-            <button onClick={onBack} className="w-full bg-gray-800 text-gray-500 font-black py-3 rounded-2xl hover:bg-gray-700 hover:text-gray-300 transition-all uppercase tracking-widest text-xs">Exit</button>
+             <button onClick={() => navigate(Page.SessionTracker)} className="w-full bg-green-500 text-gray-900 font-black py-5 rounded-2xl hover:bg-green-400 transition-all shadow-xl flex items-center justify-center gap-2 uppercase tracking-widest italic"><span>●</span> Start Recording</button>
+            <button onClick={onBack} className="w-full bg-gray-800 text-gray-500 font-black py-3 rounded-2xl hover:bg-gray-700 hover:text-gray-300 transition-all uppercase tracking-widest text-xs">Exit Tracker</button>
          </div>
     </div>
   );
