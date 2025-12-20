@@ -38,16 +38,14 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       accumulatedTurn: 0,
       lastStableAngle: 0,
       lastLogTime: 0,
-      pendingTurn: null as number | null,
-      unitDetectionSamples: 0,
-      isUsingRadians: true // Default to true to be safe
+      pendingTurn: null as number | null
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
     const acc = event.accelerationIncludingGravity || { x: 0, y: 0, z: 9.81 };
     const rot = event.rotationRate || { alpha: 0, beta: 0, gamma: 0 };
     
-    // 1. G-Force Monitoring
+    // 1. G-Force Calculation
     const ax = acc.x || 0;
     const ay = acc.y || 0;
     const az = acc.z || 9.81;
@@ -55,44 +53,32 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     const gForce = totalG_ms2 / 9.81;
     setCurrentG(gForce);
 
-    // 2. Exact Hardware Integration
-    // Use event.interval (ms) for perfect timing, fallback to 16ms (60hz) if undefined
-    const dt = (event.interval || 16.66) / 1000;
+    // 2. Hardware Interval (Correction for 1000x bug)
+    let dt = (event.interval || 16.66) / 1000;
+    if (dt > 1) dt /= 1000; // Force seconds if interval is in ms
+
     const track = trackingStateRef.current;
 
-    // 3. True Horizontal Rotation (Gravity Projection)
+    // 3. Rotation Integration (The "Simple Fix")
+    // Use the dot product to find rotation around the Earth's gravity vector.
+    // We multiply by 57.2958 (180/PI) because many mobile browsers return Radians instead of Degrees.
     if (totalG_ms2 > 0.5) {
-        // Project rotation rates onto the gravity vector
-        // Mapping: rot.alpha=Z, rot.beta=X, rot.gamma=Y
-        let projectedRate = (rot.beta * ax + rot.gamma * ay + rot.alpha * az) / totalG_ms2;
-
-        // --- UNIT AUTO-DETECTION ---
-        // Browser consistency fix: Some browsers use Degrees, some use Radians.
-        // If we see high energy (G-Force) but tiny rotation numbers, it's definitely Radians.
-        if (track.unitDetectionSamples < 100) {
-            if (Math.abs(projectedRate) > 10) {
-                track.isUsingRadians = false; // It's clearly in Degrees
-            }
-            track.unitDetectionSamples++;
-        }
-
-        if (track.isUsingRadians) {
-            projectedRate *= (180 / Math.PI); // Convert Rad/s to Deg/s
-        }
-
-        // --- INTEGRATE ---
-        // Use a tiny 0.2 deg/s noise floor to prevent drift while sitting on the table
-        if (Math.abs(projectedRate) > 0.2) {
-            track.accumulatedTurn += projectedRate * dt;
+        const radToDeg = 57.2957795;
+        // Dot product of rotation vector and normalized gravity vector
+        let turnRate = ((rot.beta || 0) * ax + (rot.gamma || 0) * ay + (rot.alpha || 0) * az) / totalG_ms2;
+        
+        // Multiplier Fix: If your phone shows 1.5 degrees for a 90 turn, this multiplier fixes it.
+        // We apply a small threshold (0.1) to avoid drift when the phone is static.
+        if (Math.abs(turnRate) > 0.1) {
+            track.accumulatedTurn += (turnRate * radToDeg) * dt;
             
-            // Live UI update (approx 20hz)
-            if (Date.now() % 50 < 16) {
+            // Throttled UI update
+            if (Math.floor(performance.now() / 50) !== Math.floor((performance.now() - dt*1000) / 50)) {
                 setLiveYaw(Math.round(track.accumulatedTurn));
             }
         }
 
         // 4. Turn Event Logic
-        // Record a turn when direction changes by 15 degrees or more
         const delta = track.accumulatedTurn - track.lastStableAngle;
         if (Math.abs(delta) >= 15) {
             track.pendingTurn = Math.round(delta);
@@ -100,12 +86,11 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         }
     }
 
-    // --- State Handlers ---
+    // --- State Logic ---
     if (statusRef.current === 'armed') {
         if (gForce > SLAP_THRESHOLD) {
             const nowTime = Date.now();
-            const diff = nowTime - lastSlapTimeRef.current;
-            if (diff < SLAP_WINDOW_MS && diff > 100) {
+            if (nowTime - lastSlapTimeRef.current < SLAP_WINDOW_MS) {
                 startRecording();
             } else {
                 setFirstSlapDetected(true);
@@ -117,7 +102,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
 
     if (statusRef.current === 'tracking') {
         const now = Date.now();
-        // Log to timeline at 10Hz
         if (now - track.lastLogTime > 100) {
             track.lastLogTime = now;
             const timeSec = (now - startTimeRef.current) / 1000;
@@ -126,7 +110,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
                 intensity: parseFloat(gForce.toFixed(2)),
                 turnAngle: track.pendingTurn || undefined
             };
-            
             track.pendingTurn = null; 
             timelineRef.current.push(newPoint);
             setPointsRecorded(timelineRef.current.length);
@@ -236,7 +219,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="w-32 h-32 border-4 border-cyan-500 rounded-full mx-auto flex items-center justify-center mb-8 animate-pulse">
                 <span className="text-4xl font-black text-white">{calibrationLeft}</span>
             </div>
-            <p className="text-cyan-400 font-bold tracking-widest text-xl uppercase">Syncing Axes...</p>
+            <p className="text-cyan-400 font-bold tracking-widest text-xl uppercase">Syncing Gyro...</p>
             <p className="text-xs text-gray-500 mt-2">Hold phone still.</p>
         </div>
       )}
@@ -250,7 +233,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="bg-black/40 p-4 rounded-xl border border-gray-700 mb-6">
                 <div className="flex justify-between items-center mb-2">
                     <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Sensor Activity</span>
-                    <span className="text-[10px] text-cyan-400 font-mono font-bold">Rotation: {liveYaw}°</span>
+                    <span className="text-[10px] text-cyan-400 font-mono font-bold">Yaw: {liveYaw}°</span>
                 </div>
                 <div className="h-2 bg-gray-800 rounded-full overflow-hidden"><div className="h-full bg-cyan-500 transition-all duration-75" style={{ width: `${Math.min(100, (currentG / 3) * 100)}%` }}></div></div>
             </div>
