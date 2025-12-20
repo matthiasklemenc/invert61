@@ -113,18 +113,18 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                 if (!isTurn && !isLabeled && !isImpact && !isSelected) return null;
 
                                 let dotColor = isTurn ? (pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444") : (isImpact ? "#f59e0b" : "#4b5563"); 
-                                let dotRadius = isTurn ? 8 : (isImpact ? 7 : 6);
+                                let dotRadius = isTurn ? 12 : (isImpact ? 7 : 6);
                                 let strokeColor = "#fff";
-                                let strokeWidth = 2;
+                                let strokeWidth = 2.5;
 
                                 if (isLabeled) {
                                     dotColor = stringToColor(pt.data.label!);
-                                    if (pt.data.isGroupStart) dotRadius = 11;
+                                    if (pt.data.isGroupStart) dotRadius = 14;
                                 }
 
                                 if (isSelected) {
                                     dotColor = "#ef4444"; 
-                                    dotRadius = 12;
+                                    dotRadius = 16;
                                     strokeColor = "#fff";
                                     strokeWidth = 3;
                                 }
@@ -135,8 +135,8 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                         <circle cx={pt.x} cy={pt.y} r={32} fill="transparent" />
                                         
                                         {isSelected && (
-                                            <circle cx={pt.x} cy={pt.y} r={20} fill="#ef4444" fillOpacity="0.3">
-                                                <animate attributeName="r" values="18;22;18" dur="1s" repeatCount="indefinite" />
+                                            <circle cx={pt.x} cy={pt.y} r={24} fill="#ef4444" fillOpacity="0.3">
+                                                <animate attributeName="r" values="18;24;18" dur="1s" repeatCount="indefinite" />
                                             </circle>
                                         )}
                                         
@@ -144,8 +144,8 @@ const SessionGraph: React.FC<SessionGraphProps> = ({ data, selectedIndices, onTo
                                         
                                         {isTurn && !isSelected && (
                                             <g>
-                                                <text x={pt.x} y={pt.y - 34} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="12" fontWeight="900" style={{textShadow: '0px 1px 3px black', textTransform: 'uppercase'}}>{pt.data.turnAngle! > 0 ? 'R' : 'L'}</text>
-                                                <text x={pt.x} y={pt.y - 18} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="12" fontWeight="black" fontFamily="monospace" style={{textShadow: '0px 1px 3px black'}}>{Math.abs(pt.data.turnAngle!)}°</text>
+                                                <text x={pt.x} y={pt.y - 40} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="14" fontWeight="900" style={{textShadow: '0px 1px 3px black', textTransform: 'uppercase'}}>{pt.data.turnAngle! > 0 ? 'R' : 'L'}</text>
+                                                <text x={pt.x} y={pt.y - 22} textAnchor="middle" fill={pt.data.turnAngle! > 0 ? "#22d3ee" : "#ef4444"} fontSize="14" fontWeight="black" fontFamily="monospace" style={{textShadow: '0px 1px 3px black'}}>{Math.abs(pt.data.turnAngle!)}°</text>
                                             </g>
                                         )}
                                         

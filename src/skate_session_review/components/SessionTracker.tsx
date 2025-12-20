@@ -8,7 +8,7 @@ interface SessionTrackerProps {
   motions: Motion[];
 }
 
-const CALIBRATION_DURATION_SEC = 5; 
+const CALIBRATION_DURATION_SEC = 3; 
 const SLAP_THRESHOLD = 1.8; 
 const SLAP_WINDOW_MS = 1200; 
 
@@ -27,7 +27,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   const pathRef = useRef<GpsPoint[]>([]);
   const startTimeRef = useRef(0);
   const lastSlapTimeRef = useRef<number>(0);
-  const sampleIntervalRef = useRef<number | null>(null);
   const watchIdRef = useRef<number | null>(null);
 
   const setStatus = (s: typeof status) => {
@@ -35,123 +34,95 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       setStatusState(s);
   };
 
-  const sensorDataRef = useRef({
-      accRaw: { x: 0, y: 0, z: 9.81 }, 
-      rotRaw: { alpha: 0, beta: 0, gamma: 0 }, 
-      gForce: 1.0,
-      rotRate: 0,
-      hasMotion: false
-  });
-
   const trackingStateRef = useRef({
       accumulatedTurn: 0,
       lastStableAngle: 0,
-      sampleCount: 0,
-      pendingTurn: null as number | null,
-      isUsingRadians: true // Default to true for safety
+      lastEventTime: 0,
+      lastLogTime: 0,
+      pendingTurn: null as number | null
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
     const acc = event.accelerationIncludingGravity || { x: 0, y: 0, z: 9.81 };
     const rot = event.rotationRate || { alpha: 0, beta: 0, gamma: 0 };
     
-    const gForce = Math.sqrt((acc.x || 0) ** 2 + (acc.y || 0) ** 2 + (acc.z || 0) ** 2) / 9.81;
-    const rotMag = Math.sqrt((rot.alpha || 0) ** 2 + (rot.beta || 0) ** 2 + (rot.gamma || 0) ** 2); 
-
-    sensorDataRef.current.accRaw = { x: acc.x || 0, y: acc.y || 0, z: acc.z || 9.81 };
-    sensorDataRef.current.rotRaw = { alpha: rot.alpha || 0, beta: rot.beta || 0, gamma: rot.gamma || 0 };
-    sensorDataRef.current.gForce = gForce;
-    sensorDataRef.current.rotRate = rotMag;
-    sensorDataRef.current.hasMotion = true;
+    // 1. Calculate G-Force for Impact Tracking
+    const ax = acc.x || 0;
+    const ay = acc.y || 0;
+    const az = acc.z || 9.81;
+    const totalG_ms2 = Math.sqrt(ax**2 + ay**2 + az**2);
+    const gForce = totalG_ms2 / 9.81;
     
     setCurrentG(gForce);
 
+    // 2. High-Precision Integration for Rotation
+    const now = performance.now();
+    const track = trackingStateRef.current;
+    
+    if (track.lastEventTime === 0) {
+        track.lastEventTime = now;
+        return;
+    }
+    
+    const dt = (now - track.lastEventTime) / 1000;
+    track.lastEventTime = now;
+
+    // 3. Gravity-Referenced Rotation (Yaw)
+    // Project rotation rates onto the gravity vector to get rotation around the "Down" axis
+    // alpha = Z, beta = X, gamma = Y
+    if (totalG_ms2 > 0.1) {
+        const projectedRate = ((rot.beta || 0) * ax + (rot.gamma || 0) * ay + (rot.alpha || 0) * az) / totalG_ms2;
+        
+        // Filter noise floor (0.5 deg/sec)
+        if (Math.abs(projectedRate) > 0.5) {
+            track.accumulatedTurn += projectedRate * dt;
+            
+            // Throttled UI update (20Hz)
+            if (Math.floor(now / 50) !== Math.floor((now - dt*1000) / 50)) {
+                setLiveYaw(Math.round(track.accumulatedTurn));
+            }
+        }
+
+        // 4. Turn Event Logic
+        // Mark a "Turn" whenever rotation exceeds 15 degrees and the speed slows down
+        const deltaSinceLast = track.accumulatedTurn - track.lastStableAngle;
+        if (Math.abs(deltaSinceLast) >= 15 && Math.abs(projectedRate) < 100) {
+            track.pendingTurn = Math.round(deltaSinceLast);
+            track.lastStableAngle = track.accumulatedTurn;
+        }
+    }
+
+    // 5. State-Specific Logic
     if (statusRef.current === 'armed') {
         if (gForce > SLAP_THRESHOLD) {
-            const now = Date.now();
-            const diff = now - lastSlapTimeRef.current;
+            const nowTime = Date.now();
+            const diff = nowTime - lastSlapTimeRef.current;
             if (diff < SLAP_WINDOW_MS && diff > 100) {
                 startRecording();
             } else {
                 setFirstSlapDetected(true);
                 setTimeout(() => setFirstSlapDetected(false), SLAP_WINDOW_MS);
             }
-            lastSlapTimeRef.current = now;
+            lastSlapTimeRef.current = nowTime;
         }
     }
-  };
 
-  const sampleSensors = () => {
-      const now = Date.now();
-      const data = sensorDataRef.current;
-      const track = trackingStateRef.current;
-
-      track.sampleCount++;
-
-      if (data.hasMotion) {
-          const acc = data.accRaw;
-          const rot = data.rotRaw;
-          const gTotal = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-          
-          if (gTotal > 0.1) {
-              const RAD_TO_DEG = 57.2958;
-              
-              // Correct 3D Dot-Product Projection:
-              // rot.beta  is rotation around X
-              // rot.gamma is rotation around Y
-              // rot.alpha is rotation around Z
-              // We project the rotation vector onto the gravity vector to get "True Yaw"
-              let projectedRate = (rot.beta * acc.x + rot.gamma * acc.y + rot.alpha * acc.z) / gTotal;
-              
-              // UNIT INTELLIGENCE:
-              // If we see high energy (G-Force) but tiny rotation numbers, the device is sending Radians.
-              // Skaters rotate faster than 10 deg/sec. If max rate is < 6.28 (2PI), it's likely rads.
-              if (Math.abs(projectedRate) > 10) {
-                  track.isUsingRadians = false;
-              }
-              
-              if (track.isUsingRadians) {
-                  projectedRate *= RAD_TO_DEG;
-              }
-
-              const dt = 0.01; // 100Hz
-              
-              // Noise floor filter (0.8 deg/sec)
-              if (Math.abs(projectedRate) > 0.8) { 
-                  track.accumulatedTurn += projectedRate * dt;
-              }
-              
-              // Update live UI display every 5th sample (20Hz)
-              if (track.sampleCount % 5 === 0) {
-                setLiveYaw(Math.round(track.accumulatedTurn));
-              }
-
-              // TURN DETECTION: 
-              // Now sensitive to 10 degree changes to ensure no 90-degree turns are missed.
-              const delta = track.accumulatedTurn - track.lastStableAngle;
-              if (Math.abs(delta) >= 10 && Math.abs(projectedRate) < 120) {
-                  track.pendingTurn = Math.round(delta);
-                  track.lastStableAngle = track.accumulatedTurn;
-              }
-          }
-      }
-
-      if (statusRef.current === 'tracking') {
-          // Log data point at 10Hz
-          if (track.sampleCount % 10 === 0) {
-              const timeSec = (now - startTimeRef.current) / 1000;
-              const newPoint: SessionDataPoint = {
-                  timestamp: parseFloat(timeSec.toFixed(2)),
-                  intensity: parseFloat(data.gForce.toFixed(2)),
-                  rotation: parseFloat(data.rotRate.toFixed(2)),
-                  turnAngle: track.pendingTurn || undefined
-              };
-              
-              track.pendingTurn = null; 
-              timelineRef.current.push(newPoint);
-              setPointsRecorded(timelineRef.current.length);
-          }
-      }
+    if (statusRef.current === 'tracking') {
+        // Log to timeline at 10Hz (every 100ms)
+        if (now - track.lastLogTime > 100) {
+            track.lastLogTime = now;
+            const timeSec = (Date.now() - startTimeRef.current) / 1000;
+            const newPoint: SessionDataPoint = {
+                timestamp: parseFloat(timeSec.toFixed(2)),
+                intensity: parseFloat(gForce.toFixed(2)),
+                turnAngle: track.pendingTurn || undefined
+            };
+            
+            track.pendingTurn = null; 
+            timelineRef.current.push(newPoint);
+            setPointsRecorded(timelineRef.current.length);
+        }
+    }
   };
 
   useEffect(() => {
@@ -169,13 +140,18 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       speedReadingsRef.current = [];
       pathRef.current = [];
       startTimeRef.current = Date.now();
-      trackingStateRef.current.accumulatedTurn = 0;
-      trackingStateRef.current.lastStableAngle = 0;
-      trackingStateRef.current.sampleCount = 0;
-      trackingStateRef.current.pendingTurn = null;
+      
+      const track = trackingStateRef.current;
+      track.accumulatedTurn = 0;
+      track.lastStableAngle = 0;
+      track.lastEventTime = performance.now();
+      track.lastLogTime = performance.now();
+      track.pendingTurn = null;
+      
       setPointsRecorded(0);
       setElapsedTime(0);
       setStatus('tracking');
+      
       if (navigator.vibrate) navigator.vibrate([150, 100, 150]);
 
       if (navigator.geolocation) {
@@ -201,8 +177,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
     const activate = () => {
         window.removeEventListener('devicemotion', handleMotion, true);
         window.addEventListener('devicemotion', handleMotion, true);
-        if (sampleIntervalRef.current) clearInterval(sampleIntervalRef.current);
-        sampleIntervalRef.current = window.setInterval(sampleSensors, 10);
         setStatus('calibrating');
         setCalibrationLeft(CALIBRATION_DURATION_SEC);
     };
@@ -216,7 +190,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
   };
 
   const stopSession = () => {
-    if (sampleIntervalRef.current) clearInterval(sampleIntervalRef.current);
     if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
     window.removeEventListener('devicemotion', handleMotion, true);
 
@@ -255,7 +228,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="w-32 h-32 border-4 border-cyan-500 rounded-full mx-auto flex items-center justify-center mb-8 animate-pulse">
                 <span className="text-4xl font-black text-white">{calibrationLeft}</span>
             </div>
-            <p className="text-cyan-400 font-bold tracking-widest text-xl uppercase">Calibrating...</p>
+            <p className="text-cyan-400 font-bold tracking-widest text-xl uppercase">Establishing Bias...</p>
             <p className="text-xs text-gray-500 mt-2">Hold phone still.</p>
         </div>
       )}
@@ -269,7 +242,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="bg-black/40 p-4 rounded-xl border border-gray-700 mb-6">
                 <div className="flex justify-between items-center mb-2">
                     <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Sensor Activity</span>
-                    <span className="text-[10px] text-cyan-400 font-mono">Yaw: {liveYaw}°</span>
+                    <span className="text-[10px] text-cyan-400 font-mono font-bold">Yaw: {liveYaw}°</span>
                 </div>
                 <div className="h-2 bg-gray-800 rounded-full overflow-hidden"><div className="h-full bg-cyan-500 transition-all duration-75" style={{ width: `${Math.min(100, (currentG / 3) * 100)}%` }}></div></div>
             </div>
