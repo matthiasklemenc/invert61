@@ -38,47 +38,67 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       accumulatedTurn: 0,
       lastStableAngle: 0,
       lastLogTime: 0,
-      pendingTurn: null as number | null
+      pendingTurn: null as number | null,
+      unitMultiplier: 1.0, // Default to Degrees
+      unitDetected: false
   });
 
   const handleMotion = (event: DeviceMotionEvent) => {
     const acc = event.accelerationIncludingGravity || { x: 0, y: 0, z: 9.81 };
     const rot = event.rotationRate || { alpha: 0, beta: 0, gamma: 0 };
     
-    // 1. G-Force Calculation
+    // 1. Precise G-Force for Impact Detection
     const ax = acc.x || 0;
     const ay = acc.y || 0;
-    const az = acc.z || 9.81;
+    const az = acc.z || 0;
     const totalG_ms2 = Math.sqrt(ax**2 + ay**2 + az**2);
     const gForce = totalG_ms2 / 9.81;
     setCurrentG(gForce);
 
-    // 2. Hardware Interval (Correction for 1000x bug)
+    // 2. Exact Hardware Timing
     let dt = (event.interval || 16.66) / 1000;
-    if (dt > 1) dt /= 1000; // Force seconds if interval is in ms
+    if (dt > 1) dt /= 1000; 
 
     const track = trackingStateRef.current;
 
-    // 3. Rotation Integration (The "Simple Fix")
-    // Use the dot product to find rotation around the Earth's gravity vector.
-    // We multiply by 57.2958 (180/PI) because many mobile browsers return Radians instead of Degrees.
+    // 3. Gravity-Projected Rotation (Yaw)
     if (totalG_ms2 > 0.5) {
-        const radToDeg = 57.2957795;
-        // Dot product of rotation vector and normalized gravity vector
-        let turnRate = ((rot.beta || 0) * ax + (rot.gamma || 0) * ay + (rot.alpha || 0) * az) / totalG_ms2;
-        
-        // Multiplier Fix: If your phone shows 1.5 degrees for a 90 turn, this multiplier fixes it.
-        // We apply a small threshold (0.1) to avoid drift when the phone is static.
-        if (Math.abs(turnRate) > 0.1) {
-            track.accumulatedTurn += (turnRate * radToDeg) * dt;
+        // Project 3D rotation onto the gravity vector
+        // This makes "Horizontal" work whether the phone is flat or vertical
+        let rawRate = ( (rot.beta || 0) * ax + (rot.gamma || 0) * ay + (rot.alpha || 0) * az ) / totalG_ms2;
+
+        // --- UNIT AUTO-DETECTION ---
+        // If we haven't locked the units yet, check magnitude.
+        // Human turns are usually 30-360 deg/sec. 
+        // If values are consistently < 6.28 (Radians) during motion, it's Radians.
+        if (!track.unitDetected && Math.abs(rawRate) > 0.1) {
+            if (Math.abs(rawRate) > 10) {
+                track.unitMultiplier = 1.0; // Confirmed Degrees
+                track.unitDetected = true;
+            } else if (Math.abs(rawRate) > 0.5) {
+                // If it's between 0.5 and 10, it's likely Radians (1 rad = 57 deg)
+                // We'll keep checking for a few frames to be sure
+                if (Math.abs(rawRate) < 5) {
+                    track.unitMultiplier = 57.2958; 
+                    track.unitDetected = true;
+                }
+            }
+        }
+
+        const calibratedRate = rawRate * track.unitMultiplier;
+
+        // --- INTEGRATION ---
+        // Use a 0.5 deg/sec floor to kill "static drift"
+        if (Math.abs(calibratedRate) > 0.5) {
+            track.accumulatedTurn += calibratedRate * dt;
             
-            // Throttled UI update
-            if (Math.floor(performance.now() / 50) !== Math.floor((performance.now() - dt*1000) / 50)) {
+            // Live Update UI (approx 15fps)
+            if (Date.now() % 66 < 20) {
                 setLiveYaw(Math.round(track.accumulatedTurn));
             }
         }
 
-        // 4. Turn Event Logic
+        // 4. Turn Recording Logic
         const delta = track.accumulatedTurn - track.lastStableAngle;
         if (Math.abs(delta) >= 15) {
             track.pendingTurn = Math.round(delta);
@@ -86,7 +106,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
         }
     }
 
-    // --- State Logic ---
+    // --- State Handlers ---
     if (statusRef.current === 'armed') {
         if (gForce > SLAP_THRESHOLD) {
             const nowTime = Date.now();
@@ -138,6 +158,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
       track.lastStableAngle = 0;
       track.lastLogTime = Date.now();
       track.pendingTurn = null;
+      // Note: we keep unitMultiplier discovered so far
       
       setPointsRecorded(0);
       setElapsedTime(0);
@@ -219,7 +240,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, prev
             <div className="w-32 h-32 border-4 border-cyan-500 rounded-full mx-auto flex items-center justify-center mb-8 animate-pulse">
                 <span className="text-4xl font-black text-white">{calibrationLeft}</span>
             </div>
-            <p className="text-cyan-400 font-bold tracking-widest text-xl uppercase">Syncing Gyro...</p>
+            <p className="text-cyan-400 font-bold tracking-widest text-xl uppercase">Sensing Scale...</p>
             <p className="text-xs text-gray-500 mt-2">Hold phone still.</p>
         </div>
       )}
