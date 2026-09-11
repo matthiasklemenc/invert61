@@ -114,10 +114,10 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
                     canvas.width = displayWidth;
                     canvas.height = displayHeight;
-                    const ctx = canvas.getContext("2d");
-                    if (ctx) {
-                         ctx.scale(dpr, dpr);
-                    }
+                    // Game rendering uses backing-store pixels throughout.
+                    // Reset the context after every resize; scaling here while
+                    // drawing with canvas.width/canvas.height double-scaled it.
+                    canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
                 }
             }
         };

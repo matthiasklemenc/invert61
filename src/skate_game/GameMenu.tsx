@@ -4,7 +4,7 @@ import Carousel3D from '../Carousel3D';
 import CharacterPreview from './CharacterPreview';
 import { CHARACTERS } from './DrawingHelpers';
 import { CharacterType } from './GameTypes';
-import { formatScore, KAI_IMAGE_URL } from './GameConstants';
+import { formatScore, GAME_LOGO_URL, KAI_IMAGE_URL } from './GameConstants';
 
 interface GameMenuProps {
     highScore: number;
@@ -41,9 +41,8 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 <span className="font-bold tracking-wider">EXIT</span>
             </button>
 
-            {/* ✅ FIXED: correct path for mobile + GitHub Pages */}
             <img 
-                src="./asstes/game/invert_the_game_transpartent_small.png"
+                src={GAME_LOGO_URL}
                 alt="INVERT THE GAME"
                 className="w-32 max-w-full h-auto mb-2 object-contain drop-shadow-[0_0_15px_rgba(197,35,35,0.5)]"
             />

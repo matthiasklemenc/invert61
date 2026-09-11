@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect } from 'react';
-import { KAI_SPRITES } from './GameConstants';
+import { gameAssetUrl, KAI_SPRITES } from './GameConstants';
 import { CharacterType, ObstacleType } from './GameTypes';
 
 // ========= SAFE KAI SPRITE LOADER (no other system touched) ========= //
@@ -14,15 +14,15 @@ function loadImage(src: string): HTMLImageElement {
 // If the game never filled KAI_SPRITES, we safely fill them here
 if (!KAI_SPRITES.PUSH?.length || !KAI_SPRITES.RIDE?.length) {
     KAI_SPRITES.PUSH = [
-        loadImage('/assets/kai/kai_push_1.png'),
-        loadImage('/assets/kai/kai_push_2.png')
+        loadImage(gameAssetUrl('kai/kai_push_1.png')),
+        loadImage(gameAssetUrl('kai/kai_push_2.png'))
     ];
 
     KAI_SPRITES.RIDE = [
-        loadImage('/assets/kai/kai_ride_1.png'),
-        loadImage('/assets/kai/kai_ride_2.png'),
-        loadImage('/assets/kai/kai_ride_3.png'),
-        loadImage('/assets/kai/kai_ride_4.png')
+        loadImage(gameAssetUrl('kai/kai_ride_1.png')),
+        loadImage(gameAssetUrl('kai/kai_ride_2.png')),
+        loadImage(gameAssetUrl('kai/kai_ride_3.png')),
+        loadImage(gameAssetUrl('kai/kai_ride_4.png'))
     ];
 }
 
@@ -592,7 +592,9 @@ export function drawStickman(
             ctx.translate(0, 15);
         }
 
-        if (imageToDraw && imageToDraw.complete) {
+        // A failed image also reports `complete === true`.  naturalWidth keeps
+        // drawImage from throwing and terminating the requestAnimationFrame loop.
+        if (imageToDraw && imageToDraw.complete && imageToDraw.naturalWidth > 0) {
             ctx.drawImage(imageToDraw, -drawW/2, -drawH + 25, drawW, drawH);
         } else {
             // Tiny debug text that will NOT cover the sprite

@@ -1,7 +1,13 @@
 import { ObstacleType } from './GameTypes';
 
-// Intro image for the start page (GitHub Pages correct path)
-export const KAI_IMAGE_URL = "/invert11/assets/kai/kai_intro.png";
+// Vite expands BASE_URL to the configured deployment prefix ("/invert61/" on
+// GitHub Pages, "/" locally).  Keep every public game asset behind this helper
+// so a repository rename cannot silently break the game loop.
+export const gameAssetUrl = (path: string) =>
+    `${import.meta.env.BASE_URL}assets/${path.replace(/^\/+/, '')}`;
+
+export const KAI_IMAGE_URL = gameAssetUrl('kai/kai_intro.png');
+export const GAME_LOGO_URL = gameAssetUrl('game/invert_the_game_transpartent_small.png');
 
 export const GRAVITY = 0.6;
 export const JUMP_FORCE = -18;
@@ -22,14 +28,13 @@ export const KAI_SPRITES = {
     ]
 };
 
-// Load sprite PNGs (GitHub Pages + Vite correct absolute paths)
-KAI_SPRITES.RIDE[0].src = "/invert11/assets/kai/kai_ride_1.png";
-KAI_SPRITES.RIDE[1].src = "/invert11/assets/kai/kai_ride_2.png";
-KAI_SPRITES.RIDE[2].src = "/invert11/assets/kai/kai_ride_3.png";
-KAI_SPRITES.RIDE[3].src = "/invert11/assets/kai/kai_ride_4.png";
+KAI_SPRITES.RIDE[0].src = gameAssetUrl('kai/kai_ride_1.png');
+KAI_SPRITES.RIDE[1].src = gameAssetUrl('kai/kai_ride_2.png');
+KAI_SPRITES.RIDE[2].src = gameAssetUrl('kai/kai_ride_3.png');
+KAI_SPRITES.RIDE[3].src = gameAssetUrl('kai/kai_ride_4.png');
 
-KAI_SPRITES.PUSH[0].src = "/invert11/assets/kai/kai_push_1.png";
-KAI_SPRITES.PUSH[1].src = "/invert11/assets/kai/kai_push_2.png";
+KAI_SPRITES.PUSH[0].src = gameAssetUrl('kai/kai_push_1.png');
+KAI_SPRITES.PUSH[1].src = gameAssetUrl('kai/kai_push_2.png');
 
 // --- OBSTACLES ---
 export const STANDARD_OBSTACLES: {
