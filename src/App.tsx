@@ -30,6 +30,7 @@ import CapitalsQuizPage from './capitals_quiz/CapitalsQuizPage';
 import SkateGamePage from './skate_game/SkateGamePage';
 
 import TrickRecordingPage from './TrickRecordingPage';
+import BoardSensorTestPage from './BoardSensorTestPage';
 
 import MiniPlayer from './MiniPlayer';
 import useLocalStorage from './useLocalStorage';
@@ -105,7 +106,8 @@ type Page =
   | 'capitals-quiz'
   | 'skate-game'
   | 'trick-training'
-  | 'trick-recording';
+  | 'trick-recording'
+  | 'board-sensor';
 
 /* ==== Gemini init guard ==== */
 const IN_IFRAME = (() => {
@@ -1169,6 +1171,9 @@ const App: React.FC = () => {
             onSelectTrick={handleSelectTrickToTrain}
           />
         );
+
+      case 'board-sensor':
+        return <BoardSensorTestPage onBack={() => navigateTo('rollometer')} />;
 
       case 'trick-recording':
         if (!trickToRecord)

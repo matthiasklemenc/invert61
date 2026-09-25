@@ -149,6 +149,12 @@ const RollometerPage: React.FC<Props> = ({ onClose }) => {
                 <h1 className="text-xl font-bold tracking-wider text-cyan-400">SKATE SENSE</h1>
                 <p className="text-[10px] text-gray-500 uppercase tracking-widest">Motion Tracker</p>
             </div>
+            <button
+                onClick={() => onSetPage('board-sensor')}
+                className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors z-10 p-2 -mr-2"
+            >
+                Sensor Test
+            </button>
        </header>
 
        <div className="w-full max-w-lg mx-auto flex-grow">
