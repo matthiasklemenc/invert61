@@ -27,6 +27,7 @@ export interface YouTubeChannelSlot {
   type?: YouTubeSlotType; // Old saved slots have no type; they are treated as channels.
   channelId: string | null;
   channelName: string | null;
+  channelUrl?: string | null;
 
   // Used when this slot is a specific saved video.
   videoId?: string | null;

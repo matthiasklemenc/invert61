@@ -319,12 +319,36 @@ const App: React.FC = () => {
   const [youTubeSlots, setYouTubeSlots] = useLocalStorage<YouTubeChannelSlot[]>(
     'mooseek-yt-slots',
     [
-      { id: 0, channelId: 'UC-Pk-TTaSrDOjkPKQ7C8HXQ', channelName: 'Skate IQ' },
-      { id: 1, channelId: 'UCf9ZbGG906ADVVtNMgctVrA', channelName: 'ThrasherMagazine' },
-      { id: 2, channelId: 'UCt16NSYjauKclK67LCXvQyA', channelName: 'Braille Skateboarding' },
-      { id: 3, channelId: 'UC2SikNrCZlWKjyjuW9RE1mQ', channelName: 'Santa Cruz Skateboards' },
+      { id: 0, type: 'channel', channelId: null, channelName: 'Skate IQ', channelUrl: 'https://www.youtube.com/@Skateiq' },
+      { id: 1, type: 'channel', channelId: null, channelName: 'ThrasherMagazine', channelUrl: 'https://www.youtube.com/@ThrasherMag' },
+      { id: 2, type: 'channel', channelId: null, channelName: 'The Nine Club', channelUrl: 'https://www.youtube.com/@thenineclub' },
+      { id: 3, type: 'channel', channelId: null, channelName: 'The Skate Nomad', channelUrl: 'https://www.youtube.com/@Theskatenomad' },
     ],
   );
+
+  useEffect(() => {
+    const legacyDefaultIds = [
+      'UC-Pk-TTaSrDOjkPKQ7C8HXQ',
+      'UCf9ZbGG906ADVVtNMgctVrA',
+      'UCt16NSYjauKclK67LCXvQyA',
+      'UC2SikNrCZlWKjyjuW9RE1mQ',
+    ];
+
+    const isLegacyDefaults =
+      youTubeSlots.length === 4 &&
+      youTubeSlots.every(
+        (slot, index) => slot.channelId === legacyDefaultIds[index]
+      );
+
+    if (isLegacyDefaults) {
+      setYouTubeSlots([
+        { id: 0, type: 'channel', channelId: null, channelName: 'Skate IQ', channelUrl: 'https://www.youtube.com/@Skateiq' },
+        { id: 1, type: 'channel', channelId: null, channelName: 'ThrasherMagazine', channelUrl: 'https://www.youtube.com/@ThrasherMag' },
+        { id: 2, type: 'channel', channelId: null, channelName: 'The Nine Club', channelUrl: 'https://www.youtube.com/@thenineclub' },
+        { id: 3, type: 'channel', channelId: null, channelName: 'The Skate Nomad', channelUrl: 'https://www.youtube.com/@Theskatenomad' },
+      ]);
+    }
+  }, [youTubeSlots, setYouTubeSlots]);
 
   const [showRollometer, setShowRollometer] = useLocalStorage<boolean>(
     'invert-rollometer-unlocked',

@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { YouTubeChannelSlot } from './types';
-import {
-  getNewestUploadsFromChannel,
-  YouTubeVideo,
-} from './youtubeApi';
+import { getNewestUploadsFromChannel, RssVideo } from './youtubeRss';
+import { resolveYouTubeSourceUrl } from './youtubeChannelSearch';
 import ChangeChannelModal, {
   SelectedYouTubeItem,
 } from './ChangeChannelModal';
@@ -15,7 +13,7 @@ type SlotProps = {
 };
 
 const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
-  const [video, setVideo] = useState<YouTubeVideo | null>(null);
+  const [video, setVideo] = useState<RssVideo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,7 +43,7 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
       return;
     }
 
-    if (!slot.channelId) {
+    if (!slot.channelId && !slot.channelUrl) {
       setVideo(null);
       setError(null);
       setLoading(false);
@@ -59,9 +57,24 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
       setError(null);
 
       try {
+        let channelId = slot.channelId;
+
+        if (!channelId && slot.channelUrl) {
+          const resolved = await resolveYouTubeSourceUrl(slot.channelUrl);
+          if (resolved.kind !== 'channel') {
+            throw new Error('This slot does not contain a YouTube channel URL.');
+          }
+          channelId = resolved.channelId;
+        }
+
+        if (!channelId) {
+          throw new Error('No YouTube channel was configured.');
+        }
+
         const videos = await getNewestUploadsFromChannel(
-          slot.channelId!,
-          slot.uploadsPlaylistId
+          channelId,
+          '',
+          { count: 1 }
         );
 
         if (!cancelled) {
@@ -89,6 +102,7 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
   }, [
     slotType,
     slot.channelId,
+    slot.channelUrl,
     slot.uploadsPlaylistId,
     slot.videoId,
     slot.videoTitle,
@@ -283,6 +297,7 @@ const AdditionalYouTubeGrid: React.FC<GridProps> = ({
             type: 'channel',
             channelId: item.channelId,
             channelName: item.channelName,
+            channelUrl: item.channelUrl,
             uploadsPlaylistId: item.uploadsPlaylistId || null,
             videoId: null,
             videoTitle: null,
@@ -298,6 +313,7 @@ const AdditionalYouTubeGrid: React.FC<GridProps> = ({
           type: 'video',
           channelId: null,
           channelName: null,
+          channelUrl: null,
           uploadsPlaylistId: null,
           videoId: item.videoId,
           videoTitle: item.title,
