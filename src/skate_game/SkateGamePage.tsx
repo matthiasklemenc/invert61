@@ -115,28 +115,45 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         // stretch the canvas element to the available screen area.
         const LOGICAL_HEIGHT = 360;
 
-        const resizeCanvasToDisplaySize = (entries: ResizeObserverEntry[]) => {
-            for (let entry of entries) {
-                const width = entry.contentRect.width;
-                const height = entry.contentRect.height;
+        const resizeCanvasToDisplaySize = () => {
+            // On some mobile browsers ResizeObserver can report a stale/zero
+            // contentRect during the first layout pass. Read the actual
+            // displayed canvas size instead, and retry on the next frame.
+            const rect = canvas.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
 
-                if (width === 0 || height === 0) continue;
+            if (width <= 0 || height <= 0) return;
 
-                const logicalWidth = Math.max(1, Math.round((width / height) * LOGICAL_HEIGHT));
+            const logicalWidth = Math.max(
+                1,
+                Math.round((width / height) * LOGICAL_HEIGHT)
+            );
 
-                if (canvas.width !== logicalWidth || canvas.height !== LOGICAL_HEIGHT) {
-                    canvas.width = logicalWidth;
-                    canvas.height = LOGICAL_HEIGHT;
-                    canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
-                }
+            if (canvas.width !== logicalWidth || canvas.height !== LOGICAL_HEIGHT) {
+                canvas.width = logicalWidth;
+                canvas.height = LOGICAL_HEIGHT;
+                canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
             }
         };
 
-        const observer = new ResizeObserver(resizeCanvasToDisplaySize);
+        const observer = new ResizeObserver(() => {
+            resizeCanvasToDisplaySize();
+        });
+
         observer.observe(canvas);
+        window.addEventListener("resize", resizeCanvasToDisplaySize);
+        window.addEventListener("orientationchange", resizeCanvasToDisplaySize);
+
+        // Run after the browser has completed the initial mobile layout.
+        const initialResizeFrame = requestAnimationFrame(resizeCanvasToDisplaySize);
+        resizeCanvasToDisplaySize();
 
         return () => {
             observer.disconnect();
+            window.removeEventListener("resize", resizeCanvasToDisplaySize);
+            window.removeEventListener("orientationchange", resizeCanvasToDisplaySize);
+            cancelAnimationFrame(initialResizeFrame);
         };
     }, [canvasRef]);
 
