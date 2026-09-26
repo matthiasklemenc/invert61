@@ -110,28 +110,15 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        // The game simulation uses a 360-unit-tall coordinate system
-        // (BASE_FLOOR_Y is 250). Keep that coordinate system intact and only
-        // stretch the canvas element to the available screen area.
+        // Keep the game on one stable internal coordinate system. The canvas
+        // is responsively scaled by CSS; the game renderer should not depend
+        // on the mobile browser's layout timing or device pixel ratio.
+        const LOGICAL_WIDTH = 640;
         const LOGICAL_HEIGHT = 360;
 
         const resizeCanvasToDisplaySize = () => {
-            // On some mobile browsers ResizeObserver can report a stale/zero
-            // contentRect during the first layout pass. Read the actual
-            // displayed canvas size instead, and retry on the next frame.
-            const rect = canvas.getBoundingClientRect();
-            const width = rect.width;
-            const height = rect.height;
-
-            if (width <= 0 || height <= 0) return;
-
-            const logicalWidth = Math.max(
-                1,
-                Math.round((width / height) * LOGICAL_HEIGHT)
-            );
-
-            if (canvas.width !== logicalWidth || canvas.height !== LOGICAL_HEIGHT) {
-                canvas.width = logicalWidth;
+            if (canvas.width !== LOGICAL_WIDTH || canvas.height !== LOGICAL_HEIGHT) {
+                canvas.width = LOGICAL_WIDTH;
                 canvas.height = LOGICAL_HEIGHT;
                 canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
             }
