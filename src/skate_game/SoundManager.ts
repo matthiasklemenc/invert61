@@ -487,6 +487,25 @@ class SoundManager {
              this.firecrackerSynth.triggerAttackRelease("32n", now + 0.1);
         } catch(e){}
     }
+
+    playLevelComplete() {
+        if (this.isMuted) return;
+        try {
+            this.stopCurrentMusic();
+            const now = this.getSafeTime();
+            const melody = [
+                ['C5', 0], ['E5', 0.16], ['G5', 0.32], ['C6', 0.48],
+                ['G5', 0.72], ['C6', 0.88], ['E6', 1.04], ['G6', 1.20]
+            ] as const;
+            melody.forEach(([note, offset]) => {
+                this.lead.triggerAttackRelease(note, '8n', now + offset);
+            });
+            [0, 0.22, 0.44, 0.66, 0.88, 1.10, 1.32].forEach(offset => {
+                this.firecrackerSynth.triggerAttackRelease('32n', now + offset);
+            });
+            this.currentMusicType = 'NONE';
+        } catch(e) {}
+    }
     
     toggleMute() {
         this.isMuted = !this.isMuted;
@@ -519,6 +538,7 @@ export const getSoundManager = () => {
                 playSiren: () => {},
                 playMetalHit: () => {},
                 playFirecracker: () => {},
+                playLevelComplete: () => {},
                 playSOSSignal: () => {},
                 toggleMute: () => {},
                 isMuted: true

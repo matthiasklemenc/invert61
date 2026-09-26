@@ -205,6 +205,8 @@ export function useSkateGame() {
     const [secretQuestionOpen, setSecretQuestionOpen] = useState(false);
     const [secretQuestionFeedback, setSecretQuestionFeedback] = useState('');
     const [secretQuestionType, setSecretQuestionType] = useState<'GARAGE' | 'SPACE'>('GARAGE');
+    const [levelComplete, setLevelComplete] = useState(false);
+    const completionArmedRef = useRef(progress.knowledgePoints < 2 || progress.skillPoints < 1);
 
     useEffect(() => {
         saveGameProgress(progress);
@@ -437,6 +439,27 @@ export function useSkateGame() {
         getSoundManager().playLaunch();
         getSoundManager().playMainMusic(); 
     };
+
+    useEffect(() => {
+        const complete = progress.knowledgePoints >= 2 && progress.skillPoints >= 1;
+
+        // Arm the completion trigger again when a new run starts with fewer
+        // than the required three points. This prevents a reload with already
+        // saved points from immediately showing the completion screen.
+        if (!complete) {
+            completionArmedRef.current = true;
+            return;
+        }
+
+        if (completionArmedRef.current && uiState === 'PLAYING' && !levelComplete) {
+            completionArmedRef.current = false;
+            setLevelComplete(true);
+            setIsPaused(true);
+            stateRef.current.status = 'PLAYING';
+            getSoundManager().stopMusic();
+            getSoundManager().playLevelComplete();
+        }
+    }, [progress.knowledgePoints, progress.skillPoints, uiState, levelComplete]);
 
     const enterSpace = () => {
         const state = stateRef.current;
@@ -673,8 +696,8 @@ export function useSkateGame() {
             addFloatingText(state.player.x, state.currentFloorY - 100, 'SKILL POINT +1', '#f59e0b');
         } else {
             addFloatingText(state.player.x, state.currentFloorY - 100, 'CHALLENGE FAILED', '#ef4444');
+            exitUnderworld();
         }
-        exitUnderworld();
     }, [exitUnderworld]);
 
     const releaseSkillShot = useCallback(() => {
@@ -718,9 +741,15 @@ export function useSkateGame() {
     const loop = (timestamp: number) => {
         const state = stateRef.current;
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas) {
+            requestRef.current = requestAnimationFrame(loop);
+            return;
+        }
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        if (!ctx) {
+            requestRef.current = requestAnimationFrame(loop);
+            return;
+        }
 
         if (!lastTimeRef.current) {
             lastTimeRef.current = timestamp;
@@ -2990,6 +3019,30 @@ if (state.player.y > 600) {
         getSoundManager().startMusic();
     };
 
+    const playAgainFromLevelOne = useCallback(() => {
+        resetGameProgress();
+        const state = stateRef.current;
+        state.skillPointEarned = false;
+        state.status = 'PLAYING';
+        setLevelComplete(false);
+        completionArmedRef.current = false;
+        setIsPaused(false);
+        startGame();
+        // startGame reads the previous React progress value for its secret-state
+        // initialization, so explicitly clear those level-1 progress flags here.
+        state.skillPointEarned = false;
+        state.secretHydrantHits = 0;
+        state.secretKeyAvailable = false;
+        state.secretKeyCollected = false;
+        state.secretGarageOpen = false;
+        state.secretVhsCollected = false;
+        state.secretQuestionSolved = false;
+        state.spaceSignalActive = false;
+        state.spaceSignalTimer = 0;
+        state.spaceSignalTriggered = false;
+        state.spaceSignalQuestionSolved = false;
+    }, [resetGameProgress]);
+
     return {
         canvasRef,
         progress,
@@ -3025,6 +3078,8 @@ if (state.player.y > 600) {
         releaseKeyboardJump,
         buyItem, // Export for shop
         closeShop, // Export for shop
-        resetGameProgress
+        resetGameProgress,
+        levelComplete,
+        playAgainFromLevelOne
     };
 }

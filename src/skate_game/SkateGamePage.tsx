@@ -100,7 +100,9 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         releaseKeyboardJump,
         buyItem,
         closeShop,
-        resetGameProgress
+        resetGameProgress,
+        levelComplete,
+        playAgainFromLevelOne
     } = useSkateGame();
 
     // -------------------------------------------------------
@@ -239,8 +241,69 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 showStats={uiState === "PLAYING"}
             />
 
+            {/* LEVEL COMPLETE */}
+            {levelComplete && uiState === "PLAYING" && (
+                <div className="absolute inset-0 z-[60] overflow-hidden bg-black/80 flex items-center justify-center">
+                    {/* Fireworks */}
+                    <div className="absolute inset-0 pointer-events-none">
+                        {[
+                            ["14%", "22%", "text-cyan-300", "0s"],
+                            ["84%", "20%", "text-yellow-300", "0.45s"],
+                            ["24%", "72%", "text-pink-300", "0.9s"],
+                            ["76%", "68%", "text-red-300", "0.2s"],
+                            ["50%", "14%", "text-white", "0.65s"],
+                            ["52%", "78%", "text-purple-300", "1.1s"],
+                        ].map(([left, top, color, delay], index) => (
+                            <div
+                                key={index}
+                                className={`absolute ${color}`}
+                                style={{ left, top, animationDelay: delay }}
+                            >
+                                <div className="relative h-4 w-4 animate-ping">
+                                    <div className="absolute inset-0 rounded-full bg-current shadow-[0_0_28px_10px_currentColor]" />
+                                    <div className="absolute left-1/2 top-1/2 h-24 w-1 -translate-x-1/2 -translate-y-1/2 bg-current opacity-70 rotate-0" />
+                                    <div className="absolute left-1/2 top-1/2 h-24 w-1 -translate-x-1/2 -translate-y-1/2 bg-current opacity-70 rotate-45" />
+                                    <div className="absolute left-1/2 top-1/2 h-24 w-1 -translate-x-1/2 -translate-y-1/2 bg-current opacity-70 rotate-90" />
+                                    <div className="absolute left-1/2 top-1/2 h-24 w-1 -translate-x-1/2 -translate-y-1/2 bg-current opacity-70 rotate-[135deg]" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="relative z-10 text-center px-6">
+                        <div className="text-sm md:text-base font-black tracking-[0.35em] text-cyan-300 mb-4">
+                            LEVEL 1 COMPLETE
+                        </div>
+                        <h2 className="text-5xl md:text-7xl font-black tracking-tight text-white drop-shadow-[0_0_25px_rgba(255,255,255,0.4)]">
+                            LEVEL COMPLETE!
+                        </h2>
+                        <div className="mt-5 text-2xl md:text-3xl font-black text-yellow-300">
+                            LEVEL 2 UNLOCKED
+                        </div>
+                        <div className="mt-2 text-lg md:text-xl font-bold text-gray-300">
+                            IN CONSTRUCTION
+                        </div>
+
+                        <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+                            <button
+                                onClick={playAgainFromLevelOne}
+                                className="bg-[#c52323] hover:bg-red-600 text-white font-black py-3 px-8 rounded-xl shadow-lg"
+                            >
+                                PLAY AGAIN
+                            </button>
+                            <button
+                                onClick={onClose}
+                                className="border border-gray-500 hover:border-white text-gray-200 font-bold py-3 px-8 rounded-xl"
+                            >
+                                EXIT
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* PAUSE OVERLAY */}
-            {isPaused && uiState === "PLAYING" && (
+            {isPaused && uiState === "PLAYING" && !levelComplete && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20">
                     <div className="bg-gray-800 p-6 rounded-xl border border-gray-600 text-center shadow-2xl">
                         <h2 className="text-3xl font-bold mb-4">PAUSED</h2>
