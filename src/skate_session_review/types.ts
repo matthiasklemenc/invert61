@@ -83,9 +83,21 @@ export interface BoardSensorDataPoint {
   yaw: number; // degrees
 }
 
+export type TrickTerrain = 'flat' | 'transition';
+
+export interface TrickDefinition {
+  id: string;
+  name: string;
+  terrain: TrickTerrain;
+  builtIn?: boolean;
+  createdAt: string;
+}
+
 export interface TrickSample {
   id: string;
   trick: string;
+  trickId?: string;
+  terrain?: TrickTerrain;
   rider: string;
   stance: Stance;
   createdAt: string;
