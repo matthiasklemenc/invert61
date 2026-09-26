@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BoardSensorDataPoint, Stance, TrickSample } from '../types';
 import {
   connectBoardSensor,
+  disconnectBoardSensor,
   getBoardSensorDeviceName,
   isBoardSensorConnected,
   subscribeBoardSensor,
@@ -294,9 +295,18 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
           )}
 
           {sensorConnected && (
-            <button onClick={startAttempt} className="w-full bg-green-500 text-gray-950 font-black py-5 rounded-2xl uppercase tracking-widest">
-              START ATTEMPT
-            </button>
+            <>
+              <button onClick={startAttempt} className="w-full bg-green-500 text-gray-950 font-black py-5 rounded-2xl uppercase tracking-widest">
+                START ATTEMPT
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSensorError(null); disconnectBoardSensor(); }}
+                className="w-full mt-3 border border-white/15 text-white font-black py-3 rounded-2xl uppercase tracking-widest hover:bg-white/5"
+              >
+                DISCONNECT SENSOR
+              </button>
+            </>
           )}
 
           <div className="text-center text-[10px] text-gray-600 uppercase tracking-widest">

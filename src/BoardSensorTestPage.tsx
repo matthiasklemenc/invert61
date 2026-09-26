@@ -1,8 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-
-const SERVICE_UUID = '0000ffe5-0000-1000-8000-00805f9a34fb';
-const NOTIFY_CHARACTERISTIC_UUID = '0000ffe4-0000-1000-8000-00805f9a34fb';
-const SENSOR_NAME_PREFIX = 'WT901';
+import React, { useCallback, useEffect, useState } from 'react';
+import { BoardSensorDataPoint } from './skate_session_review/types';
+import {
+  connectBoardSensor,
+  disconnectBoardSensor,
+  getBoardSensorDeviceName,
+  isBoardSensorConnected,
+  subscribeBoardSensor,
+  subscribeBoardSensorStatus,
+} from './skate_session_review/boardSensorConnection';
 
 interface SensorValues {
   ax: number;
@@ -16,23 +21,6 @@ interface SensorValues {
   yaw: number;
 }
 
-type BluetoothCharacteristic = BluetoothRemoteGATTCharacteristic & {
-  value?: DataView | null;
-};
-
-type BluetoothDeviceWithGatt = BluetoothDevice & {
-  gatt: BluetoothRemoteGATTServer | null;
-};
-
-type WebBluetoothNavigator = Navigator & {
-  bluetooth?: {
-    requestDevice(options: {
-      filters?: Array<{ namePrefix?: string }>;
-      optionalServices?: string[];
-    }): Promise<BluetoothDeviceWithGatt>;
-  };
-};
-
 const EMPTY_VALUES: SensorValues = {
   ax: 0,
   ay: 0,
@@ -43,30 +31,6 @@ const EMPTY_VALUES: SensorValues = {
   roll: 0,
   pitch: 0,
   yaw: 0,
-};
-
-const readInt16LE = (view: DataView, offset: number) => view.getInt16(offset, true);
-
-const parseWitMotionPacket = (value: DataView): SensorValues | null => {
-  if (value.byteLength < 20 || value.getUint8(0) !== 0x55 || value.getUint8(1) !== 0x61) {
-    return null;
-  }
-
-  const scaleAcc = 16 / 32768;
-  const scaleGyro = 2000 / 32768;
-  const scaleAngle = 180 / 32768;
-
-  return {
-    ax: readInt16LE(value, 2) * scaleAcc,
-    ay: readInt16LE(value, 4) * scaleAcc,
-    az: readInt16LE(value, 6) * scaleAcc,
-    gx: readInt16LE(value, 8) * scaleGyro,
-    gy: readInt16LE(value, 10) * scaleGyro,
-    gz: readInt16LE(value, 12) * scaleGyro,
-    roll: readInt16LE(value, 14) * scaleAngle,
-    pitch: readInt16LE(value, 16) * scaleAngle,
-    yaw: readInt16LE(value, 18) * scaleAngle,
-  };
 };
 
 const formatNumber = (value: number, decimals = 2) => value.toFixed(decimals);
@@ -86,72 +50,37 @@ const ValueCard: React.FC<{ label: string; value: string; unit: string }> = ({
 );
 
 const BoardSensorTestPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const [status, setStatus] = useState('Not connected');
+  const [status, setStatus] = useState(isBoardSensorConnected() ? 'Connected — receiving data' : 'Not connected');
   const [error, setError] = useState<string | null>(null);
-  const [deviceName, setDeviceName] = useState('—');
+  const [deviceName, setDeviceName] = useState(getBoardSensorDeviceName());
   const [values, setValues] = useState<SensorValues>(EMPTY_VALUES);
   const [packetCount, setPacketCount] = useState(0);
-  const deviceRef = useRef<BluetoothDeviceWithGatt | null>(null);
-  const characteristicRef = useRef<BluetoothCharacteristic | null>(null);
 
-  const disconnect = useCallback(() => {
-    const device = deviceRef.current;
-    if (device?.gatt?.connected) {
-      device.gatt.disconnect();
-    }
-    deviceRef.current = null;
-    characteristicRef.current = null;
-    setStatus('Not connected');
-    setDeviceName('—');
-  }, []);
-
-  const handleNotification = useCallback((event: Event) => {
-    const characteristic = event.target as BluetoothCharacteristic;
-    if (!characteristic.value) return;
-
-    const parsed = parseWitMotionPacket(characteristic.value);
-    if (!parsed) return;
-
-    setValues(parsed);
+  const handleSensorPoint = useCallback((point: BoardSensorDataPoint) => {
+    setValues(point);
     setPacketCount((count) => count + 1);
   }, []);
 
+  useEffect(() => {
+    const unsubscribeData = subscribeBoardSensor(handleSensorPoint);
+    const unsubscribeStatus = subscribeBoardSensorStatus((connected, name) => {
+      setStatus(connected ? 'Connected — receiving data' : 'Not connected');
+      setDeviceName(name);
+      if (!connected) setPacketCount(0);
+    });
+
+    return () => {
+      unsubscribeData();
+      unsubscribeStatus();
+    };
+  }, [handleSensorPoint]);
+
   const connect = useCallback(async () => {
     setError(null);
-    const bluetooth = (navigator as WebBluetoothNavigator).bluetooth;
-
-    if (!bluetooth) {
-      setError('Web Bluetooth is not available in this browser. Open INVERT in Chrome on Android.');
-      return;
-    }
-
     try {
-      setStatus('Selecting sensor…');
-      const device = await bluetooth.requestDevice({
-        filters: [{ namePrefix: SENSOR_NAME_PREFIX }],
-        optionalServices: [SERVICE_UUID],
-      });
-
-      deviceRef.current = device;
-      setDeviceName(device.name || 'WT901 sensor');
       setStatus('Connecting…');
-
-      device.addEventListener('gattserverdisconnected', disconnect);
-
-      const server = await device.gatt?.connect();
-      if (!server) throw new Error('Could not connect to the sensor GATT server.');
-
-      const service = await server.getPrimaryService(SERVICE_UUID);
-      const characteristic = (await service.getCharacteristic(
-        NOTIFY_CHARACTERISTIC_UUID,
-      )) as BluetoothCharacteristic;
-
-      await characteristic.startNotifications();
-      characteristic.addEventListener('characteristicvaluechanged', handleNotification);
-      characteristicRef.current = characteristic;
-
       setPacketCount(0);
-      setStatus('Connected — receiving data');
+      await connectBoardSensor();
     } catch (err) {
       if ((err as Error)?.name === 'NotFoundError') {
         setStatus('Not connected');
@@ -160,23 +89,14 @@ const BoardSensorTestPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setStatus('Connection failed');
       setError(err instanceof Error ? err.message : 'Unknown Bluetooth error.');
     }
-  }, [disconnect, handleNotification]);
+  }, []);
 
-  useEffect(() => {
-    return () => {
-      const characteristic = characteristicRef.current;
-      if (characteristic) {
-        characteristic.removeEventListener('characteristicvaluechanged', handleNotification);
-      }
-      const device = deviceRef.current;
-      if (device) {
-        device.removeEventListener('gattserverdisconnected', disconnect);
-        if (device.gatt?.connected) device.gatt.disconnect();
-      }
-    };
-  }, [disconnect, handleNotification]);
+  const disconnect = useCallback(() => {
+    setError(null);
+    disconnectBoardSensor();
+  }, []);
 
-  const isConnected = status === 'Connected — receiving data';
+  const isConnected = isBoardSensorConnected();
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-sans flex flex-col items-center p-4 sm:p-6">
