@@ -4,6 +4,8 @@ export interface GpsPoint {
     lon: number;
     timestamp: number;
     speed: number | null;
+    // Session-relative timestamp used to synchronize GPS with board-sensor samples.
+    sessionTimestamp?: number;
 }
 
 export interface Highlight {
@@ -68,6 +70,32 @@ export interface SessionDataPoint {
   groupId?: string; // Links multiple points into one "Trick"
 }
 
+export interface BoardSensorDataPoint {
+  timestamp: number; // Session-relative milliseconds
+  ax: number; // g
+  ay: number; // g
+  az: number; // g
+  gx: number; // degrees/second
+  gy: number; // degrees/second
+  gz: number; // degrees/second
+  roll: number; // degrees
+  pitch: number; // degrees
+  yaw: number; // degrees
+}
+
+export interface TrickSample {
+  id: string;
+  trick: string;
+  rider: string;
+  stance: Stance;
+  createdAt: string;
+  selectionStartMs: number;
+  selectionEndMs: number;
+  captureStartMs: number;
+  captureEndMs: number;
+  sensorData: BoardSensorDataPoint[];
+}
+
 export interface Session {
   id: string;
   date: string;
@@ -78,6 +106,8 @@ export interface Session {
   avgSpeed: number;
   timelineData: SessionDataPoint[];
   path?: GpsPoint[];
+  boardSensorData?: BoardSensorDataPoint[];
+  stance?: Stance;
 }
 
 export interface Motion {

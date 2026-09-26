@@ -1,11 +1,12 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { Page, Session, UserSettings, Motion, AppState } from './skate_session_review/types';
+import { Page, Session, UserSettings, Motion, AppState, Stance } from './skate_session_review/types';
 import { MOTIONS } from './skate_session_review/constants';
 import Onboarding from './skate_session_review/components/Onboarding';
 import SessionTracker from './skate_session_review/components/SessionTracker';
 import SessionHistory from './skate_session_review/components/SessionHistory';
 import SkateboardIcon from './skate_session_review/SkateboardIcon';
+import { disconnectBoardSensor } from './skate_session_review/boardSensorConnection';
+import TrickDatabasePage from './skate_session_review/components/TrickDatabasePage';
 
 // These props are passed from App.tsx but we will largely ignore 'sessions' 
 // in favor of the locally managed 'skate_sense_sessions' to match the new tracker's data source.
@@ -18,7 +19,11 @@ type Props = {
     onSetPage: (page: any) => void;
 };
 
-const RollometerPage: React.FC<Props> = ({ onClose }) => {
+const RollometerPage: React.FC<Props> = ({ onClose, onSetPage }) => {
+  useEffect(() => () => disconnectBoardSensor(), []);
+  const [showTrickDatabase, setShowTrickDatabase] = useState(false);
+  const [trickDatabaseInitialStance, setTrickDatabaseInitialStance] = useState<Stance | undefined>(undefined);
+
   const [appState, setAppState] = useState<AppState>({
     page: Page.Onboarding,
     userSettings: null,
@@ -40,7 +45,7 @@ const RollometerPage: React.FC<Props> = ({ onClose }) => {
     try {
       const savedSettings = localStorage.getItem('skate_sense_settings');
       const savedSessions = localStorage.getItem('skate_sense_sessions');
-      
+
       const userSettings = savedSettings ? JSON.parse(savedSettings) : null;
       const sessions = savedSessions ? JSON.parse(savedSessions) : [];
 
@@ -119,6 +124,7 @@ const RollometerPage: React.FC<Props> = ({ onClose }) => {
             previousSessions={appState.sessions} 
             onBack={() => navigate(Page.SessionHistory)}
             motions={motions}
+            onOpenTrickDatabase={(stance: Stance) => { setTrickDatabaseInitialStance(stance); setShowTrickDatabase(true); }}
           />
         );
       case Page.SessionHistory:
@@ -139,22 +145,44 @@ const RollometerPage: React.FC<Props> = ({ onClose }) => {
     }
   };
 
+  if (showTrickDatabase) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-gray-100 font-mono p-4 sm:p-6">
+        <TrickDatabasePage initialStance={trickDatabaseInitialStance} onBack={() => setShowTrickDatabase(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-mono flex flex-col items-center p-4 sm:p-6">
-       <header className="flex items-center justify-between mb-6 relative h-10 w-full max-w-4xl">
-            <button onClick={onClose} className="text-white hover:text-gray-300 transition-colors z-10 p-2 -ml-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            <div className="text-center w-full absolute left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center">
-                <h1 className="text-xl font-bold tracking-wider text-cyan-400">SKATE SENSE</h1>
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest">Motion Tracker</p>
+       <header className="w-full max-w-4xl mb-6">
+            <div className="flex items-center justify-between w-full min-h-10">
+                <button onClick={onClose} className="text-white hover:text-gray-300 transition-colors z-10 p-2 -ml-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+
+                <div className="text-center flex-1">
+                    <h1 className="text-xl font-bold tracking-wider text-cyan-400">SESSION TRACKER</h1>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">Motion Tracker</p>
+                </div>
+
+                <div className="w-11" />
             </div>
-            <button
-                onClick={() => onSetPage('board-sensor')}
-                className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors z-10 p-2 -mr-2"
-            >
-                Sensor Test
-            </button>
+
+            <div className="flex items-center justify-center gap-3 mt-2">
+                <button
+                    onClick={() => { setTrickDatabaseInitialStance(undefined); setShowTrickDatabase(true); }}
+                    className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors px-2 py-1"
+                >
+                    Trick DB
+                </button>
+                <button
+                    onClick={() => onSetPage('board-sensor')}
+                    className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors px-2 py-1"
+                >
+                    Sensor Test
+                </button>
+            </div>
        </header>
 
        <div className="w-full max-w-lg mx-auto flex-grow">

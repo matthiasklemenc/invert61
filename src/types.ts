@@ -16,37 +16,47 @@ export interface Song {
 
 export interface Playlist {
   id: string;
-  name:string;
+  name: string;
   songs: Song[];
 }
 
+export type YouTubeSlotType = 'channel' | 'video';
+
 export interface YouTubeChannelSlot {
   id: number; // 0-3
+  type?: YouTubeSlotType; // Old saved slots have no type; they are treated as channels.
   channelId: string | null;
   channelName: string | null;
+
+  // Used when this slot is a specific saved video.
+  videoId?: string | null;
+  videoTitle?: string | null;
+  videoChannelName?: string | null;
+  videoThumbnailUrl?: string | null;
+  videoPublishedAt?: string | null;
+  videoEmbeddable?: boolean;
+
+  // Used for channel slots so the latest upload can be fetched cheaply.
+  uploadsPlaylistId?: string | null;
 }
 
 export type RecentClip = {
-    id: string;
-    name: string;
-    dataUrl: string; // The original video file as a base64 data URL
-    thumbnailUrl: string; // A base64 data URL for the thumbnail image
+  id: string;
+  name: string;
+  dataUrl: string;
+  thumbnailUrl: string;
 };
 
-// Add SkateSession to global types
 export type { SkateSession };
 
-// --- New types for Trick Training ---
-
 export type MotionDataPoint = {
-  ax: number; ay: number; az: number; // accelerometer
-  gx: number; gy: number; gz: number; // gyroscope
+  ax: number; ay: number; az: number;
+  gx: number; gy: number; gz: number;
   timestamp: number;
 };
 
 export type TrickTake = MotionDataPoint[];
 
 export type TrainedTricks = {
-  // e.g., "Ollie": [ [take1_datapoints], [take2_datapoints] ]
   [trickName: string]: TrickTake[];
 };

@@ -5,6 +5,8 @@ import GameHUD from "./GameHUD";
 import GameMenu from "./GameMenu";
 import GameOver from "./GameOver";
 import OxxoShopPopup from "./OxxoShopPopup";
+import GameProgressPanel from "./GameProgressPanel";
+import SecretQuestionModal from "./SecretQuestionModal";
 
 export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     const [isLandscape, setIsLandscape] = useState(
@@ -70,6 +72,11 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
 
     const {
         canvasRef,
+        progress,
+        secretQuestionOpen,
+        secretQuestionFeedback,
+        secretQuestionType,
+        answerSecretQuestion,
         uiState,
         setUiState,
         score,
@@ -88,8 +95,12 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         handleTouchStart,
         handleTouchEnd,
         triggerAction,
+        triggerJump,
+        startKeyboardJump,
+        releaseKeyboardJump,
         buyItem,
-        closeShop
+        closeShop,
+        resetGameProgress
     } = useSkateGame();
 
     // -------------------------------------------------------
@@ -99,24 +110,23 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
+        // The game simulation uses a 360-unit-tall coordinate system
+        // (BASE_FLOOR_Y is 250). Keep that coordinate system intact and only
+        // stretch the canvas element to the available screen area.
+        const LOGICAL_HEIGHT = 360;
+
         const resizeCanvasToDisplaySize = (entries: ResizeObserverEntry[]) => {
             for (let entry of entries) {
                 const width = entry.contentRect.width;
                 const height = entry.contentRect.height;
-                const dpr = window.devicePixelRatio || 1;
 
                 if (width === 0 || height === 0) continue;
 
-                const displayWidth = Math.round(width * dpr);
-                const displayHeight = Math.round(height * dpr);
+                const logicalWidth = Math.max(1, Math.round((width / height) * LOGICAL_HEIGHT));
 
-                // Resize only if needed to avoid clearing canvas unnecessarily
-                if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-                    canvas.width = displayWidth;
-                    canvas.height = displayHeight;
-                    // Game rendering uses backing-store pixels throughout.
-                    // Reset the context after every resize; scaling here while
-                    // drawing with canvas.width/canvas.height double-scaled it.
+                if (canvas.width !== logicalWidth || canvas.height !== LOGICAL_HEIGHT) {
+                    canvas.width = logicalWidth;
+                    canvas.height = LOGICAL_HEIGHT;
                     canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
                 }
             }
@@ -131,21 +141,45 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     }, [canvasRef]);
 
     // -----------------------------------------
-    // 🔥 SPACEBAR JUMP ON DESKTOP
+    // 🔥 DESKTOP KEYBOARD CONTROLS
     // -----------------------------------------
     useEffect(() => {
+        let arrowUpDownAt = 0;
+
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.code === "Space") {
                 e.preventDefault();
                 if (uiState === "PLAYING" && !isPaused) {
                     triggerAction();
                 }
+            } else if (e.code === "ArrowUp") {
+                e.preventDefault();
+                if (e.repeat || arrowUpDownAt !== 0) return;
+                if (uiState === "PLAYING" && !isPaused && startKeyboardJump()) {
+                    arrowUpDownAt = Date.now();
+                }
+            }
+        };
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.code !== "ArrowUp") return;
+            e.preventDefault();
+            if (arrowUpDownAt !== 0) {
+                const pressDuration = Date.now() - arrowUpDownAt;
+                arrowUpDownAt = 0;
+                if (uiState === "PLAYING" && !isPaused) {
+                    releaseKeyboardJump(pressDuration);
+                }
             }
         };
 
         window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [uiState, isPaused, triggerAction]);
+        window.addEventListener("keyup", handleKeyUp);
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+            window.removeEventListener("keyup", handleKeyUp);
+        };
+    }, [uiState, isPaused, triggerAction, startKeyboardJump, releaseKeyboardJump]);
 
     // -----------------------------------------
     // 🔥 ROTATE DEVICE SCREEN
@@ -180,11 +214,14 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     return (
         <div
             className="fixed inset-0 bg-gray-900 text-white flex flex-col z-0"
+            style={{ touchAction: "none" }}
             onMouseDown={handleTouchStart}
             onMouseUp={handleTouchEnd}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
         >
+            <GameProgressPanel progress={progress} onReset={resetGameProgress} />
+
             <GameHUD
                 score={score}
                 highScore={highScore}
@@ -216,15 +253,21 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             {/* -----------------------------------------
                🔥 FIXED RESPONSIVE CANVAS
             ------------------------------------------ */}
-            <canvas
-                ref={canvasRef}
-                className="w-full flex-grow bg-gray-900"
-                style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "block"
-                }}
-            />
+            <div
+                className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden"
+            >
+                <canvas
+                    ref={canvasRef}
+                    className="block bg-gray-900"
+                    style={{
+                        touchAction: "none",
+                        width: "min(100%, calc((100dvh - 90px) * 16 / 9))",
+                        height: "min(calc(100dvh - 90px), 56.25vw)",
+                        aspectRatio: "16 / 9",
+                        display: "block",
+                    }}
+                />
+            </div>
 
             {uiState === "MENU" && (
                 <GameMenu
@@ -245,6 +288,14 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     stats={stats}
                     startGame={startGame}
                     onMenu={() => setUiState("MENU")}
+                />
+            )}
+
+            {secretQuestionOpen && (
+                <SecretQuestionModal
+                    feedback={secretQuestionFeedback}
+                    onAnswer={answerSecretQuestion}
+                    questionType={secretQuestionType}
                 />
             )}
 

@@ -460,6 +460,24 @@ class SoundManager {
         } catch(e){}
     }
 
+    playSOSSignal() {
+        if (this.isMuted) return;
+        try {
+            const now = this.getSafeTime();
+            const dot = 0.12;
+            const gap = 0.12;
+            const dash = 0.36;
+            const letterGap = 0.36;
+            const sequence = [dot, dot, dot, dash, dash, dash, dot, dot, dot];
+            let time = now;
+            sequence.forEach((duration, index) => {
+                this.launchSynth.triggerAttackRelease('C6', duration, time);
+                const isLastInLetter = index === 2 || index === 5;
+                time += duration + (isLastInLetter ? letterGap : gap);
+            });
+        } catch (e) {}
+    }
+
     playFirecracker() {
         if (this.isMuted) return;
         try {
@@ -501,6 +519,7 @@ export const getSoundManager = () => {
                 playSiren: () => {},
                 playMetalHit: () => {},
                 playFirecracker: () => {},
+                playSOSSignal: () => {},
                 toggleMute: () => {},
                 isMuted: true
             } as any as SoundManager;

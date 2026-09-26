@@ -23,6 +23,7 @@ export interface Player {
     rotation: number;
     trickName: string;
     isFakie: boolean;
+    facingLeft: boolean;
     pushTimer: number;
     pushCount: number;
     targetPushes: number;
@@ -82,6 +83,7 @@ export interface FloatingText {
     text: string;
     color: string;
     life: number;
+    fontSize?: number;
 }
 
 export interface GameStats {

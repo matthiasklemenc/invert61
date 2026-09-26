@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { YouTubeChannelSlot } from './types';
-import { getNewestUploadsFromChannel, RssVideo } from './youtubeRss';
-import ChangeChannelModal from './ChangeChannelModal';
+import {
+  getNewestUploadsFromChannel,
+  YouTubeVideo,
+} from './youtubeApi';
+import ChangeChannelModal, {
+  SelectedYouTubeItem,
+} from './ChangeChannelModal';
 import { buildYouTubeEmbedSrc, isSandboxed } from './youtubeEmbed';
 
 type SlotProps = {
@@ -10,17 +15,36 @@ type SlotProps = {
 };
 
 const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
-  const [video, setVideo] = useState<RssVideo | null>(null);
+  const [video, setVideo] = useState<YouTubeVideo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sandboxed, setSandboxed] = useState(true);
+
+  const slotType =
+    slot.type === 'video' && slot.videoId ? 'video' : 'channel';
 
   useEffect(() => {
     setSandboxed(isSandboxed());
   }, []);
 
   useEffect(() => {
+    if (slotType === 'video' && slot.videoId) {
+      setVideo({
+        videoId: slot.videoId,
+        title: slot.videoTitle || 'YouTube video',
+        channelTitle: slot.videoChannelName || undefined,
+        thumbnailUrl:
+          slot.videoThumbnailUrl ||
+          `https://i.ytimg.com/vi/${slot.videoId}/hqdefault.jpg`,
+        publishedAt: slot.videoPublishedAt || undefined,
+        embeddable: slot.videoEmbeddable !== false,
+      });
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     if (!slot.channelId) {
       setVideo(null);
       setError(null);
@@ -28,38 +52,60 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
       return;
     }
 
-    let isCancelled = false;
+    let cancelled = false;
+
     const fetchVideo = async () => {
       setLoading(true);
       setError(null);
+
       try {
-        const videos = await getNewestUploadsFromChannel(slot.channelId!, '', { count: 1 });
-        if (!isCancelled) {
-          if (videos.length > 0) {
-            setVideo(videos[0]);
-          } else {
-            throw new Error("No videos found for this channel.");
+        const videos = await getNewestUploadsFromChannel(
+          slot.channelId!,
+          slot.uploadsPlaylistId
+        );
+
+        if (!cancelled) {
+          setVideo(videos[0] || null);
+
+          if (!videos[0]) {
+            setError('No public videos found for this channel.');
           }
         }
       } catch (e: any) {
-        if (!isCancelled) {
-          setError(e.message || "Failed to fetch video.");
+        if (!cancelled) {
+          setVideo(null);
+          setError(e?.message || 'Failed to load YouTube video.');
         }
       } finally {
-        if (!isCancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchVideo();
-    return () => { isCancelled = true; };
-  }, [slot.channelId]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    slotType,
+    slot.channelId,
+    slot.uploadsPlaylistId,
+    slot.videoId,
+    slot.videoTitle,
+    slot.videoChannelName,
+    slot.videoThumbnailUrl,
+    slot.videoPublishedAt,
+    slot.videoEmbeddable,
+  ]);
 
   const handleVideoClick = () => {
     if (!video) return;
+
     if (sandboxed) {
-      window.open(`https://www.youtube.com/watch?v=${video.videoId}`, '_blank');
+      window.open(
+        `https://www.youtube.com/watch?v=${video.videoId}`,
+        '_blank'
+      );
     } else {
       setIsModalOpen(true);
     }
@@ -67,9 +113,16 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
 
   const VideoModal = () => {
     if (!video) return null;
+
     return (
-      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setIsModalOpen(false)}>
-        <div className="bg-black rounded-xl overflow-hidden max-w-4xl w-full shadow-lg" onClick={e => e.stopPropagation()}>
+      <div
+        className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+        onClick={() => setIsModalOpen(false)}
+      >
+        <div
+          className="bg-black rounded-xl overflow-hidden max-w-4xl w-full shadow-lg"
+          onClick={e => e.stopPropagation()}
+        >
           {video.embeddable ? (
             <div className="relative" style={{ paddingTop: '56.25%' }}>
               <iframe
@@ -79,13 +132,16 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
                 frameBorder="0"
                 allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
-              ></iframe>
+              />
             </div>
           ) : (
             <div className="p-6 text-gray-200">
-              <p className="text-sm">Embedding this video is not permitted.</p>
+              <p className="text-sm">
+                Embedding this video is not permitted.
+              </p>
             </div>
           )}
+
           <div className="flex gap-2 justify-end p-3 bg-gray-900">
             <a
               className="px-4 py-2 rounded-md bg-gray-800 text-gray-200 hover:bg-gray-700 text-sm"
@@ -95,7 +151,11 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
             >
               Watch on YouTube
             </a>
-            <button className="px-4 py-2 rounded-md bg-[#c52323] text-white hover:bg-[#a91f1f] text-sm" onClick={() => setIsModalOpen(false)}>
+
+            <button
+              className="px-4 py-2 rounded-md bg-[#c52323] text-white hover:bg-[#a91f1f] text-sm"
+              onClick={() => setIsModalOpen(false)}
+            >
               Close
             </button>
           </div>
@@ -103,32 +163,86 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
       </div>
     );
   };
-  
+
+  const displayName =
+    slotType === 'video'
+      ? slot.videoChannelName || 'Saved Video'
+      : slot.channelName || 'Empty Slot';
+
+  const typeLabel = slotType === 'video' ? 'VIDEO' : 'CHANNEL';
+
   return (
     <div className="bg-gray-800 rounded-lg p-3 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-gray-300 truncate">{slot.channelName || 'Empty Slot'}</p>
-        <button onClick={() => onEdit(slot.id)} className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-2 py-1 rounded-md transition-colors">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-300 truncate">
+            {displayName}
+          </p>
+          <p className="text-[10px] tracking-wider text-gray-500">
+            {typeLabel}
+          </p>
+        </div>
+
+        <button
+          onClick={() => onEdit(slot.id)}
+          className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-2 py-1 rounded-md transition-colors shrink-0"
+        >
           Change
         </button>
       </div>
+
       <div className="flex-grow flex items-center justify-center bg-gray-900/50 rounded-md min-h-[160px]">
-        {loading && <p className="text-gray-400 text-sm">Loading...</p>}
-        {error && <p className="text-red-400 text-xs text-center p-2">{error}</p>}
+        {loading && (
+          <p className="text-gray-400 text-sm">Loading...</p>
+        )}
+
+        {error && (
+          <div className="text-center p-3">
+            <p className="text-red-400 text-xs">{error}</p>
+            <button
+              onClick={() => onEdit(slot.id)}
+              className="mt-2 text-xs text-gray-300 underline hover:text-white"
+            >
+              Change source
+            </button>
+          </div>
+        )}
+
         {!loading && !error && video && (
-          <button onClick={handleVideoClick} className="w-full text-left group">
-            <img src={video.thumbnailUrl} alt={video.title} className="w-full block aspect-video object-cover rounded-t-md" />
+          <button
+            onClick={handleVideoClick}
+            className="w-full text-left group"
+          >
+            <img
+              src={video.thumbnailUrl}
+              alt={video.title}
+              className="w-full block aspect-video object-cover rounded-t-md"
+              loading="lazy"
+              decoding="async"
+            />
+
             <div className="p-2">
-              <p className="text-sm font-semibold text-gray-100 line-clamp-2 group-hover:text-red-400 transition-colors">{video.title}</p>
+              <p className="text-sm font-semibold text-gray-100 line-clamp-2 group-hover:text-red-400 transition-colors">
+                {video.title}
+              </p>
             </div>
           </button>
         )}
-        {!loading && !slot.channelId && (
-          <button onClick={() => onEdit(slot.id)} className="text-gray-400 hover:text-white transition-colors">
-            + Add Channel
-          </button>
-        )}
+
+        {!loading &&
+          !error &&
+          !video &&
+          !slot.channelId &&
+          slotType !== 'video' && (
+            <button
+              onClick={() => onEdit(slot.id)}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              + Add Channel or Video
+            </button>
+          )}
       </div>
+
       {isModalOpen && <VideoModal />}
     </div>
   );
@@ -136,41 +250,93 @@ const ChannelSlot: React.FC<SlotProps> = ({ slot, onEdit }) => {
 
 type GridProps = {
   slots: YouTubeChannelSlot[];
-  onSetSlots: React.Dispatch<React.SetStateAction<YouTubeChannelSlot[]>>;
+  onSetSlots: React.Dispatch<
+    React.SetStateAction<YouTubeChannelSlot[]>
+  >;
 };
 
-const AdditionalYouTubeGrid: React.FC<GridProps> = ({ slots, onSetSlots }) => {
+const AdditionalYouTubeGrid: React.FC<GridProps> = ({
+  slots,
+  onSetSlots,
+}) => {
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingSlotId, setEditingSlotId] = useState<number | null>(null);
+  const [editingSlotId, setEditingSlotId] = useState<number | null>(
+    null
+  );
 
   const handleEditSlot = (slotId: number) => {
     setEditingSlotId(slotId);
     setModalOpen(true);
   };
 
-  const handleSaveChannel = (slotId: number, newChannel: { id: string; name: string }) => {
+  const handleSaveItem = (
+    slotId: number,
+    item: SelectedYouTubeItem
+  ) => {
     onSetSlots(prevSlots =>
-      prevSlots.map(slot =>
-        slot.id === slotId ? { ...slot, channelId: newChannel.id, channelName: newChannel.name } : slot
-      )
+      prevSlots.map(slot => {
+        if (slot.id !== slotId) return slot;
+
+        if (item.kind === 'channel') {
+          return {
+            ...slot,
+            type: 'channel',
+            channelId: item.channelId,
+            channelName: item.channelName,
+            uploadsPlaylistId: item.uploadsPlaylistId || null,
+            videoId: null,
+            videoTitle: null,
+            videoChannelName: null,
+            videoThumbnailUrl: null,
+            videoPublishedAt: null,
+            videoEmbeddable: undefined,
+          };
+        }
+
+        return {
+          ...slot,
+          type: 'video',
+          channelId: null,
+          channelName: null,
+          uploadsPlaylistId: null,
+          videoId: item.videoId,
+          videoTitle: item.title,
+          videoChannelName: item.channelTitle || null,
+          videoThumbnailUrl: item.thumbnailUrl || null,
+          videoPublishedAt: item.publishedAt || null,
+          videoEmbeddable: item.embeddable,
+        };
+      })
     );
+
     setModalOpen(false);
     setEditingSlotId(null);
   };
 
   return (
     <section className="w-full max-w-4xl mt-8">
-      <h2 className="text-gray-100 font-semibold mb-2">Latest Videos</h2>
+      <h2 className="text-gray-100 font-semibold mb-2">
+        Latest Videos
+      </h2>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {slots.map(slot => (
-          <ChannelSlot key={slot.id} slot={slot} onEdit={handleEditSlot} />
+          <ChannelSlot
+            key={slot.id}
+            slot={slot}
+            onEdit={handleEditSlot}
+          />
         ))}
       </div>
+
       {modalOpen && editingSlotId !== null && (
         <ChangeChannelModal
           slotId={editingSlotId}
-          onClose={() => setModalOpen(false)}
-          onSave={handleSaveChannel}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingSlotId(null);
+          }}
+          onSave={handleSaveItem}
         />
       )}
     </section>

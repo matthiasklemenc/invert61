@@ -40,18 +40,24 @@ export const CHARACTERS: {id: CharacterType, name: string, defaultName: string}[
 ];
 
 export function getOxxoPosition(width: number, height: number, scroll: number, offsetY: number, spaceEntryScroll: number = 0) {
-    const oxxoSpeed = 0.08;
-    const oxxoSpacing = width * 2.5; 
+    const oxxoSpeed = 0.20;
+    const relativeScroll = Math.max(0, scroll - spaceEntryScroll);
+    const oxxoSpawnScroll = 0; // OXXO starts from the beginning of Space
+    const dist = Math.max(0, relativeScroll - oxxoSpawnScroll) * oxxoSpeed;
+
+    // OXXO starts just off-screen to the right and enters naturally from right to left.
+    const oxxoX = width + 180 - dist;
     
-    const relativeScroll = scroll - spaceEntryScroll;
-    const startX = width / 2;
-    const dist = relativeScroll * oxxoSpeed;
-    
-    const oxxoX = ((startX - dist) % oxxoSpacing + oxxoSpacing) % oxxoSpacing;
-    
-    const oxxoY = (height * 0.3 + offsetY * 0.08);
+    const oxxoY = (height * 0.38 + offsetY * 0.08);
     
     return { x: oxxoX, y: oxxoY };
+}
+
+
+export function getSpaceSignalX(width: number, scroll: number, spaceEntryScroll: number = 0) {
+    const relativeScroll = Math.max(0, scroll - spaceEntryScroll);
+    const signalSpeed = 0.15; // OXXO moves about one third faster than the SOS transmitter.
+    return width + 180 - relativeScroll * signalSpeed;
 }
 
 export function drawPsychedelicOverlay(ctx: CanvasRenderingContext2D, width: number, height: number, frame: number) {
@@ -543,6 +549,7 @@ export function drawStickman(
     trickRotation: number = 0, 
     trickType: string = '',
     isFakie: boolean = false,
+    facingLeft: boolean = false,
     isCrouching: boolean = false
 ) {
     ctx.save();
@@ -559,7 +566,8 @@ export function drawStickman(
     }
 
     if (type === 'male_cap') {
-        if (isFakie) {
+        const shouldFlipHorizontally = facingLeft !== isFakie;
+        if (shouldFlipHorizontally) {
             ctx.scale(-1, 1);
         }
 
@@ -608,7 +616,8 @@ export function drawStickman(
         return; 
     }
 
-    if (isFakie) {
+    const shouldFlipHorizontally = facingLeft !== isFakie;
+    if (shouldFlipHorizontally) {
         ctx.scale(-1, 1);
     }
 

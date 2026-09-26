@@ -1,7 +1,9 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { fileURLToPath } from 'url';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,12 +18,14 @@ export default defineConfig(({ mode }) => {
       outDir: 'docs',
     },
 
-    server: {
-      port: 3000,
-      host: '0.0.0.0',
-    },
+server: {
+  port: 3000,
+  host: '0.0.0.0',
+  allowedHosts: ['.loca.lt'],
+  https: true,
+},
 
-    plugins: [react()],
+    plugins: [react(), basicSsl()],
 
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY ?? ''),
