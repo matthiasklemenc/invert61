@@ -79,7 +79,7 @@ const CapitalsQuizPage: React.FC<Props> = ({ onClose }) => {
         
         const questionText = formatQuestion(currentQuestion);
         const shareData = {
-            title: 'INVERT FM Capitals Quiz',
+            title: 'INVERT 61 Capitals Quiz',
             text: `Help! ${questionText}`,
             url: window.location.href
         };

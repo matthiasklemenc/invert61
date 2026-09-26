@@ -101,8 +101,8 @@ const SkateQuizPage: React.FC<Props> = ({ onClose }) => {
         
         const questionText = getQuestionText(currentQuestion);
         const shareData = {
-            title: 'INVERT FM Skate Quiz',
-            text: `I'm testing my skate knowledge on INVERT FM! Can you help me with this question: ${questionText}`,
+            title: 'INVERT 61 Skate Quiz',
+            text: `I'm testing my skate knowledge on INVERT 61! Can you help me with this question: ${questionText}`,
             url: window.location.href
         };
 

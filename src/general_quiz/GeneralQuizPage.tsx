@@ -96,7 +96,7 @@ const GeneralQuizPage: React.FC<Props> = ({ onClose }) => {
         
         const questionText = getQuestionText(currentQuestion);
         const shareData = {
-            title: 'INVERT FM General Quiz',
+            title: 'INVERT 61 General Quiz',
             text: `Help! I'm stuck on this question: ${questionText}`,
             url: window.location.href
         };
