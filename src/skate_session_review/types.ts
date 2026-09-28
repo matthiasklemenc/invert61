@@ -106,6 +106,8 @@ export interface TrickSample {
   captureStartMs: number;
   captureEndMs: number;
   sensorData: BoardSensorDataPoint[];
+  gpsData?: GpsPoint[];
+  result?: 'landed' | 'failed';
 }
 
 export interface Session {
