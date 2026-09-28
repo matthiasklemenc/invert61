@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BoardSensorDataPoint, Stance, TrickDefinition, TrickSample, TrickTerrain } from '../types';
+import { BoardSensorDataPoint, GpsPoint, Stance, TrickDefinition, TrickSample, TrickTerrain } from '../types';
 import {
   connectBoardSensor,
   disconnectBoardSensor,
@@ -89,6 +89,8 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
   const [packetCount, setPacketCount] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [reviewData, setReviewData] = useState<BoardSensorDataPoint[]>([]);
+  const [reviewGpsData, setReviewGpsData] = useState<GpsPoint[]>([]);
+  const [attemptResult, setAttemptResult] = useState<'landed' | 'failed' | null>(null);
   const [selectionStart, setSelectionStart] = useState(0);
   const [selectionEnd, setSelectionEnd] = useState(0);
   const [dragging, setDragging] = useState<'start' | 'end' | null>(null);
@@ -103,6 +105,8 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const recordingRef = useRef(false);
   const unsubscribeSensorRef = useRef<(() => void) | null>(null);
+  const gpsWatchIdRef = useRef<number | null>(null);
+  const gpsDataRef = useRef<GpsPoint[]>([]);
 
   const writeDatabase = useCallback((next: TrickSample[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -114,8 +118,8 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     setLibrary(next);
   }, []);
 
-  const flatTricks = useMemo(() => library.filter((item) => item.terrain === 'flat'), [library]);
-  const transitionTricks = useMemo(() => library.filter((item) => item.terrain === 'transition'), [library]);
+  const flatTricks = useMemo(() => [...library.filter((item) => item.terrain === 'flat')].sort((a, b) => a.name.localeCompare(b.name)), [library]);
+  const transitionTricks = useMemo(() => [...library.filter((item) => item.terrain === 'transition')].sort((a, b) => a.name.localeCompare(b.name)), [library]);
   const selectedDefinition = library.find((item) => item.id === trickId);
 
   useEffect(() => {
@@ -125,8 +129,8 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     });
   }, []);
 
-  const selectTrick = (id: string) => {
-    const selected = library.find((item) => item.id === id);
+  const selectTrick = (id: string, sourceLibrary: TrickDefinition[] = library) => {
+    const selected = sourceLibrary.find((item) => item.id === id);
     if (!selected) return;
     setTrickId(selected.id);
     setTrick(selected.name);
@@ -138,8 +142,11 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
   const handleTerrainSelection = (nextTerrain: TrickTerrain, id: string) => {
     const selected = library.find((item) => item.id === id);
     if (!selected) return;
+    setTrickId(selected.id);
+    setTrick(selected.name);
     setTerrain(nextTerrain);
-    selectTrick(selected.id);
+    if (nextTerrain === 'flat') setFlatTrickId(selected.id);
+    else setTransitionTrickId(selected.id);
   };
 
   const handleSensorPoint = useCallback((point: BoardSensorDataPoint) => {
@@ -151,6 +158,15 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     setPacketCount(samplesRef.current.length);
   }, []);
 
+  const connectSensor = async () => {
+    try {
+      setSensorError(null);
+      if (!isBoardSensorConnected()) await connectBoardSensor();
+    } catch (error) {
+      setSensorError(error instanceof Error ? error.message : 'Could not connect to the WT901 sensor.');
+    }
+  };
+
   const startAttempt = async () => {
     try {
       setSensorError(null);
@@ -159,12 +175,39 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
         return;
       }
 
-      if (!isBoardSensorConnected()) await connectBoardSensor();
+      if (!isBoardSensorConnected()) {
+        await connectBoardSensor();
+      }
 
       samplesRef.current = [];
+      gpsDataRef.current = [];
       setPacketCount(0);
       setElapsedMs(0);
+      setReviewGpsData([]);
+      setAttemptResult(null);
       startTimeRef.current = Date.now();
+
+      if (gpsWatchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+        gpsWatchIdRef.current = null;
+      }
+
+      if (navigator.geolocation) {
+        gpsWatchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => {
+            const now = Date.now();
+            gpsDataRef.current.push({
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              timestamp: pos.timestamp,
+              speed: pos.coords.speed,
+              sessionTimestamp: now - startTimeRef.current,
+            });
+          },
+          (error) => setSensorError(`GPS error: ${error.message}`),
+          { enableHighAccuracy: true, maximumAge: 0 },
+        );
+      }
 
       unsubscribeSensorRef.current?.();
       unsubscribeSensorRef.current = subscribeBoardSensor(handleSensorPoint);
@@ -179,8 +222,13 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     recordingRef.current = false;
     unsubscribeSensorRef.current?.();
     unsubscribeSensorRef.current = null;
+    if (gpsWatchIdRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      gpsWatchIdRef.current = null;
+    }
 
     const data = [...samplesRef.current];
+    setReviewGpsData([...gpsDataRef.current]);
     if (data.length < 5) {
       setSensorError('Not enough sensor data was recorded. Try the attempt again.');
       setStatus('setup');
@@ -197,6 +245,9 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
   const retry = () => {
     setEditingSampleId(null);
     setReviewData([]);
+    setReviewGpsData([]);
+    setAttemptResult(null);
+    gpsDataRef.current = [];
     setSelectionStart(0);
     setSelectionEnd(0);
     setPacketCount(0);
@@ -205,11 +256,15 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
   };
 
   const saveAttempt = () => {
-    if (!reviewData.length || !selectedDefinition) return;
+    if (!reviewData.length || !selectedDefinition || !attemptResult) return;
 
     const min = Math.max(0, Math.min(selectionStart, selectionEnd) - PRE_ROLL_MS);
     const max = Math.min(reviewData[reviewData.length - 1].timestamp, Math.max(selectionStart, selectionEnd) + POST_ROLL_MS);
     const selected = reviewData.filter((point) => point.timestamp >= min && point.timestamp <= max);
+    const selectedGps = reviewGpsData.filter((point) => {
+      const timestamp = point.sessionTimestamp ?? 0;
+      return timestamp >= min && timestamp <= max;
+    });
 
     if (selected.length < 3) {
       setSensorError('The selected range is too short. Move START and END farther apart.');
@@ -228,6 +283,8 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
             captureStartMs: min,
             captureEndMs: max,
             sensorData: selected,
+            gpsData: selectedGps,
+            result: attemptResult,
           }
         : sample
       );
@@ -246,12 +303,16 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
         captureStartMs: min,
         captureEndMs: max,
         sensorData: selected,
+        gpsData: selectedGps,
+        result: attemptResult,
       };
       writeDatabase([sample, ...samples]);
     }
 
     setEditingSampleId(null);
     setReviewData([]);
+    setReviewGpsData([]);
+    setAttemptResult(null);
     setSelectionStart(0);
     setSelectionEnd(0);
     setPacketCount(0);
@@ -280,6 +341,9 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     setRider(sample.rider);
     setStance(sample.stance);
     setSensorError(null);
+    const normalizedGps = (sample.gpsData ?? []).map((point) => ({ ...point, sessionTimestamp: (point.sessionTimestamp ?? point.timestamp) - captureStart }));
+    setReviewGpsData(normalizedGps);
+    setAttemptResult(sample.result ?? null);
     setReviewData(normalizedData);
     setSelectionStart(Math.min(selectionStartRelative, maxTimestamp));
     setSelectionEnd(Math.min(selectionEndRelative, maxTimestamp));
@@ -321,10 +385,13 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
   useEffect(() => () => {
     recordingRef.current = false;
     unsubscribeSensorRef.current?.();
+    if (gpsWatchIdRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+    }
   }, []);
 
   const exportDatabase = () => {
-    const blob = new Blob([JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), library, samples }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 3, exportedAt: new Date().toISOString(), library, samples }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -388,7 +455,7 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     };
     const next = [...library, definition];
     writeLibrary(next);
-    selectTrick(definition.id);
+    selectTrick(definition.id, next);
     if (addTerrain === 'flat') setFlatTrickId(definition.id);
     else setTransitionTrickId(definition.id);
     setNewTrickName('');
@@ -402,37 +469,39 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     : 0;
 
   const renderTrickSelector = (selectorTerrain: TrickTerrain, items: TrickDefinition[], selectedId: string) => (
-    <div className="flex gap-2 items-stretch">
+    <div className="space-y-2">
       <select
         value={selectedId}
         onChange={(e) => handleTerrainSelection(selectorTerrain, e.target.value)}
-        className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white"
+        className="w-full min-w-0 bg-gray-900 border border-gray-700 rounded-xl px-3 py-3 text-white"
       >
         {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
-      <button
-        type="button"
-        onClick={() => { setAddTerrain(selectorTerrain); setNewTrickName(''); setSensorError(null); }}
-        className="shrink-0 bg-cyan-500 text-gray-950 font-black px-4 rounded-xl uppercase text-[10px] tracking-widest"
-      >
-        + Add Trick
-      </button>
-      <button
-        type="button"
-        onClick={() => selectedId && setDeleteTrickId(selectedId)}
-        disabled={!selectedId}
-        className="shrink-0 bg-red-600/80 disabled:bg-gray-800 disabled:text-gray-600 text-white font-black px-3 rounded-xl uppercase text-[10px]"
-        title="Delete selected trick"
-      >
-        Delete
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => { setAddTerrain(selectorTerrain); setNewTrickName(''); setSensorError(null); }}
+          className="bg-cyan-500 text-gray-950 font-black py-2 rounded-xl uppercase text-[10px] tracking-widest"
+        >
+          + Add Trick
+        </button>
+        <button
+          type="button"
+          onClick={() => selectedId && setDeleteTrickId(selectedId)}
+          disabled={!selectedId}
+          className="bg-red-600/80 disabled:bg-gray-800 disabled:text-gray-600 text-white font-black py-2 rounded-xl uppercase text-[10px]"
+          title="Delete selected trick"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   );
 
   return (
     <div className="w-full max-w-2xl mx-auto pb-8">
       <div className="flex items-center justify-between mb-5">
-        <button onClick={onBack} className="text-gray-400 hover:text-white text-xs uppercase tracking-widest">← Back</button>
+        <button onClick={() => { if (status === 'review') retry(); else onBack(); }} className="text-gray-400 hover:text-white text-xs uppercase tracking-widest">← Back</button>
         <div className="text-center">
           <h2 className="text-xl font-black text-cyan-400 tracking-wider">TRICK DATABASE</h2>
           <p className="text-[9px] text-gray-500 uppercase tracking-[0.3em]">WT901 Training Samples</p>
@@ -467,8 +536,8 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
           {sensorError && <div className="rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{sensorError}</div>}
 
           {!sensorConnected && (
-            <button onClick={startAttempt} className="w-full bg-green-500 text-gray-950 font-black py-5 rounded-2xl uppercase tracking-widest">
-              CONNECT SENSOR & START ATTEMPT
+            <button onClick={connectSensor} className="w-full bg-green-500 text-gray-950 font-black py-5 rounded-2xl uppercase tracking-widest">
+              CONNECT SENSOR
             </button>
           )}
 
@@ -528,16 +597,24 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
             <div className="flex justify-between text-[10px] text-gray-500 mt-2"><span>{(Math.min(selectionStart, selectionEnd) / 1000).toFixed(2)}s</span><span>{((Math.max(selectionStart, selectionEnd) - Math.min(selectionStart, selectionEnd)) / 1000).toFixed(2)}s selected</span><span>{(Math.max(selectionStart, selectionEnd) / 1000).toFixed(2)}s</span></div>
           </div>
 
+          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-4">
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Was this attempt good?</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setAttemptResult('landed')} className={`py-4 rounded-xl font-black uppercase ${attemptResult === 'landed' ? 'bg-green-500 text-gray-950' : 'bg-gray-900 text-gray-400 border border-gray-700'}`}>LANDED</button>
+              <button onClick={() => setAttemptResult('failed')} className={`py-4 rounded-xl font-black uppercase ${attemptResult === 'failed' ? 'bg-red-500 text-white' : 'bg-gray-900 text-gray-400 border border-gray-700'}`}>FAILED</button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <button onClick={retry} className="bg-gray-700 text-white font-black py-4 rounded-xl uppercase">TRY THIS TRICK AGAIN</button>
-            <button onClick={saveAttempt} className="bg-green-500 text-gray-950 font-black py-4 rounded-xl uppercase">SAVE</button>
+            <button onClick={saveAttempt} disabled={!attemptResult} className="bg-green-500 disabled:opacity-30 disabled:cursor-not-allowed text-gray-950 font-black py-4 rounded-xl uppercase">SAVE</button>
           </div>
         </div>
       )}
 
       <div className="mt-6 bg-gray-800 rounded-2xl border border-gray-700 p-5">
         <div className="flex items-center justify-between mb-4"><h3 className="text-sm font-black uppercase tracking-widest text-white">Saved Samples</h3><span className="text-[10px] text-gray-500">{samples.length}</span></div>
-        {samples.length === 0 ? <p className="text-xs text-gray-600">No training samples saved yet.</p> : <div className="space-y-2 max-h-72 overflow-auto">{samples.map((sample) => <div key={sample.id} className="flex items-center justify-between gap-3 bg-gray-900 rounded-xl p-3"><button onClick={() => openSavedSample(sample)} className="min-w-0 flex-1 text-left"><div className="text-sm font-bold text-white truncate">{sample.trick}</div><div className="text-[10px] text-gray-500">{sample.terrain === 'transition' ? 'Transition' : 'Flat Ground'} · {sample.rider} · {sample.stance} · {sample.sensorData.length} samples</div></button><button onClick={() => setDeleteConfirmId(sample.id)} className="text-[10px] text-red-400 uppercase shrink-0">Delete</button></div>)}</div>}
+        {samples.length === 0 ? <p className="text-xs text-gray-600">No training samples saved yet.</p> : <div className="space-y-2 max-h-72 overflow-auto">{samples.map((sample) => <div key={sample.id} className="flex items-center justify-between gap-3 bg-gray-900 rounded-xl p-3"><button onClick={() => openSavedSample(sample)} className="min-w-0 flex-1 text-left"><div className="text-sm font-bold text-white truncate">{sample.trick}</div><div className="text-[10px] text-gray-500">{sample.terrain === 'transition' ? 'Transition' : 'Flat Ground'} · {sample.rider} · {sample.stance} · {sample.result ? sample.result.toUpperCase() : 'UNLABELED'} · {sample.sensorData.length} sensor samples · {(sample.gpsData ?? []).length} GPS</div></button><button onClick={() => setDeleteConfirmId(sample.id)} className="text-[10px] text-red-400 uppercase shrink-0">Delete</button></div>)}</div>}
       </div>
 
       {addTerrain && (
