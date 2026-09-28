@@ -94,6 +94,22 @@ const Calendar: React.FC<{ sessions: Session[], selectedDate: Date, onDateSelect
     const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
     const startDay = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1).getDay();
     const sessionDays = useMemo(() => new Set(sessions.map(s => new Date(s.date).toDateString())), [sessions]);
+    const trickDays = useMemo(() => {
+        try {
+            const stored = localStorage.getItem('invert61_trick_database_v1');
+            if (!stored) return new Set<string>();
+            const database = JSON.parse(stored);
+            const samples = Array.isArray(database) ? database : (database.samples || []);
+            return new Set(
+                samples
+                    .map((sample: { createdAt?: string }) => sample.createdAt)
+                    .filter((date: string | undefined): date is string => !!date)
+                    .map((date: string) => new Date(date).toDateString())
+            );
+        } catch {
+            return new Set<string>();
+        }
+    }, []);
     return (
         <div className="bg-gray-800 p-4 rounded-2xl border border-gray-700 shadow-xl mb-6">
             <div className="flex justify-between items-center mb-4 px-2">
@@ -109,11 +125,12 @@ const Calendar: React.FC<{ sessions: Session[], selectedDate: Date, onDateSelect
                 {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
                     const date = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day);
                     const isSelected = date.toDateString() === selectedDate.toDateString();
-                    const hasSession = sessionDays.has(date.toDateString());
+                    const hasActivity = sessionDays.has(date.toDateString()) || trickDays.has(date.toDateString());
                     return (
                         <button key={day} onClick={() => onDateSelect(date)} className={`p-2 rounded-lg text-xs transition-all relative ${isSelected ? 'bg-cyan-500 text-gray-900 font-black' : 'hover:bg-gray-700 text-gray-400'}`}>
-                            {day}
-                            {hasSession && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-green-400 rounded-full"></span>}
+                            <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full ${hasActivity ? 'border-2 border-green-400' : ''}`}>
+                                {day}
+                            </span>
                         </button>
                     );
                 })}
