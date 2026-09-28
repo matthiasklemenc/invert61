@@ -101,7 +101,7 @@ const Calendar: React.FC<{ sessions: Session[], selectedDate: Date, onDateSelect
             const database = JSON.parse(stored);
             const samples = Array.isArray(database) ? database : (database.samples || []);
             return new Set(
-                samples
+                (Array.isArray(samples) ? samples : [])
                     .map((sample: { createdAt?: string }) => sample.createdAt)
                     .filter((date: string | undefined): date is string => !!date)
                     .map((date: string) => new Date(date).toDateString())
@@ -127,7 +127,7 @@ const Calendar: React.FC<{ sessions: Session[], selectedDate: Date, onDateSelect
                     const isSelected = date.toDateString() === selectedDate.toDateString();
                     const hasActivity = sessionDays.has(date.toDateString()) || trickDays.has(date.toDateString());
                     return (
-                        <button key={day} onClick={() => onDateSelect(date)} className={`p-2 rounded-lg text-xs transition-all relative ${isSelected ? 'bg-cyan-500 text-gray-900 font-black' : 'hover:bg-gray-700 text-gray-400'}`}>
+                        <button key={day} onClick={() => onDateSelect(date)} className={`w-full aspect-square p-0 rounded-lg text-xs transition-all relative flex items-center justify-center ${isSelected ? 'bg-cyan-500 text-gray-900 font-black' : 'hover:bg-gray-700 text-gray-400'}`}>
                             <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full ${hasActivity ? 'border-2 border-green-400' : ''}`}>
                                 {day}
                             </span>
@@ -165,7 +165,25 @@ const SessionHistory: React.FC<SessionHistoryProps> = ({ sessions, navigate, onS
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [isTagging, setIsTagging] = useState(false);
+  const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
+  const [trickSamples, setTrickSamples] = useState<Array<{ id: string; trick?: string; createdAt?: string; result?: 'landed' | 'failed'; stance?: string }>>([]);
   const dailySessions = useMemo(() => sessions.filter(s => new Date(s.date).toDateString() === selectedDate.toDateString()), [sessions, selectedDate]);
+  const dailyTrickSamples = useMemo(() => trickSamples.filter(sample => sample.createdAt && new Date(sample.createdAt).toDateString() === selectedDate.toDateString()), [trickSamples, selectedDate]);
+
+  useEffect(() => {
+      try {
+          const stored = localStorage.getItem('invert61_trick_database_v1');
+          if (!stored) {
+              setTrickSamples([]);
+              return;
+          }
+          const database = JSON.parse(stored);
+          const samples = Array.isArray(database) ? database : (database.samples || []);
+          setTrickSamples(Array.isArray(samples) ? samples : []);
+      } catch {
+          setTrickSamples([]);
+      }
+  }, []);
   const handleTogglePoint = (idx: number) => {
       setSelectedIndices(prev => {
           const next = new Set(prev);
@@ -193,7 +211,7 @@ const SessionHistory: React.FC<SessionHistoryProps> = ({ sessions, navigate, onS
     <div className="w-full max-w-lg pb-10">
         <Calendar sessions={sessions} selectedDate={selectedDate} onDateSelect={setSelectedDate} />
         <div className="space-y-4">
-            {dailySessions.length === 0 && <p className="text-center text-gray-600 text-sm font-bold uppercase py-10 tracking-widest">No recordings today.</p>}
+            {dailySessions.length === 0 && dailyTrickSamples.length === 0 && <p className="text-center text-gray-600 text-sm font-bold uppercase py-10 tracking-widest">No recordings today.</p>}
             {dailySessions.map((s, i) => {
                 const isExpanded = expandedSessionId === s.id;
                 return (
@@ -206,7 +224,7 @@ const SessionHistory: React.FC<SessionHistoryProps> = ({ sessions, navigate, onS
                                     <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">{s.totalTricks} Landed Moves</span>
                                 </div>
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }} className="text-gray-600 hover:text-red-500 p-2">🗑</button>
+                            <button onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(s.id); }} className="text-gray-600 hover:text-red-500 p-2">🗑</button>
                         </div>
                         {isExpanded && (
                             <div className="p-5 border-t border-gray-700 bg-gray-800/40">
@@ -232,7 +250,38 @@ const SessionHistory: React.FC<SessionHistoryProps> = ({ sessions, navigate, onS
                     </div>
                 );
             })}
+            {dailyTrickSamples.length > 0 && (
+                <div className="bg-gray-800 rounded-3xl border-l-4 border-green-400 overflow-hidden shadow-xl p-5">
+                    <div className="mb-4">
+                        <h4 className="text-white font-black uppercase italic tracking-tight">Trick Database</h4>
+                        <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">{dailyTrickSamples.length} recorded trick{dailyTrickSamples.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="space-y-2">
+                        {dailyTrickSamples.map((sample, i) => (
+                            <div key={sample.id || `${sample.createdAt}-${i}`} className="flex items-center justify-between bg-gray-900/60 rounded-xl px-4 py-3">
+                                <div>
+                                    <p className="text-sm font-black text-white uppercase">{sample.trick || 'Unknown Trick'}</p>
+                                    <p className="text-[9px] text-gray-500 uppercase tracking-widest">{sample.createdAt ? new Date(sample.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}{sample.stance ? ` · ${sample.stance}` : ''}</p>
+                                </div>
+                                <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${sample.result === 'failed' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>{sample.result || 'saved'}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
+        {pendingDeleteSessionId && (
+            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6">
+                <div className="w-full max-w-sm bg-gray-800 rounded-3xl border border-gray-700 p-6 shadow-2xl">
+                    <h4 className="text-lg font-black text-white uppercase italic mb-2">Delete Session?</h4>
+                    <p className="text-sm text-gray-400 mb-6">Willst du diese Session wirklich löschen?</p>
+                    <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => setPendingDeleteSessionId(null)} className="py-3 rounded-xl bg-gray-700 text-gray-300 font-black uppercase tracking-widest text-xs">Nein</button>
+                        <button onClick={() => { onDeleteSession(pendingDeleteSessionId); setPendingDeleteSessionId(null); }} className="py-3 rounded-xl bg-red-500 text-white font-black uppercase tracking-widest text-xs">Ja, löschen</button>
+                    </div>
+                </div>
+            </div>
+        )}
         {isTagging && <TagModal onSave={saveTag} onClose={() => setIsTagging(false)} motions={motions} onAddMotion={onAddMotion} />}
         <div className="mt-12 flex flex-col gap-3 px-4">
             <button onClick={() => navigate(Page.SessionTracker)} className="w-full bg-green-500 text-gray-900 font-black py-5 rounded-2xl hover:bg-green-400 shadow-2xl flex items-center justify-center gap-2 uppercase tracking-widest italic active:scale-95 transition-transform"><span>●</span> Record Session</button>

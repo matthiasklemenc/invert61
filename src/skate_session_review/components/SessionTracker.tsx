@@ -1,12 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Session, SessionDataPoint, Motion, GpsPoint, BoardSensorDataPoint, Stance } from '../types';
-import {
-  connectBoardSensor,
-  getBoardSensorDeviceName,
-  isBoardSensorConnected,
-  subscribeBoardSensor,
-  subscribeBoardSensorStatus,
-} from '../boardSensorConnection';
 
 interface SessionTrackerProps {
   onSessionComplete: (session: Session) => void;
@@ -16,14 +9,71 @@ interface SessionTrackerProps {
   onOpenTrickDatabase: (stance: Stance) => void;
 }
 
+const SERVICE_UUID = '0000ffe5-0000-1000-8000-00805f9a34fb';
+const NOTIFY_CHARACTERISTIC_UUID = '0000ffe4-0000-1000-8000-00805f9a34fb';
+const SENSOR_NAME_PREFIX = 'WT901';
+
+interface SensorValues {
+  ax: number;
+  ay: number;
+  az: number;
+  gx: number;
+  gy: number;
+  gz: number;
+  roll: number;
+  pitch: number;
+  yaw: number;
+}
+
+type BluetoothCharacteristic = BluetoothRemoteGATTCharacteristic & {
+  value?: DataView | null;
+};
+
+type BluetoothDeviceWithGatt = BluetoothDevice & {
+  gatt: BluetoothRemoteGATTServer | null;
+};
+
+type WebBluetoothNavigator = Navigator & {
+  bluetooth?: {
+    requestDevice(options: {
+      filters?: Array<{ namePrefix?: string }>;
+      optionalServices?: string[];
+    }): Promise<BluetoothDeviceWithGatt>;
+  };
+};
+
+const readInt16LE = (view: DataView, offset: number) => view.getInt16(offset, true);
+
+const parseWitMotionPacket = (value: DataView): SensorValues | null => {
+  if (value.byteLength < 20 || value.getUint8(0) !== 0x55 || value.getUint8(1) !== 0x61) {
+    return null;
+  }
+
+  const scaleAcc = 16 / 32768;
+  const scaleGyro = 2000 / 32768;
+  const scaleAngle = 180 / 32768;
+
+  return {
+    ax: readInt16LE(value, 2) * scaleAcc,
+    ay: readInt16LE(value, 4) * scaleAcc,
+    az: readInt16LE(value, 6) * scaleAcc,
+    gx: readInt16LE(value, 8) * scaleGyro,
+    gy: readInt16LE(value, 10) * scaleGyro,
+    gz: readInt16LE(value, 12) * scaleGyro,
+    roll: readInt16LE(value, 14) * scaleAngle,
+    pitch: readInt16LE(value, 16) * scaleAngle,
+    yaw: readInt16LE(value, 18) * scaleAngle,
+  };
+};
+
 const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBack, onOpenTrickDatabase }) => {
   const [status, setStatus] = useState<'uninitialized' | 'tracking'>('uninitialized');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [pointsRecorded, setPointsRecorded] = useState(0);
-  const [sensorConnected, setSensorConnected] = useState(isBoardSensorConnected());
+  const [sensorConnected, setSensorConnected] = useState(false);
   const [sensorPacketCount, setSensorPacketCount] = useState(0);
   const [sensorError, setSensorError] = useState<string | null>(null);
-  const [deviceName, setDeviceName] = useState(getBoardSensorDeviceName());
+  const [deviceName, setDeviceName] = useState('—');
   const [selectedStance, setSelectedStance] = useState<Stance | null>(null);
 
   const statusRef = useRef(status);
@@ -35,47 +85,72 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
   const pathRef = useRef<GpsPoint[]>([]);
   const boardSensorDataRef = useRef<BoardSensorDataPoint[]>([]);
 
-  const recordingRef = useRef(false);
-  const unsubscribeSensorRef = useRef<(() => void) | null>(null);
+  const deviceRef = useRef<BluetoothDeviceWithGatt | null>(null);
+  const characteristicRef = useRef<BluetoothCharacteristic | null>(null);
   const lastTimelineLogTimeRef = useRef(0);
-
-  useEffect(() => {
-    return subscribeBoardSensorStatus((connected, name) => {
-      setSensorConnected(connected);
-      setDeviceName(name);
-    });
-  }, []);
 
   const setTrackerStatus = (nextStatus: typeof status) => {
     statusRef.current = nextStatus;
-    recordingRef.current = nextStatus === 'tracking';
     setStatus(nextStatus);
   };
 
-  const handleSensorPoint = useCallback((point: BoardSensorDataPoint) => {
-    if (!recordingRef.current) return;
+  const disconnectSensor = useCallback(() => {
+    const characteristic = characteristicRef.current;
+    if (characteristic) {
+      characteristic.removeEventListener('characteristicvaluechanged', handleNotification);
+    }
 
-    const timestamp = point.timestamp - startTimeRef.current;
-    if (timestamp < 0) return;
+    const device = deviceRef.current;
+    if (device) {
+      device.removeEventListener('gattserverdisconnected', handleSensorDisconnected);
+      if (device.gatt?.connected) {
+        device.gatt.disconnect();
+      }
+    }
 
-    const sensorPoint: BoardSensorDataPoint = { ...point, timestamp };
+    deviceRef.current = null;
+    characteristicRef.current = null;
+    setSensorConnected(false);
+    setDeviceName('—');
+  }, []);
+
+  function handleSensorDisconnected() {
+    setSensorConnected(false);
+  }
+
+  const handleNotification = useCallback((event: Event) => {
+    const characteristic = event.target as BluetoothCharacteristic;
+    if (!characteristic.value || statusRef.current !== 'tracking') return;
+
+    const parsed = parseWitMotionPacket(characteristic.value);
+    if (!parsed) return;
+
+    const now = Date.now();
+    const timestamp = now - startTimeRef.current;
+
+    const sensorPoint: BoardSensorDataPoint = {
+      timestamp,
+      ...parsed,
+    };
+
     boardSensorDataRef.current.push(sensorPoint);
     setSensorPacketCount((count) => count + 1);
 
-    const now = point.timestamp;
+    // Keep the existing timeline alive, but now source it from the board sensor
+    // instead of the phone's DeviceMotion API.
     if (now - lastTimelineLogTimeRef.current >= 150) {
       lastTimelineLogTimeRef.current = now;
 
       const totalG = Math.sqrt(
-        point.ax * point.ax +
-        point.ay * point.ay +
-        point.az * point.az,
+        parsed.ax * parsed.ax +
+        parsed.ay * parsed.ay +
+        parsed.az * parsed.az,
       );
 
       const rotationMagnitude = Math.sqrt(
-        point.gx * point.gx +
-        point.gy * point.gy +
-        point.gz * point.gz,
+        parsed.gx * parsed.gx +
+        parsed.gy * parsed.gy +
+        parsed.gz * parsed.gz,
       );
 
       timelineRef.current.push({
@@ -88,23 +163,47 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
     }
   }, []);
 
-  const connectSensor = async () => {
-    try {
-      setSensorError(null);
-      await connectBoardSensor();
-    } catch (error) {
-      setSensorError(error instanceof Error ? error.message : 'Could not connect to the WT901 sensor.');
+  const connectSensor = useCallback(async () => {
+    const bluetooth = (navigator as WebBluetoothNavigator).bluetooth;
+
+    if (!bluetooth) {
+      throw new Error('Web Bluetooth is not available. Open INVERT in Chrome on Android.');
     }
-  };
+
+    setSensorError(null);
+    setDeviceName('—');
+
+    const device = await bluetooth.requestDevice({
+      filters: [{ namePrefix: SENSOR_NAME_PREFIX }],
+      optionalServices: [SERVICE_UUID],
+    });
+
+    deviceRef.current = device;
+    setDeviceName(device.name || 'WT901 sensor');
+    device.addEventListener('gattserverdisconnected', handleSensorDisconnected);
+
+    const server = await device.gatt?.connect();
+    if (!server) {
+      throw new Error('Could not connect to the sensor GATT server.');
+    }
+
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    const characteristic = (await service.getCharacteristic(
+      NOTIFY_CHARACTERISTIC_UUID,
+    )) as BluetoothCharacteristic;
+
+    await characteristic.startNotifications();
+    characteristic.addEventListener('characteristicvaluechanged', handleNotification);
+    characteristicRef.current = characteristic;
+
+    setSensorConnected(true);
+  }, [handleNotification]);
 
   const startRecording = async () => {
     if (statusRef.current === 'tracking' || !selectedStance) return;
 
     try {
-      setSensorError(null);
-      if (!isBoardSensorConnected()) {
-        await connectBoardSensor();
-      }
+      await connectSensor();
 
       timelineRef.current = [];
       speedReadingsRef.current = [];
@@ -116,8 +215,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
 
       startTimeRef.current = Date.now();
       lastTimelineLogTimeRef.current = startTimeRef.current;
-      unsubscribeSensorRef.current?.();
-      unsubscribeSensorRef.current = subscribeBoardSensor(handleSensorPoint);
 
       setTrackerStatus('tracking');
 
@@ -151,6 +248,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
         );
       }
     } catch (error) {
+      setSensorConnected(false);
       setSensorError(error instanceof Error ? error.message : 'Could not connect to the WT901 sensor.');
     }
   };
@@ -180,9 +278,8 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
       stance: selectedStance ?? undefined,
     });
 
-    unsubscribeSensorRef.current?.();
-    unsubscribeSensorRef.current = null;
     setTrackerStatus('uninitialized');
+    disconnectSensor();
   };
 
   useEffect(() => {
@@ -201,9 +298,20 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
 
-      unsubscribeSensorRef.current?.();
+      const characteristic = characteristicRef.current;
+      if (characteristic) {
+        characteristic.removeEventListener('characteristicvaluechanged', handleNotification);
+      }
+
+      const device = deviceRef.current;
+      if (device) {
+        device.removeEventListener('gattserverdisconnected', handleSensorDisconnected);
+        if (device.gatt?.connected) {
+          device.gatt.disconnect();
+        }
+      }
     };
-  }, []);
+  }, [handleNotification]);
 
   return (
     <div className="flex flex-col items-center justify-center p-6 bg-gray-800 rounded-3xl shadow-2xl min-h-[520px] border border-gray-700">
@@ -214,61 +322,55 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
       {status === 'uninitialized' && (
         <div className="w-full text-center space-y-6">
           <div className="p-6 bg-gray-900/50 rounded-2xl border border-gray-700">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Step 1 · Board sensor</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Step 1 · Rider stance</p>
             <p className="text-gray-300 text-sm leading-relaxed font-mono">
-              Connect the WT901 sensor once. The same connection stays available while you train tricks.
+              Select the rider stance before recording. It is stored with the session and is also used for trick-database samples.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            {[Stance.Regular, Stance.Goofy].map((stance) => (
+              <button
+                key={stance}
+                type="button"
+                onClick={() => setSelectedStance(stance)}
+                className={`py-4 rounded-xl font-black uppercase tracking-widest transition-all ${selectedStance === stance ? 'bg-cyan-500 text-gray-950' : 'bg-gray-900 text-gray-400 border border-gray-700'}`}
+              >
+                {stance}
+              </button>
+            ))}
+          </div>
+
+          {selectedStance && (
+            <div className="space-y-3">
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Step 2 · Session type</p>
+              <button
+                type="button"
+                onClick={() => { startRecording(); }}
+                className="w-full bg-green-500 text-gray-900 font-black py-4 rounded-2xl uppercase tracking-widest"
+              >
+                SESSION TRACKER · RECORD SESSION
+              </button>
+              <button
+                type="button"
+                onClick={() => { if (selectedStance) onOpenTrickDatabase(selectedStance); }}
+                className="w-full bg-cyan-500 text-gray-950 font-black py-4 rounded-2xl uppercase tracking-widest"
+              >
+                TRICK DATABASE · TRAIN A TRICK
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 text-left">
             <div className="bg-gray-900/80 p-4 rounded-xl border border-gray-700">
-              <p className="text-[10px] text-gray-500 uppercase font-black mb-1">Sensor</p>
-              <p className={`text-sm font-bold ${sensorConnected ? 'text-green-400' : 'text-gray-400'}`}>
-                {sensorConnected ? 'Connected' : 'Not connected'}
-              </p>
-              <p className="text-[10px] text-gray-600 mt-1 truncate">{deviceName}</p>
+              <p className="text-[10px] text-gray-500 uppercase font-black mb-1">Board Sensor</p>
+              <p className="text-sm font-bold text-green-400">WT9011DCL</p>
             </div>
             <div className="bg-gray-900/80 p-4 rounded-xl border border-gray-700">
               <p className="text-[10px] text-gray-500 uppercase font-black mb-1">GPS</p>
               <p className="text-sm font-bold text-cyan-400">High Accuracy</p>
             </div>
           </div>
-
-
-          {!sensorConnected && (
-            <button onClick={connectSensor} className="w-full bg-green-500 text-gray-900 font-black py-5 text-xl rounded-2xl uppercase tracking-widest">
-              CONNECT SENSOR
-            </button>
-          )}
-
-          {sensorConnected && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                {[Stance.Regular, Stance.Goofy].map((stance) => (
-                  <button
-                    key={stance}
-                    type="button"
-                    onClick={() => setSelectedStance(stance)}
-                    className={`py-4 rounded-xl font-black uppercase tracking-widest transition-all ${selectedStance === stance ? 'bg-cyan-500 text-gray-950' : 'bg-gray-900 text-gray-400 border border-gray-700'}`}
-                  >
-                    {stance}
-                  </button>
-                ))}
-              </div>
-
-              {selectedStance && (
-                <div className="space-y-3">
-                  <button type="button" onClick={startRecording} className="w-full bg-green-500 text-gray-900 font-black py-4 rounded-2xl uppercase tracking-widest">
-                    FREE SKATE · RECORD SESSION
-                  </button>
-                  <button type="button" onClick={() => onOpenTrickDatabase(selectedStance)} className="w-full bg-cyan-500 text-gray-950 font-black py-4 rounded-2xl uppercase tracking-widest">
-                    TRICK DATABASE · TRAIN A TRICK
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
 
           {sensorError && (
             <div className="rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">

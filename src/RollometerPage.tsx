@@ -50,7 +50,7 @@ const RollometerPage: React.FC<Props> = ({ onClose, onSetPage }) => {
 
       if (userSettings) {
         // If we have settings, go straight to history
-        setAppState({ page: Page.SessionHistory, userSettings, sessions });
+        setAppState({ page: Page.SessionTracker, userSettings, sessions });
       } else {
         setAppState(prev => ({ ...prev, sessions }));
       }
@@ -154,28 +154,21 @@ const RollometerPage: React.FC<Props> = ({ onClose, onSetPage }) => {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-mono flex flex-col items-center p-4 sm:p-6">
-       <header className="flex items-center justify-between mb-6 relative h-10 w-full max-w-4xl">
-            <button onClick={onClose} className="text-white hover:text-gray-300 transition-colors z-10 p-2 -ml-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            <div className="text-center w-full absolute left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center">
-                <h1 className="text-xl font-bold tracking-wider text-cyan-400">SKATE SENSE</h1>
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest">Motion Tracker</p>
+       <header className="w-full max-w-4xl mb-6">
+            <div className="flex items-center justify-between w-full min-h-10">
+                <button onClick={onClose} className="text-white hover:text-gray-300 transition-colors z-10 p-2 -ml-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <div className="text-center flex-1">
+                    <h1 className="text-xl font-bold tracking-wider text-cyan-400">MOTION TRACKER</h1>
+                </div>
+                <div className="w-11" />
             </div>
-            <div className="flex items-center gap-1 z-10">
-              <button
-                  onClick={() => { setTrickDatabaseInitialStance(appState.userSettings?.stance); setShowTrickDatabase(true); }}
-                  className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors p-2"
-              >
-                  Trick DB
-              </button>
-              <button
-                  onClick={() => onSetPage('board-sensor')}
-                  className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors p-2 -mr-2"
-              >
-                  Sensor Test
-              </button>
-            </div>
+            <nav className="flex justify-center items-center gap-3 sm:gap-5 mt-2">
+                <button onClick={() => { setShowTrickDatabase(false); setAppState(prev => ({ ...prev, page: Page.SessionTracker })); }} className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors p-1">Session Tracker</button>
+                <button onClick={() => { setTrickDatabaseInitialStance(appState.userSettings?.stance); setShowTrickDatabase(true); }} className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors p-1">Trick Database</button>
+                <button onClick={() => onSetPage('board-sensor')} className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors p-1">Sensor Test</button>
+            </nav>
        </header>
 
        <div className="w-full max-w-lg mx-auto flex-grow">
