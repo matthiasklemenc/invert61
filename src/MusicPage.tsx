@@ -34,6 +34,7 @@ const UI_TEXT: Record<string, Record<string, string>> = {
                    es: 'Para descubrir música, necesitas un Client ID de la API de Jamendo. ¡Es gratis!',
                    de: 'Um Musik zu entdecken, benötigst du eine Client-ID der Jamendo-API. Sie ist kostenlos!' },
   save:          { en: 'Save', es: 'Guardar', de: 'Speichern' },
+  login:         { en: 'LOGIN', es: 'INICIAR SESIÓN', de: 'LOGIN' },
   dontHaveOne:   { en: "Don't have one?", es: '¿No tienes uno?', de: 'Noch keinen?' },
   getClientId:   { en: 'Get a Client ID here', es: 'Consigue un Client ID aquí', de: 'Client-ID hier anfordern' },
 };
@@ -334,6 +335,19 @@ const MusicPage: React.FC<{
                         >
                           <MagnifyingGlassIcon />
                           <span>{tr('settings', uiLang)}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            localStorage.removeItem('mooseek-jamendo-id');
+                            onSetJamendoClientId('');
+                          }}
+                          className={[
+                            "flex-1 font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 bg-gray-700 text-gray-300 hover:bg-gray-600",
+                            t.toolbarBtn
+                          ].join(' ')}
+                        >
+                          <span>{tr('login', uiLang)}</span>
                         </button>
                       </div>
 
