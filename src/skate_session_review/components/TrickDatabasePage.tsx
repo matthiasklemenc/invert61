@@ -118,8 +118,8 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     setLibrary(next);
   }, []);
 
-  const flatTricks = useMemo(() => [...library.filter((item) => item.terrain === 'flat')].sort((a, b) => a.name.localeCompare(b.name)), [library]);
-  const transitionTricks = useMemo(() => [...library.filter((item) => item.terrain === 'transition')].sort((a, b) => a.name.localeCompare(b.name)), [library]);
+  const flatTricks = useMemo(() => library.filter((item) => item.terrain === 'flat'), [library]);
+  const transitionTricks = useMemo(() => library.filter((item) => item.terrain === 'transition'), [library]);
   const selectedDefinition = library.find((item) => item.id === trickId);
 
   useEffect(() => {
@@ -158,15 +158,6 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     setPacketCount(samplesRef.current.length);
   }, []);
 
-  const connectSensor = async () => {
-    try {
-      setSensorError(null);
-      if (!isBoardSensorConnected()) await connectBoardSensor();
-    } catch (error) {
-      setSensorError(error instanceof Error ? error.message : 'Could not connect to the WT901 sensor.');
-    }
-  };
-
   const startAttempt = async () => {
     try {
       setSensorError(null);
@@ -175,9 +166,7 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
         return;
       }
 
-      if (!isBoardSensorConnected()) {
-        await connectBoardSensor();
-      }
+      if (!isBoardSensorConnected()) await connectBoardSensor();
 
       samplesRef.current = [];
       gpsDataRef.current = [];
@@ -469,39 +458,45 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
     : 0;
 
   const renderTrickSelector = (selectorTerrain: TrickTerrain, items: TrickDefinition[], selectedId: string) => (
-    <div className="space-y-2">
+    <div className="flex gap-2 items-stretch">
       <select
         value={selectedId}
         onChange={(e) => handleTerrainSelection(selectorTerrain, e.target.value)}
-        className="w-full min-w-0 bg-gray-900 border border-gray-700 rounded-xl px-3 py-3 text-white"
+        className="flex-[0_0_60%] min-w-0 bg-gray-900 border border-gray-700 rounded-xl px-3 py-3 text-white"
       >
         {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => { setAddTerrain(selectorTerrain); setNewTrickName(''); setSensorError(null); }}
-          className="bg-cyan-500 text-gray-950 font-black py-2 rounded-xl uppercase text-[10px] tracking-widest"
-        >
-          + Add Trick
-        </button>
-        <button
-          type="button"
-          onClick={() => selectedId && setDeleteTrickId(selectedId)}
-          disabled={!selectedId}
-          className="bg-red-600/80 disabled:bg-gray-800 disabled:text-gray-600 text-white font-black py-2 rounded-xl uppercase text-[10px]"
-          title="Delete selected trick"
-        >
-          Delete
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => { setAddTerrain(selectorTerrain); setNewTrickName(''); setSensorError(null); }}
+        className="shrink-0 bg-cyan-500 text-gray-950 font-black px-4 rounded-xl uppercase text-[10px] tracking-widest"
+      >
+        + Add Trick
+      </button>
+      <button
+        type="button"
+        onClick={() => selectedId && setDeleteTrickId(selectedId)}
+        disabled={!selectedId}
+        className="shrink-0 bg-red-600/80 disabled:bg-gray-800 disabled:text-gray-600 text-white font-black px-3 rounded-xl uppercase text-[10px]"
+        title="Delete selected trick"
+      >
+        Delete
+      </button>
     </div>
   );
 
   return (
     <div className="w-full max-w-2xl mx-auto pb-8">
       <div className="flex items-center justify-between mb-5">
-        <button onClick={() => { if (status === 'review') retry(); else onBack(); }} className="text-gray-400 hover:text-white text-xs uppercase tracking-widest">← Back</button>
+        <button
+          onClick={onBack}
+          className="text-white hover:text-gray-300 transition-colors z-10 p-2 -ml-2"
+          aria-label="Back"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
         <div className="text-center">
           <h2 className="text-xl font-black text-cyan-400 tracking-wider">TRICK DATABASE</h2>
           <p className="text-[9px] text-gray-500 uppercase tracking-[0.3em]">WT901 Training Samples</p>
@@ -536,8 +531,8 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
           {sensorError && <div className="rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{sensorError}</div>}
 
           {!sensorConnected && (
-            <button onClick={connectSensor} className="w-full bg-green-500 text-gray-950 font-black py-5 rounded-2xl uppercase tracking-widest">
-              CONNECT SENSOR
+            <button onClick={startAttempt} className="w-full bg-green-500 text-gray-950 font-black py-5 rounded-2xl uppercase tracking-widest">
+              CONNECT SENSOR & START ATTEMPT
             </button>
           )}
 

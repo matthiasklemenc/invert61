@@ -195,7 +195,7 @@ const RollometerPage: React.FC<Props> = ({ onClose, onSetPage }) => {
     <div className="min-h-screen bg-gray-900 text-gray-100 font-mono flex flex-col items-center p-4 sm:p-6">
        <header className="w-full max-w-4xl mb-6">
             <div className="flex items-center justify-between w-full min-h-10">
-                <button onClick={onClose} className="text-white hover:text-gray-300 transition-colors z-10 p-2 -ml-2">
+                <button onClick={() => showSessionTracker ? setShowSessionTracker(false) : onClose()} className="text-white hover:text-gray-300 transition-colors z-10 p-2 -ml-2">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <div className="text-center flex-1">
