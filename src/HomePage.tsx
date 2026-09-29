@@ -1,4 +1,3 @@
-
 import React from 'react';
 import AdditionalYouTubeGrid from './AdditionalYouTubeGrid';
 import { YouTubeChannelSlot } from './types';
@@ -11,7 +10,6 @@ type Props = {
   youTubeSlots: YouTubeChannelSlot[];
   onSetYouTubeSlots: React.Dispatch<React.SetStateAction<YouTubeChannelSlot[]>>;
 };
-
 const HomePage: React.FC<Props> = ({ onSetPage, youTubeSlots, onSetYouTubeSlots }) => {
   const NavButton: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({ icon, label, onClick }) => (
     <button
@@ -24,7 +22,6 @@ const HomePage: React.FC<Props> = ({ onSetPage, youTubeSlots, onSetYouTubeSlots 
       <span className="font-bold tracking-wider uppercase text-center text-sm -mt-2">{label}</span>
     </button>
   );
-
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4 sm:p-6">
       <header className="w-full my-8">
@@ -35,31 +32,30 @@ const HomePage: React.FC<Props> = ({ onSetPage, youTubeSlots, onSetYouTubeSlots 
           </div>
         </div>
       </header>
-
       <main className="w-full max-w-4xl mx-auto flex-grow">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-12">
-          <NavButton 
-            icon={<img src="./assets/homepage_icons/homepage_icon_session_tracker.png" alt="Tracker" className="w-full h-full object-contain translate-y-2.5" />} 
-            label="Session Tracker" 
-            onClick={() => onSetPage('rollometer')} 
+          <NavButton
+            icon={<img src="./assets/homepage_icons/homepage_icon_session_tracker.png" alt="Tracker" className="w-full h-full object-contain translate-y-2.5" />}
+            label="Motion Tracker"
+            onClick={() => onSetPage('rollometer')}
           />
-          <NavButton 
-            icon={<img src="./assets/homepage_icons/homepage_icon_music.png" alt="Music" className="w-full h-full object-contain -translate-y-[5px]" />} 
-            label="Music" 
-            onClick={() => onSetPage('music')} 
+          <NavButton
+            icon={<img src="./assets/homepage_icons/homepage_icon_music.png" alt="Music" className="w-full h-full object-contain -translate-y-[5px]" />}
+            label="Music"
+            onClick={() => onSetPage('music')}
           />
-          <NavButton 
-            icon={<img src="./assets/homepage_icons/homepage_icon_games.png" alt="Games" className="w-full h-full object-contain" />} 
-            label="Games" 
-            onClick={() => onSetPage('games')} 
+          <NavButton
+            icon={<img src="./assets/homepage_icons/homepage_icon_games.png" alt="Games" className="w-full h-full object-contain" />}
+            label="Games"
+            onClick={() => onSetPage('games')}
           />
-          <NavButton 
-            icon={<img src="./assets/homepage_icons/homepage_icon_video.png" alt="Video" className="w-full h-full object-contain" />} 
-            label="Video" 
-            onClick={() => onSetPage('editor')} 
+          <NavButton
+            icon={<img src="./assets/homepage_icons/homepage_icon_video.png" alt="Video" className="w-full h-full object-contain" />}
+            label="Video"
+            onClick={() => onSetPage('editor')}
           />
         </div>
-        
+
         <AdditionalYouTubeGrid
           slots={youTubeSlots}
           onSetSlots={onSetYouTubeSlots}
@@ -68,5 +64,4 @@ const HomePage: React.FC<Props> = ({ onSetPage, youTubeSlots, onSetYouTubeSlots 
     </div>
   );
 };
-
 export default HomePage;

@@ -21,6 +21,7 @@ type Props = {
 
 const RollometerPage: React.FC<Props> = ({ onClose, onSetPage }) => {
   const [showTrickDatabase, setShowTrickDatabase] = useState(false);
+  const [showSessionTracker, setShowSessionTracker] = useState(false);
   const [trickDatabaseInitialStance, setTrickDatabaseInitialStance] = useState<Stance | undefined>(undefined);
 
   const [appState, setAppState] = useState<AppState>({
@@ -113,6 +114,44 @@ const RollometerPage: React.FC<Props> = ({ onClose, onSetPage }) => {
   };
 
   const renderPage = () => {
+    if (appState.page === Page.SessionTracker && !showSessionTracker) {
+      return (
+        <div className="w-full space-y-4">
+          <button
+            type="button"
+            onClick={() => setShowSessionTracker(true)}
+            className="w-full text-left bg-gray-800 rounded-3xl border border-gray-700 p-6 sm:p-7 hover:border-cyan-400 transition-colors"
+          >
+            <h2 className="text-2xl sm:text-3xl font-black text-green-400 uppercase tracking-tight">
+              Session Tracker
+            </h2>
+            <p className="mt-2 text-sm font-bold text-gray-200">
+              Record your entire skate session.
+            </p>
+            <p className="mt-2 text-sm text-gray-400 leading-relaxed">
+              Record a complete skate session, including free skating and multiple tricks in one session.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setTrickDatabaseInitialStance(appState.userSettings?.stance); setShowTrickDatabase(true); }}
+            className="w-full text-left bg-gray-800 rounded-3xl border border-gray-700 p-6 sm:p-7 hover:border-cyan-400 transition-colors"
+          >
+            <h2 className="text-2xl sm:text-3xl font-black text-cyan-400 uppercase tracking-tight">
+              Trick Database
+            </h2>
+            <p className="mt-2 text-sm font-bold text-gray-200">
+              Record and train individual tricks.
+            </p>
+            <p className="mt-2 text-sm text-gray-400 leading-relaxed">
+              Select a trick and record individual attempts to build your trick database and train future trick recognition.
+            </p>
+          </button>
+        </div>
+      );
+    }
+
     switch (appState.page) {
       case Page.Onboarding:
         return <Onboarding onComplete={handleOnboardingComplete} />;
@@ -164,11 +203,9 @@ const RollometerPage: React.FC<Props> = ({ onClose, onSetPage }) => {
                 </div>
                 <div className="w-11" />
             </div>
-            <nav className="flex justify-center items-center gap-3 sm:gap-5 mt-2">
-                <button onClick={() => { setShowTrickDatabase(false); setAppState(prev => ({ ...prev, page: Page.SessionTracker })); }} className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors p-1">Session Tracker</button>
-                <button onClick={() => { setTrickDatabaseInitialStance(appState.userSettings?.stance); setShowTrickDatabase(true); }} className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors p-1">Trick Database</button>
+            <div className="flex justify-end items-center mt-2">
                 <button onClick={() => onSetPage('board-sensor')} className="text-[10px] uppercase tracking-wider text-cyan-400 hover:text-cyan-300 transition-colors p-1">Sensor Test</button>
-            </nav>
+            </div>
        </header>
 
        <div className="w-full max-w-lg mx-auto flex-grow">
