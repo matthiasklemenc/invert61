@@ -314,11 +314,11 @@ const MusicPage: React.FC<{
                 ) : (
                   <div className="flex flex-col items-center">
                     <div className="w-full max-w-lg flex flex-col items-center">
-                      <div className="flex gap-3 sm:gap-4 w-full mb-4">
+                      <div className="grid grid-cols-[1.2fr_0.9fr_0.9fr] gap-3 sm:gap-4 w-full mb-4">
                         <button
                           onClick={handleToggleAllGenres}
                           className={[
-                            "flex-1 font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center",
+                            "min-w-0 w-full font-semibold py-2 px-2 rounded-lg transition-colors flex items-center justify-center",
                             areAllGenresSelected ? "bg-indigo-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600",
                             t.toolbarBtn,
                             areAllGenresSelected ? t.toolbarBtnActive : ''
@@ -329,7 +329,7 @@ const MusicPage: React.FC<{
                         <button
                           onClick={onShowSettings}
                           className={[
-                            "flex-1 font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 bg-gray-700 text-gray-300 hover:bg-gray-600",
+                            "min-w-0 w-full font-semibold py-2 px-2 rounded-lg transition-colors flex items-center justify-center gap-2 bg-gray-700 text-gray-300 hover:bg-gray-600",
                             t.toolbarBtn
                           ].join(' ')}
                         >
@@ -343,7 +343,7 @@ const MusicPage: React.FC<{
                             onSetJamendoClientId('');
                           }}
                           className={[
-                            "flex-1 font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 bg-gray-700 text-gray-300 hover:bg-gray-600",
+                            "min-w-0 w-full font-semibold py-2 px-2 rounded-lg transition-colors flex items-center justify-center gap-2 bg-gray-700 text-gray-300 hover:bg-gray-600",
                             t.toolbarBtn
                           ].join(' ')}
                         >

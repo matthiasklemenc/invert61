@@ -11,26 +11,8 @@ const SettingsModal: React.FC<{
   jamendoClientId?: string;
   onSetJamendoClientId?: (id: string) => void;
 }> = ({ onClose, commercialOnly, onSetCommercialOnly, sortOrder, onSetSortOrder }) => {
-
   const handleSortChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     onSetSortOrder(event.target.value as 'id_desc' | 'popularity_total' | 'random');
-  };
-
-  const handleHardReset = async () => {
-    if (confirm("This will clear all app data and force a reload. Continue?")) {
-       // Unregister workers
-       if ('serviceWorker' in navigator) {
-           const regs = await navigator.serviceWorker.getRegistrations();
-           for (const reg of regs) await reg.unregister();
-       }
-       // Clear caches
-       if ('caches' in window) {
-           const keys = await caches.keys();
-           for (const key of keys) await caches.delete(key);
-       }
-       // Reload
-       window.location.reload();
-    }
   };
 
   return (
@@ -50,9 +32,7 @@ const SettingsModal: React.FC<{
             />
             <span className="text-gray-300">Show only songs for commercial projects</span>
           </label>
-
           <hr className="border-gray-700" />
-
           <fieldset>
             <legend className="sr-only">Sort Order</legend>
             <div className="space-y-2">
@@ -92,18 +72,7 @@ const SettingsModal: React.FC<{
             </div>
           </fieldset>
         </div>
-
-        <div className="mt-6 pt-4 border-t border-gray-700">
-            <button 
-                onClick={handleHardReset}
-                className="w-full bg-red-900/50 hover:bg-red-900 text-red-200 text-xs font-bold py-3 px-4 rounded-md transition-colors border border-red-800"
-            >
-                ⚠️ FORCE REFRESH
-            </button>
-        </div>
-
-        <div className="mt-4 flex justify-between items-center">
-          <span className="text-xs text-green-400 font-mono">v4.3 (Logos Fixed)</span>
+        <div className="mt-4 flex justify-end">
           <button onClick={onClose} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-md hover:bg-indigo-700 transition-colors">
             Done
           </button>
