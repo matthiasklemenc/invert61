@@ -434,7 +434,15 @@ const TrickDatabasePage: React.FC<{ onBack: () => void; initialStance?: Stance }
   return (
     <div className="w-full max-w-2xl mx-auto pb-8">
       <div className="flex items-center justify-between mb-5">
-        <button onClick={onBack} className="text-gray-400 hover:text-white text-xs uppercase tracking-widest">← Back</button>
+        <button
+          onClick={onBack}
+          className="text-white hover:text-gray-300 transition-colors z-10 p-2 -ml-2"
+          aria-label="Back"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
         <div className="text-center">
           <h2 className="text-xl font-black text-cyan-400 tracking-wider">TRICK DATABASE</h2>
           <p className="text-[9px] text-gray-500 uppercase tracking-[0.3em]">WT901 Training Samples</p>
