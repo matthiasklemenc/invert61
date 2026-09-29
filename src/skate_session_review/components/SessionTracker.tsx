@@ -6,8 +6,7 @@ interface SessionTrackerProps {
   previousSessions: Session[];
   onBack: () => void;
   motions: Motion[];
-  onOpenTrickDatabase: (stance: Stance) => void;
-}
+  }
 
 const SERVICE_UUID = '0000ffe5-0000-1000-8000-00805f9a34fb';
 const NOTIFY_CHARACTERISTIC_UUID = '0000ffe4-0000-1000-8000-00805f9a34fb';
@@ -66,7 +65,7 @@ const parseWitMotionPacket = (value: DataView): SensorValues | null => {
   };
 };
 
-const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBack, onOpenTrickDatabase }) => {
+const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBack }) => {
   const [status, setStatus] = useState<'uninitialized' | 'tracking'>('uninitialized');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [pointsRecorded, setPointsRecorded] = useState(0);
@@ -316,7 +315,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
   return (
     <div className="flex flex-col items-center justify-center p-6 bg-gray-800 rounded-3xl shadow-2xl min-h-[520px] border border-gray-700">
       <h2 className="text-2xl font-black mb-6 text-cyan-400 uppercase tracking-tighter italic">
-        Motion Tracker
+        Session Tracker
       </h2>
 
       {status === 'uninitialized' && (
@@ -350,13 +349,6 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
                 className="w-full bg-green-500 text-gray-900 font-black py-4 rounded-2xl uppercase tracking-widest"
               >
                 SESSION TRACKER · RECORD SESSION
-              </button>
-              <button
-                type="button"
-                onClick={() => { if (selectedStance) onOpenTrickDatabase(selectedStance); }}
-                className="w-full bg-cyan-500 text-gray-950 font-black py-4 rounded-2xl uppercase tracking-widest"
-              >
-                TRICK DATABASE · TRAIN A TRICK
               </button>
             </div>
           )}

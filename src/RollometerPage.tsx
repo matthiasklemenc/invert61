@@ -160,7 +160,7 @@ const RollometerPage: React.FC<Props> = ({ onClose, onSetPage }) => {
           <SessionTracker 
             onSessionComplete={handleSessionComplete} 
             previousSessions={appState.sessions} 
-            onBack={() => navigate(Page.SessionHistory)}
+            onBack={() => setShowSessionTracker(false)}
             motions={motions}
             onOpenTrickDatabase={(stance: Stance) => { setTrickDatabaseInitialStance(stance); setShowTrickDatabase(true); }}
           />
