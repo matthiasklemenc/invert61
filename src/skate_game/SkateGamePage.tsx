@@ -320,17 +320,21 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                🔥 FIXED RESPONSIVE CANVAS
             ------------------------------------------ */}
             <div
-                className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden"
+                className={
+                    isMobile
+                        ? "absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden"
+                        : "flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden"
+                }
             >
                 <canvas
                     ref={canvasRef}
                     className="block bg-gray-900"
                     style={{
                         touchAction: "none",
-                        width: isMobile ? "100%" : "min(100%, calc((100dvh - 90px) * 16 / 9))",
-                        height: isMobile ? "100%" : "min(calc(100dvh - 90px), 56.25vw)",
-                        aspectRatio: isMobile ? "auto" : "16 / 9",
-                        objectFit: isMobile ? "fill" : "contain",
+                        width: "100%",
+                        height: "100%",
+                        aspectRatio: "auto",
+                        objectFit: "fill",
                         display: "block",
                     }}
                 />
