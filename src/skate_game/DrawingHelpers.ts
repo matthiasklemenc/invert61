@@ -329,34 +329,103 @@ export function drawSpaceBackground(ctx: CanvasRenderingContext2D, width: number
     }
 }
 
+type CityLayerDefinition = {
+    speed: number;
+    color: string;
+    width: number;
+    heightMod: number;
+    baseH: number;
+    seed: number;
+    windows: boolean;
+};
+
+const CITY_TILE_WIDTH = 1200;
+const CITY_TILE_HEIGHT = 900;
+const cityLayerCaches = new Map<number, HTMLCanvasElement>();
+
+const pseudoRandomCity = (x: number) => {
+    return Math.abs(Math.sin(x * 12.9898) * 43758.5453) % 1;
+};
+
+function getCityLayerCache(layer: CityLayerDefinition): HTMLCanvasElement | null {
+    if (typeof document === 'undefined') return null;
+
+    const cached = cityLayerCaches.get(layer.seed);
+    if (cached) return cached;
+
+    const tile = document.createElement('canvas');
+    tile.width = CITY_TILE_WIDTH;
+    tile.height = CITY_TILE_HEIGHT;
+    const tileCtx = tile.getContext('2d');
+    if (!tileCtx) return null;
+
+    tileCtx.clearRect(0, 0, CITY_TILE_WIDTH, CITY_TILE_HEIGHT);
+    tileCtx.fillStyle = layer.color;
+
+    const buildingCount = Math.ceil(CITY_TILE_WIDTH / layer.width);
+    for (let localIndex = 0; localIndex < buildingCount; localIndex++) {
+        const hFactor = pseudoRandomCity(localIndex * layer.seed);
+        const h = layer.baseH + hFactor * layer.heightMod;
+        const x = Math.floor(localIndex * layer.width);
+        const bY = CITY_TILE_HEIGHT - h;
+
+        tileCtx.fillStyle = layer.color;
+        tileCtx.fillRect(x, bY, layer.width + 1, h + 500);
+
+        if (layer.windows && hFactor > 0.4) {
+            tileCtx.fillStyle = '#1e293b';
+            const winSize = 4;
+            const gap = 10;
+            const cols = Math.floor((layer.width - gap) / (winSize + gap));
+            const rows = Math.floor((h - 30) / (winSize + gap));
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (pseudoRandomCity(localIndex * r * c + layer.seed) > 0.3) {
+                        tileCtx.fillRect(
+                            x + gap + c * (winSize + gap),
+                            bY + 15 + r * (winSize + gap),
+                            winSize,
+                            winSize
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    cityLayerCaches.set(layer.seed, tile);
+    return tile;
+}
+
 export function drawCityBackground(ctx: CanvasRenderingContext2D, width: number, height: number, scroll: number, floorY: number, viewOffsetY: number = 0) {
-    let r = 15, g = 23, b = 42; 
-    
+    let r = 15, g = 23, b = 42;
+
     if (viewOffsetY > 0) {
-        const fadeStart = 300; 
+        const fadeStart = 300;
         const fadeEnd = 1500;
         const progress = Math.max(0, Math.min(1, (viewOffsetY - fadeStart) / (fadeEnd - fadeStart)));
-        
+
         r = Math.floor(15 * (1 - progress));
         g = Math.floor(23 * (1 - progress));
         b = Math.floor(42 * (1 - progress));
     }
-    
+
     ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
     ctx.fillRect(0, 0, width, height);
 
     const skyY = viewOffsetY;
     if (skyY < height) {
         const grad = ctx.createLinearGradient(0, skyY, 0, height + skyY);
-        grad.addColorStop(0, '#0f172a'); 
-        grad.addColorStop(1, '#334155'); 
+        grad.addColorStop(0, '#0f172a');
+        grad.addColorStop(1, '#334155');
         ctx.fillStyle = grad;
         ctx.fillRect(0, skyY, width, height);
 
         if (viewOffsetY < 800) {
             ctx.save();
             ctx.translate(width * 0.8, height * 0.25 + skyY * 0.8);
-            ctx.fillStyle = '#c52323'; 
+            ctx.fillStyle = '#c52323';
             ctx.shadowColor = '#c52323';
             ctx.shadowBlur = 40;
             ctx.beginPath();
@@ -368,32 +437,32 @@ export function drawCityBackground(ctx: CanvasRenderingContext2D, width: number,
 
     if (viewOffsetY > 300) {
         const marsX = width / 2;
-        const marsY = -350 + (viewOffsetY - 300) * 0.6; 
-        
+        const marsY = -350 + (viewOffsetY - 300) * 0.6;
+
         if (marsY < height + 400) {
             ctx.save();
             ctx.translate(marsX, marsY);
-            
+
             const gradMars = ctx.createRadialGradient(-20, -20, 10, 0, 0, 80);
-            gradMars.addColorStop(0, '#ef4444'); 
-            gradMars.addColorStop(0.6, '#b91c1c'); 
-            gradMars.addColorStop(1, '#7f1d1d'); 
+            gradMars.addColorStop(0, '#ef4444');
+            gradMars.addColorStop(0.6, '#b91c1c');
+            gradMars.addColorStop(1, '#7f1d1d');
             ctx.fillStyle = gradMars;
-            ctx.beginPath(); ctx.arc(0, 0, 70, 0, Math.PI*2); ctx.fill();
-            
+            ctx.beginPath(); ctx.arc(0, 0, 70, 0, Math.PI * 2); ctx.fill();
+
             ctx.fillStyle = 'rgba(0,0,0,0.2)';
-            ctx.beginPath(); ctx.ellipse(-20, -10, 10, 5, 0.2, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.ellipse(30, 20, 15, 8, -0.1, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.ellipse(10, -40, 8, 4, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(-20, -10, 10, 5, 0.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(30, 20, 15, 8, -0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(10, -40, 8, 4, 0, 0, Math.PI * 2); ctx.fill();
 
             ctx.restore();
-            
-            const rocketX = marsX + 160; 
-            const rocketY = marsY + Math.sin(Date.now() / 500) * 10; 
-            
+
+            const rocketX = marsX + 160;
+            const rocketY = marsY + Math.sin(Date.now() / 500) * 10;
+
             ctx.save();
             ctx.translate(rocketX, rocketY);
-            ctx.rotate(-Math.PI / 4); 
+            ctx.rotate(-Math.PI / 4);
             ctx.scale(0.6, 0.6);
 
             ctx.fillStyle = '#f59e0b';
@@ -406,7 +475,7 @@ export function drawCityBackground(ctx: CanvasRenderingContext2D, width: number,
             ctx.fillStyle = '#e2e8f0';
             ctx.beginPath(); ctx.ellipse(0, 0, 15, 40, 0, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#38bdf8';
-            ctx.beginPath(); ctx.arc(0, -10, 6, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -10, 6, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#c52323';
             ctx.beginPath();
             ctx.moveTo(-15, 10); ctx.lineTo(-25, 35); ctx.lineTo(-5, 25);
@@ -416,57 +485,25 @@ export function drawCityBackground(ctx: CanvasRenderingContext2D, width: number,
         }
     }
 
-    const pseudoRandom = (x: number) => {
-        return Math.abs(Math.sin(x * 12.9898) * 43758.5453) % 1;
-    };
-
-    const layers = [
-        { speed: 0.05, color: '#1e293b', width: 120, heightMod: 200, baseH: 150, seed: 1, windows: false }, 
+    const layers: CityLayerDefinition[] = [
+        { speed: 0.05, color: '#1e293b', width: 120, heightMod: 200, baseH: 150, seed: 1, windows: false },
         { speed: 0.15, color: '#334155', width: 80, heightMod: 150, baseH: 80, seed: 2, windows: false },
-        { speed: 0.3, color: '#475569', width: 60, heightMod: 100, baseH: 50, seed: 3, windows: true } 
+        { speed: 0.3, color: '#475569', width: 60, heightMod: 100, baseH: 50, seed: 3, windows: true }
     ];
 
-    const buildingOffsetY = floorY + viewOffsetY; 
+    const buildingOffsetY = floorY + viewOffsetY;
 
     if (buildingOffsetY > -200) {
         layers.forEach(layer => {
-            ctx.fillStyle = layer.color;
+            const cache = getCityLayerCache(layer);
+            if (!cache) return;
+
             const effectiveScroll = scroll * layer.speed;
-            
-            const startIdx = Math.floor(effectiveScroll / layer.width);
-            const endIdx = startIdx + Math.ceil(width / layer.width) + 1;
+            const offsetX = -(((effectiveScroll % CITY_TILE_WIDTH) + CITY_TILE_WIDTH) % CITY_TILE_WIDTH);
+            const drawY = buildingOffsetY - CITY_TILE_HEIGHT;
 
-            for (let i = startIdx; i <= endIdx; i++) {
-                const hFactor = pseudoRandom(i * layer.seed);
-                const h = layer.baseH + hFactor * layer.heightMod;
-                const x = Math.floor(i * layer.width - effectiveScroll);
-                
-                const bY = buildingOffsetY - h;
-                if (bY < height) {
-                    ctx.fillRect(x, bY, layer.width + 1, h + 500); 
-
-                    if (layer.windows && hFactor > 0.4) {
-                        ctx.fillStyle = '#1e293b'; 
-                        const winSize = 4;
-                        const gap = 10;
-                        const cols = Math.floor((layer.width - gap) / (winSize + gap));
-                        const rows = Math.floor((h - 30) / (winSize + gap));
-                        
-                        for (let r = 0; r < rows; r++) {
-                            for (let c = 0; c < cols; c++) {
-                                if (pseudoRandom(i * r * c + layer.seed) > 0.3) {
-                                    ctx.fillRect(
-                                        x + gap + c * (winSize + gap), 
-                                        bY + 15 + r * (winSize + gap), 
-                                        winSize, 
-                                        winSize
-                                    );
-                                }
-                            }
-                        }
-                        ctx.fillStyle = layer.color; 
-                    }
-                }
+            for (let x = offsetX; x < width; x += CITY_TILE_WIDTH) {
+                ctx.drawImage(cache, x, drawY);
             }
         });
     }

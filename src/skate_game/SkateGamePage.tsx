@@ -112,9 +112,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        // Keep the game on one stable internal coordinate system. The canvas
-        // is responsively scaled by CSS; the game renderer should not depend
-        // on the mobile browser's layout timing or device pixel ratio.
+        // Keep one stable internal game coordinate system. The canvas itself
+        // is scaled by CSS so gameplay coordinates remain unchanged.
         const LOGICAL_WIDTH = 640;
         const LOGICAL_HEIGHT = 360;
 
@@ -328,9 +327,10 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     className="block bg-gray-900"
                     style={{
                         touchAction: "none",
-                        width: "min(100%, calc((100dvh - 90px) * 16 / 9))",
-                        height: "min(calc(100dvh - 90px), 56.25vw)",
-                        aspectRatio: "16 / 9",
+                        width: isMobile ? "100%" : "min(100%, calc((100dvh - 90px) * 16 / 9))",
+                        height: isMobile ? "100%" : "min(calc(100dvh - 90px), 56.25vw)",
+                        aspectRatio: isMobile ? "auto" : "16 / 9",
+                        objectFit: isMobile ? "fill" : "contain",
                         display: "block",
                     }}
                 />

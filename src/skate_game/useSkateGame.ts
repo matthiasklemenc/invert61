@@ -1369,7 +1369,6 @@ if (state.player.y > 600) {
                         // gaps, rails, ledges, hydrants, bins, trucks, carts and police
                         // all appear regularly. No extra random branch can create long gaps.
                         const obstacleSequence: Array<ObstacleType | 'structure'> = [
-                            'police_car',
                             'ledge',
                             'ramp',
                             'gap',
@@ -1382,11 +1381,18 @@ if (state.player.y > 600) {
                             'grey_bin',
                             'ramp',
                             'ledge',
+                            'bin',
                             'structure',
                             'flat_rail',
-                            'police_car',
                             'rail',
-                            'gap'
+                            'bin',
+                            'gap',
+                            'ledge',
+                            'ramp',
+                            'curb',
+                            'bin',
+                            'cart',
+                            'police_car'
                         ];
 
                         const sequenceIndex = state.normalObstacleIndex % obstacleSequence.length;
