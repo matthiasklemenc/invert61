@@ -127,7 +127,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             window.removeEventListener("resize", resizeCanvas);
             window.removeEventListener("orientationchange", resizeCanvas);
         };
-    }, [canvasRef]);
+    }, [canvasRef, isMobile, isLandscape]);
     // -----------------------------------------
     // 🔥 DESKTOP KEYBOARD CONTROLS
     // -----------------------------------------
@@ -355,4 +355,5 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         </div>
     );
 }
+
 
