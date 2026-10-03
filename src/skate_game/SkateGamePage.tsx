@@ -7,7 +7,7 @@ import GameOver from "./GameOver";
 import OxxoShopPopup from "./OxxoShopPopup";
 import GameProgressPanel from "./GameProgressPanel";
 import SecretQuestionModal from "./SecretQuestionModal";
-import { MOBILE_LOGICAL_WIDTH, MOBILE_LOGICAL_HEIGHT } from "./GameConstants";
+import { GAME_LOGICAL_WIDTH, GAME_LOGICAL_HEIGHT } from "./GameConstants";
 
 export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     const [isLandscape, setIsLandscape] = useState(
@@ -107,29 +107,35 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     } = useSkateGame();
 
     // -------------------------------------------------------
-    // MOBILE ONLY — FIXED LOGICAL RESOLUTION CANVAS (FIT MODE)
+    // FIXED LOGICAL RESOLUTION CANVAS (FIT MODE) — ALL DEVICES
     // -------------------------------------------------------
-    // The canvas's internal drawing resolution is set ONCE to a fixed
-    // size (MOBILE_LOGICAL_WIDTH x MOBILE_LOGICAL_HEIGHT) that matches
-    // what the game's absolute-pixel values were tuned for, instead of
-    // being resized to match each phone's own viewport pixels. CSS
-    // (object-fit: contain, see the <canvas> style below) then scales
-    // that fixed-size canvas uniformly to fit the available mobile area,
-    // letterboxing if needed. Because the logical resolution never
-    // changes, the floor, obstacles, and jump arcs are always positioned
-    // correctly and nothing is ever cropped or stretched, on any phone.
+    // The canvas's internal drawing resolution was never being set
+    // anywhere in this app, on mobile OR desktop — it was silently
+    // falling back to the browser's 300x150 default, then displayed
+    // with `object-fit: none`, which shows that tiny buffer at native
+    // size instead of scaling it. That is the small rectangle floating
+    // in empty space you were seeing on every device.
+    //
+    // The fix: set the canvas's internal resolution ONCE to a fixed
+    // size (GAME_LOGICAL_WIDTH x GAME_LOGICAL_HEIGHT) that matches what
+    // the game's absolute-pixel values (BASE_FLOOR_Y, obstacle sizes,
+    // gravity, jump force, etc.) were tuned for. CSS (object-fit:
+    // contain, see the <canvas> style below) then scales that fixed-size
+    // canvas uniformly to fill the available space — letterboxed with
+    // bars on one axis if the container's aspect ratio doesn't match
+    // 16:9, but always fully visible and never stretched or cropped.
     const mobileCanvasContainerRef = React.useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas || !isMobile) return;
+        if (!canvas) return;
 
-        if (canvas.width !== MOBILE_LOGICAL_WIDTH || canvas.height !== MOBILE_LOGICAL_HEIGHT) {
-            canvas.width = MOBILE_LOGICAL_WIDTH;
-            canvas.height = MOBILE_LOGICAL_HEIGHT;
+        if (canvas.width !== GAME_LOGICAL_WIDTH || canvas.height !== GAME_LOGICAL_HEIGHT) {
+            canvas.width = GAME_LOGICAL_WIDTH;
+            canvas.height = GAME_LOGICAL_HEIGHT;
             canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
         }
-    }, [canvasRef, isMobile]);
+    }, [canvasRef]);
 
     // -----------------------------------------
     // 🔥 DESKTOP KEYBOARD CONTROLS
@@ -318,10 +324,14 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     className="block bg-gray-900"
                     style={{
                         touchAction: "none",
-                        width: isMobile ? "100%" : "min(100%, calc((100dvh - 90px) * 16 / 9))",
-                        height: isMobile ? "100%" : "min(calc(100dvh - 90px), 56.25vw)",
-                        aspectRatio: isMobile ? "auto" : "16 / 9",
-                        objectFit: isMobile ? "contain" : "none",
+                        // The canvas's internal resolution is fixed (see the
+                        // effect above). object-fit: contain scales that
+                        // fixed buffer uniformly to fill this box — on any
+                        // screen size, on any device — without ever
+                        // stretching or cropping it.
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
                         display: "block",
                     }}
                 />

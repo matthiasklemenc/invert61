@@ -14,18 +14,21 @@ export const JUMP_FORCE = -18;
 export const BASE_FLOOR_Y = 250;
 export const SPEED = 7;
 
-// --- MOBILE FIXED LOGICAL RESOLUTION ---
+// --- FIXED LOGICAL GAME RESOLUTION ---
 // Every absolute-pixel game value (BASE_FLOOR_Y, obstacle widths/heights,
 // GRAVITY, JUMP_FORCE, the underworld pipe travel distance, fireball
-// heights, etc.) is tuned for one specific canvas size, not for whatever
-// size a given phone happens to report. On mobile we therefore give the
-// canvas this FIXED internal resolution (instead of resizing it to match
-// each device's raw viewport pixels) and let CSS scale that uniformly to
-// fit the screen. That is what prevents the floor/player/obstacles from
-// landing outside the visible canvas on short or oddly-shaped phones.
-// Desktop is untouched and keeps its own existing sizing entirely.
-export const MOBILE_LOGICAL_WIDTH = 1280;
-export const MOBILE_LOGICAL_HEIGHT = 720;
+// heights, etc.) is tuned for one specific canvas size. The <canvas>
+// element's drawing-buffer resolution (canvas.width / canvas.height) was
+// never actually being set anywhere in the app — on both mobile AND
+// desktop it was silently falling back to the browser's 300x150 default,
+// then displayed with `object-fit: none`, which shows that tiny buffer
+// at its native size instead of scaling it — hence the small rectangle
+// floating in a sea of empty space on every device. Setting the canvas
+// to this fixed resolution once, and letting CSS (object-fit: contain)
+// scale it uniformly to fit whatever space is available, fixes this for
+// every screen size and aspect ratio at once.
+export const GAME_LOGICAL_WIDTH = 1280;
+export const GAME_LOGICAL_HEIGHT = 720;
 
 // --- KAI SPRITE ASSETS ---
 export const KAI_SPRITES = {
