@@ -106,56 +106,59 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     } = useSkateGame();
 
     // -------------------------------------------------------
-    // 🔥 REAL MOBILE CANVAS FIX — RESIZE OBSERVER
+    // MOBILE ONLY — PANORAMIC GAME VIEWPORT
     // -------------------------------------------------------
-    // Mobile uses a panoramic game canvas whose internal width matches the
-    // actual landscape game area. This lets the city/background be rendered
-    // wider instead of keeping the desktop 16:9 crop on a phone.
+    // The phone gets a wider internal game canvas instead of stretching
+    // the desktop 640x360 canvas. The logical height stays 360 so all
+    // game objects keep their original proportions; only the visible
+    // horizontal world area grows to match the phone's landscape viewport.
     const mobileCanvasContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const canvas = canvasRef.current;
         const container = mobileCanvasContainerRef.current;
-        if (!canvas || !container) return;
+        if (!canvas || !container || !isMobile) return;
 
         const LOGICAL_HEIGHT = 360;
 
-        const resizeCanvasToDisplaySize = () => {
-            if (isMobile) {
-                const displayWidth = container.clientWidth;
-                const displayHeight = container.clientHeight;
-                if (displayWidth <= 0 || displayHeight <= 0) return;
+        const resizeMobileCanvas = () => {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
 
-                const panoramicWidth = Math.max(
-                    640,
-                    Math.round((displayWidth / displayHeight) * LOGICAL_HEIGHT)
-                );
+            if (width <= 0 || height <= 0) return;
 
-                if (canvas.width !== panoramicWidth || canvas.height !== LOGICAL_HEIGHT) {
-                    canvas.width = panoramicWidth;
-                    canvas.height = LOGICAL_HEIGHT;
-                    canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
-                }
-            } else if (canvas.width !== 640 || canvas.height !== LOGICAL_HEIGHT) {
-                canvas.width = 640;
+            // Make the internal canvas have exactly the same aspect ratio
+            // as the real mobile game area. This reveals more world
+            // horizontally without any non-uniform CSS stretching.
+            const panoramicWidth = Math.max(
+                640,
+                Math.round((width / height) * LOGICAL_HEIGHT)
+            );
+
+            if (
+                canvas.width !== panoramicWidth ||
+                canvas.height !== LOGICAL_HEIGHT
+            ) {
+                canvas.width = panoramicWidth;
                 canvas.height = LOGICAL_HEIGHT;
                 canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
             }
         };
 
-        const observer = new ResizeObserver(resizeCanvasToDisplaySize);
+        const observer = new ResizeObserver(resizeMobileCanvas);
         observer.observe(container);
-        window.addEventListener("resize", resizeCanvasToDisplaySize);
-        window.addEventListener("orientationchange", resizeCanvasToDisplaySize);
 
-        const initialResizeFrame = requestAnimationFrame(resizeCanvasToDisplaySize);
-        resizeCanvasToDisplaySize();
+        window.addEventListener("resize", resizeMobileCanvas);
+        window.addEventListener("orientationchange", resizeMobileCanvas);
+
+        const frame = requestAnimationFrame(resizeMobileCanvas);
+        resizeMobileCanvas();
 
         return () => {
             observer.disconnect();
-            window.removeEventListener("resize", resizeCanvasToDisplaySize);
-            window.removeEventListener("orientationchange", resizeCanvasToDisplaySize);
-            cancelAnimationFrame(initialResizeFrame);
+            window.removeEventListener("resize", resizeMobileCanvas);
+            window.removeEventListener("orientationchange", resizeMobileCanvas);
+            cancelAnimationFrame(frame);
         };
     }, [canvasRef, isMobile]);
 
@@ -337,7 +340,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 ref={mobileCanvasContainerRef}
                 className={
                     isMobile
-                        ? "absolute top-[42px] bottom-[64px] left-0 right-0 w-full flex items-center justify-center overflow-hidden"
+                        ? "absolute top-[90px] bottom-[64px] left-0 right-0 w-full flex items-center justify-center overflow-hidden"
                         : "flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden"
                 }
             >
@@ -346,12 +349,12 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     className="block bg-gray-900"
                     style={{
                         touchAction: "none",
-                        width: isMobile ? "100%" : "auto",
-                        height: isMobile ? "100%" : "100%",
-                        maxWidth: isMobile ? "100%" : "100%",
-                        maxHeight: isMobile ? "100%" : "100%",
+                        width: isMobile ? "100%" : "min(100%, calc((100dvh - 90px) * 16 / 9))",
+                        height: isMobile ? "auto" : "min(calc(100dvh - 90px), 56.25vw)",
+                        maxWidth: isMobile ? "100%" : undefined,
+                        maxHeight: isMobile ? "100%" : undefined,
                         aspectRatio: isMobile ? "auto" : "16 / 9",
-                        objectFit: isMobile ? "fill" : "contain",
+                        objectFit: isMobile ? "contain" : "contain",
                         display: "block",
                     }}
                 />
