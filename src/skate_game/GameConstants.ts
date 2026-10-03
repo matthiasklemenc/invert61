@@ -14,6 +14,19 @@ export const JUMP_FORCE = -18;
 export const BASE_FLOOR_Y = 250;
 export const SPEED = 7;
 
+// --- MOBILE FIXED LOGICAL RESOLUTION ---
+// Every absolute-pixel game value (BASE_FLOOR_Y, obstacle widths/heights,
+// GRAVITY, JUMP_FORCE, the underworld pipe travel distance, fireball
+// heights, etc.) is tuned for one specific canvas size, not for whatever
+// size a given phone happens to report. On mobile we therefore give the
+// canvas this FIXED internal resolution (instead of resizing it to match
+// each device's raw viewport pixels) and let CSS scale that uniformly to
+// fit the screen. That is what prevents the floor/player/obstacles from
+// landing outside the visible canvas on short or oddly-shaped phones.
+// Desktop is untouched and keeps its own existing sizing entirely.
+export const MOBILE_LOGICAL_WIDTH = 1280;
+export const MOBILE_LOGICAL_HEIGHT = 720;
+
 // --- KAI SPRITE ASSETS ---
 export const KAI_SPRITES = {
     RIDE: [

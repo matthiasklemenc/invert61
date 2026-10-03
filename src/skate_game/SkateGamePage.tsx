@@ -7,6 +7,7 @@ import GameOver from "./GameOver";
 import OxxoShopPopup from "./OxxoShopPopup";
 import GameProgressPanel from "./GameProgressPanel";
 import SecretQuestionModal from "./SecretQuestionModal";
+import { MOBILE_LOGICAL_WIDTH, MOBILE_LOGICAL_HEIGHT } from "./GameConstants";
 
 export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     const [isLandscape, setIsLandscape] = useState(
@@ -106,49 +107,28 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     } = useSkateGame();
 
     // -------------------------------------------------------
-    // MOBILE ONLY — TRUE RESPONSIVE CANVAS (RESIZE MODE)
+    // MOBILE ONLY — FIXED LOGICAL RESOLUTION CANVAS (FIT MODE)
     // -------------------------------------------------------
-    // On mobile the canvas drawing area itself is resized to the exact
-    // available game area. Nothing is stretched by CSS. This is the same
-    // principle as a RESIZE game viewport: the world gets more horizontal
-    // space on a wide phone while the existing game coordinates stay
-    // undistorted.
+    // The canvas's internal drawing resolution is set ONCE to a fixed
+    // size (MOBILE_LOGICAL_WIDTH x MOBILE_LOGICAL_HEIGHT) that matches
+    // what the game's absolute-pixel values were tuned for, instead of
+    // being resized to match each phone's own viewport pixels. CSS
+    // (object-fit: contain, see the <canvas> style below) then scales
+    // that fixed-size canvas uniformly to fit the available mobile area,
+    // letterboxing if needed. Because the logical resolution never
+    // changes, the floor, obstacles, and jump arcs are always positioned
+    // correctly and nothing is ever cropped or stretched, on any phone.
     const mobileCanvasContainerRef = React.useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        const container = mobileCanvasContainerRef.current;
-        if (!canvas || !container || !isMobile) return;
+        if (!canvas || !isMobile) return;
 
-        const resizeMobileCanvas = () => {
-            const width = Math.max(1, Math.floor(container.clientWidth));
-            const height = Math.max(1, Math.floor(container.clientHeight));
-
-            // The canvas drawing coordinate system exactly matches the
-            // displayed mobile viewport. There is therefore no CSS
-            // aspect-ratio stretching and no cropping of the game height.
-            if (canvas.width !== width || canvas.height !== height) {
-                canvas.width = width;
-                canvas.height = height;
-                canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
-            }
-        };
-
-        const observer = new ResizeObserver(resizeMobileCanvas);
-        observer.observe(container);
-
-        window.addEventListener("resize", resizeMobileCanvas);
-        window.addEventListener("orientationchange", resizeMobileCanvas);
-
-        const frame = requestAnimationFrame(resizeMobileCanvas);
-        resizeMobileCanvas();
-
-        return () => {
-            observer.disconnect();
-            window.removeEventListener("resize", resizeMobileCanvas);
-            window.removeEventListener("orientationchange", resizeMobileCanvas);
-            cancelAnimationFrame(frame);
-        };
+        if (canvas.width !== MOBILE_LOGICAL_WIDTH || canvas.height !== MOBILE_LOGICAL_HEIGHT) {
+            canvas.width = MOBILE_LOGICAL_WIDTH;
+            canvas.height = MOBILE_LOGICAL_HEIGHT;
+            canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
+        }
     }, [canvasRef, isMobile]);
 
     // -----------------------------------------
@@ -341,7 +321,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                         width: isMobile ? "100%" : "min(100%, calc((100dvh - 90px) * 16 / 9))",
                         height: isMobile ? "100%" : "min(calc(100dvh - 90px), 56.25vw)",
                         aspectRatio: isMobile ? "auto" : "16 / 9",
-                        objectFit: "none",
+                        objectFit: isMobile ? "contain" : "none",
                         display: "block",
                     }}
                 />
