@@ -182,6 +182,25 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             window.removeEventListener("keyup", handleKeyUp);
         };
     }, [uiState, isPaused, triggerAction, startKeyboardJump, releaseKeyboardJump]);
+    // Long-press on the game area (e.g. holding the basketball bar) must not
+    // trigger the phone's haptic long-press feedback. React touch listeners are
+    // passive, so we cancel the native gesture here. Buttons are not affected.
+    useEffect(() => {
+        const el = mobileCanvasContainerRef.current;
+        if (!el) return;
+        const stop = (e: Event) => {
+            const t = e.target as HTMLElement | null;
+            if (t && t.closest("button, a, input, select, textarea, .hud-button")) return;
+            if (e.cancelable) e.preventDefault();
+        };
+        const stopMenu = (e: Event) => e.preventDefault();
+        el.addEventListener("touchstart", stop, { passive: false });
+        el.addEventListener("contextmenu", stopMenu);
+        return () => {
+            el.removeEventListener("touchstart", stop);
+            el.removeEventListener("contextmenu", stopMenu);
+        };
+    }, [isLandscape, isMobile]);
     // -----------------------------------------
     // 🔥 ROTATE DEVICE SCREEN
     // -----------------------------------------
@@ -215,7 +234,17 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         <div
             ref={wrapperRef}
             className="fixed inset-0 bg-gray-900 text-white flex flex-col z-0"
-            style={{ touchAction: "none", height: "calc(var(--vh, 1vh) * 100)" }}
+            style={{
+                touchAction: "none",
+                height: "calc(var(--vh, 1vh) * 100)",
+                // Prevent long-press selection / context menu, which makes
+                // Android phones vibrate while holding the basketball bar.
+                WebkitTouchCallout: "none",
+                WebkitUserSelect: "none",
+                userSelect: "none",
+                WebkitTapHighlightColor: "transparent",
+            }}
+            onContextMenu={(e) => e.preventDefault()}
             onMouseDown={handleTouchStart}
             onMouseUp={handleTouchEnd}
             onTouchStart={handleTouchStart}

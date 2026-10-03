@@ -49,6 +49,7 @@ export function useSkateGame() {
         powerups: Powerups,
         shopCooldown: number,
         hasVisitedShop: boolean,
+        ufoGraceTimer: number,
         spaceEntryScroll: number,
         playerSpeedControl: number,
         horizontalVelocity: number,
@@ -140,6 +141,7 @@ export function useSkateGame() {
         },
         shopCooldown: 0,
         hasVisitedShop: false,
+        ufoGraceTimer: 0,
         spaceEntryScroll: 0,
         playerSpeedControl: 1,
         horizontalVelocity: 0,
@@ -392,6 +394,34 @@ export function useSkateGame() {
         state.status = 'PLAYING';
         state.shopCooldown = 300; 
         state.hasVisitedShop = true; // Mark as visited on exit so we don't re-enter
+
+        // Safe exit from the OXXO: Kai is mid-air when the shop opens, so after
+        // closing he used to fall straight into the void or into a UFO.
+        // 1) Put Kai on a fresh, wide platform right where he is.
+        // 2) Remove all UFOs currently on/near the screen.
+        // 3) No new UFOs (and no UFO collisions) for ~5 seconds.
+        if ((state.world as string) === 'SPACE') {
+            const feetY = state.currentFloorY + state.player.y;
+            const safeY = Math.max(120, Math.min(320, feetY + 20));
+            const safeId = Date.now() + 4242;
+            state.obstacles = state.obstacles.filter(o => o.type !== 'alien_ship');
+            state.obstacles.push({
+                id: safeId, x: state.player.x - 150, y: safeY, w: 650, h: 40,
+                type: 'station_girder' as ObstacleType,
+                isGrindable: true, isGap: false, isPlatform: true, passed: false
+            });
+            state.player.platformId = safeId;
+            state.currentFloorY = safeY;
+            state.player.y = 0;
+            state.player.vy = 0;
+            state.player.rotation = 0;
+            state.player.trickName = '';
+            state.player.state = 'RUNNING';
+            state.player.pushTimer = 0;
+            state.ufoGraceTimer = 300;
+            if (state.nextObstacleDist < 650) state.nextObstacleDist = 650;
+        }
+
         getSoundManager().resumeMusic();
         lastTimeRef.current = 0;
     };
@@ -496,6 +526,7 @@ export function useSkateGame() {
         state.ufoLocked = false;
         state.shopCooldown = 0; 
         state.hasVisitedShop = false; 
+        state.ufoGraceTimer = 0;
         
         state.powerups.has360Laser = false;
         state.powerups.speedBoostTimer = 0;
@@ -848,6 +879,9 @@ export function useSkateGame() {
             
             if (state.shopCooldown > 0) {
                 state.shopCooldown -= dt;
+            }
+            if (state.ufoGraceTimer > 0) {
+                state.ufoGraceTimer -= dt;
             }
             
             if (state.powerups.speedBoostTimer > 0) {
@@ -1256,7 +1290,7 @@ if (state.player.y > 600) {
                              baseCount = 1;
                          }
 
-                         if (baseCount > 0 && Math.random() < ufoChance) {
+                         if (baseCount > 0 && state.ufoGraceTimer <= 0 && Math.random() < ufoChance) {
                              const ufoCount = state.powerups.doubleSpawnRate ? (baseCount * 3) : baseCount;
 
                              for(let k=0; k<ufoCount; k++) {
@@ -1934,7 +1968,7 @@ if (state.player.y > 600) {
                         }
                     }
 
-                    if (obs.type === 'alien_ship') {
+                    if (obs.type === 'alien_ship' && state.ufoGraceTimer <= 0) {
                         const alienRect = { x: obs.x, y: obs.y, w: obs.w, h: obs.h };
                         const hOverlap = pHit.x < alienRect.x + alienRect.w + 20 && pHit.x + pHit.w > alienRect.x - 20;
                         const vOverlap = pHit.y < alienRect.y + alienRect.h && pHit.y + pHit.h > alienRect.y;
@@ -3027,6 +3061,7 @@ if (state.player.y > 600) {
         state.powerups.doubleCoins = false;
         state.shopCooldown = 0;
         state.hasVisitedShop = false;
+        state.ufoGraceTimer = 0;
         
         setScore(0);
         setStats({ grinds: 0, jumps: 0, c180: 0, c360: 0 });
