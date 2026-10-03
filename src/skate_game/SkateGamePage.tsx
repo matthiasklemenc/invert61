@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect } from "react";
 import { useSkateGame } from "./useSkateGame";
 import GameHUD from "./GameHUD";
@@ -51,7 +51,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     }, []);
 
     // -----------------------------------------
-    // 🔥 FIX 100VH BUG ON MOBILE
+    // ðŸ”¥ FIX 100VH BUG ON MOBILE
     // -----------------------------------------
     useEffect(() => {
         const fixVH = () => {
@@ -107,10 +107,10 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     } = useSkateGame();
 
     // -------------------------------------------------------
-    // FIXED LOGICAL RESOLUTION CANVAS (FIT MODE) — ALL DEVICES
+    // FIXED LOGICAL RESOLUTION CANVAS (FIT MODE) â€” ALL DEVICES
     // -------------------------------------------------------
     // The canvas's internal drawing resolution was never being set
-    // anywhere in this app, on mobile OR desktop — it was silently
+    // anywhere in this app, on mobile OR desktop â€” it was silently
     // falling back to the browser's 300x150 default, then displayed
     // with `object-fit: none`, which shows that tiny buffer at native
     // size instead of scaling it. That is the small rectangle floating
@@ -121,7 +121,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     // the game's absolute-pixel values (BASE_FLOOR_Y, obstacle sizes,
     // gravity, jump force, etc.) were tuned for. CSS (object-fit:
     // contain, see the <canvas> style below) then scales that fixed-size
-    // canvas uniformly to fill the available space — letterboxed with
+    // canvas uniformly to fill the available space â€” letterboxed with
     // bars on one axis if the container's aspect ratio doesn't match
     // 16:9, but always fully visible and never stretched or cropped.
     const mobileCanvasContainerRef = React.useRef<HTMLDivElement>(null);
@@ -138,7 +138,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     }, [canvasRef]);
 
     // -----------------------------------------
-    // 🔥 DESKTOP KEYBOARD CONTROLS
+    // ðŸ”¥ DESKTOP KEYBOARD CONTROLS
     // -----------------------------------------
     useEffect(() => {
         let arrowUpDownAt = 0;
@@ -179,7 +179,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     }, [uiState, isPaused, triggerAction, startKeyboardJump, releaseKeyboardJump]);
 
     // -----------------------------------------
-    // 🔥 ROTATE DEVICE SCREEN
+    // ðŸ”¥ ROTATE DEVICE SCREEN
     // -----------------------------------------
     if (isMobile && !isLandscape) {
         return (
@@ -211,7 +211,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     return (
         <div
             className="fixed inset-0 bg-gray-900 text-white flex flex-col z-0"
-            style={{ touchAction: "none" }}
+            style={{ touchAction: "none", height: "calc(var(--vh, 1vh) * 100)" }}
             onMouseDown={handleTouchStart}
             onMouseUp={handleTouchEnd}
             onTouchStart={handleTouchStart}
@@ -309,7 +309,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             )}
 
             {/* -----------------------------------------
-               🔥 FIXED RESPONSIVE CANVAS
+               ðŸ”¥ FIXED RESPONSIVE CANVAS
             ------------------------------------------ */}
             <div
                 ref={mobileCanvasContainerRef}
@@ -326,8 +326,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                         touchAction: "none",
                         // The canvas's internal resolution is fixed (see the
                         // effect above). object-fit: contain scales that
-                        // fixed buffer uniformly to fill this box — on any
-                        // screen size, on any device — without ever
+                        // fixed buffer uniformly to fill this box â€” on any
+                        // screen size, on any device â€” without ever
                         // stretching or cropping it.
                         width: "100%",
                         height: "100%",
@@ -377,3 +377,4 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         </div>
     );
 }
+
