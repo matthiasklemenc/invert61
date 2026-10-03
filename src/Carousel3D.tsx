@@ -50,7 +50,6 @@ const Carousel3D: React.FC<Props> = ({ items, selectedIndex, onSelect }) => {
                 {item.content}
               </div>
             </div>
-            <span className="c3d-text">{item.label}</span>
           </div>
         ))}
       </div>

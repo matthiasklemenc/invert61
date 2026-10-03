@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useSkateGame } from "./useSkateGame";
 import GameHUD from "./GameHUD";
 import GameMenu from "./GameMenu";
@@ -108,32 +108,46 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     // -------------------------------------------------------
     // 🔥 REAL MOBILE CANVAS FIX — RESIZE OBSERVER
     // -------------------------------------------------------
+    // Mobile uses a panoramic game canvas whose internal width matches the
+    // actual landscape game area. This lets the city/background be rendered
+    // wider instead of keeping the desktop 16:9 crop on a phone.
+    const mobileCanvasContainerRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        const container = mobileCanvasContainerRef.current;
+        if (!canvas || !container) return;
 
-        // Keep one stable internal game coordinate system. The canvas itself
-        // is scaled by CSS so gameplay coordinates remain unchanged.
-        const LOGICAL_WIDTH = 640;
         const LOGICAL_HEIGHT = 360;
 
         const resizeCanvasToDisplaySize = () => {
-            if (canvas.width !== LOGICAL_WIDTH || canvas.height !== LOGICAL_HEIGHT) {
-                canvas.width = LOGICAL_WIDTH;
+            if (isMobile) {
+                const displayWidth = container.clientWidth;
+                const displayHeight = container.clientHeight;
+                if (displayWidth <= 0 || displayHeight <= 0) return;
+
+                const panoramicWidth = Math.max(
+                    640,
+                    Math.round((displayWidth / displayHeight) * LOGICAL_HEIGHT)
+                );
+
+                if (canvas.width !== panoramicWidth || canvas.height !== LOGICAL_HEIGHT) {
+                    canvas.width = panoramicWidth;
+                    canvas.height = LOGICAL_HEIGHT;
+                    canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
+                }
+            } else if (canvas.width !== 640 || canvas.height !== LOGICAL_HEIGHT) {
+                canvas.width = 640;
                 canvas.height = LOGICAL_HEIGHT;
                 canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
             }
         };
 
-        const observer = new ResizeObserver(() => {
-            resizeCanvasToDisplaySize();
-        });
-
-        observer.observe(canvas);
+        const observer = new ResizeObserver(resizeCanvasToDisplaySize);
+        observer.observe(container);
         window.addEventListener("resize", resizeCanvasToDisplaySize);
         window.addEventListener("orientationchange", resizeCanvasToDisplaySize);
 
-        // Run after the browser has completed the initial mobile layout.
         const initialResizeFrame = requestAnimationFrame(resizeCanvasToDisplaySize);
         resizeCanvasToDisplaySize();
 
@@ -143,7 +157,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             window.removeEventListener("orientationchange", resizeCanvasToDisplaySize);
             cancelAnimationFrame(initialResizeFrame);
         };
-    }, [canvasRef]);
+    }, [canvasRef, isMobile]);
 
     // -----------------------------------------
     // 🔥 DESKTOP KEYBOARD CONTROLS
@@ -320,6 +334,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                🔥 FIXED RESPONSIVE CANVAS
             ------------------------------------------ */}
             <div
+                ref={mobileCanvasContainerRef}
                 className={
                     isMobile
                         ? "absolute top-[42px] bottom-[64px] left-0 right-0 w-full flex items-center justify-center overflow-hidden"
@@ -331,14 +346,12 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     className="block bg-gray-900"
                     style={{
                         touchAction: "none",
-                        width: isMobile ? "auto" : "auto",
-                        height: isMobile ? "calc(100dvh - 106px)" : "100%",
-                        maxWidth: isMobile
-                            ? "calc((100dvh - 106px) * 16 / 9)"
-                            : "100%",
-                        maxHeight: isMobile ? "calc(100dvh - 106px)" : "100%",
-                        aspectRatio: "16 / 9",
-                        objectFit: "contain",
+                        width: isMobile ? "100%" : "auto",
+                        height: isMobile ? "100%" : "100%",
+                        maxWidth: isMobile ? "100%" : "100%",
+                        maxHeight: isMobile ? "100%" : "100%",
+                        aspectRatio: isMobile ? "auto" : "16 / 9",
+                        objectFit: isMobile ? "fill" : "contain",
                         display: "block",
                     }}
                 />
