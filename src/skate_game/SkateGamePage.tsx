@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useSkateGame } from "./useSkateGame";
 import GameHUD from "./GameHUD";
 import GameMenu from "./GameMenu";
@@ -106,41 +106,30 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     } = useSkateGame();
 
     // -------------------------------------------------------
-    // MOBILE ONLY — PANORAMIC GAME VIEWPORT
+    // MOBILE ONLY — TRUE RESPONSIVE CANVAS (RESIZE MODE)
     // -------------------------------------------------------
-    // The phone gets a wider internal game canvas instead of stretching
-    // the desktop 640x360 canvas. The logical height stays 360 so all
-    // game objects keep their original proportions; only the visible
-    // horizontal world area grows to match the phone's landscape viewport.
-    const mobileCanvasContainerRef = useRef<HTMLDivElement>(null);
+    // On mobile the canvas drawing area itself is resized to the exact
+    // available game area. Nothing is stretched by CSS. This is the same
+    // principle as a RESIZE game viewport: the world gets more horizontal
+    // space on a wide phone while the existing game coordinates stay
+    // undistorted.
+    const mobileCanvasContainerRef = React.useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const canvas = canvasRef.current;
         const container = mobileCanvasContainerRef.current;
         if (!canvas || !container || !isMobile) return;
 
-        const LOGICAL_HEIGHT = 360;
-
         const resizeMobileCanvas = () => {
-            const width = container.clientWidth;
-            const height = container.clientHeight;
+            const width = Math.max(1, Math.floor(container.clientWidth));
+            const height = Math.max(1, Math.floor(container.clientHeight));
 
-            if (width <= 0 || height <= 0) return;
-
-            // Make the internal canvas have exactly the same aspect ratio
-            // as the real mobile game area. This reveals more world
-            // horizontally without any non-uniform CSS stretching.
-            const panoramicWidth = Math.max(
-                640,
-                Math.round((width / height) * LOGICAL_HEIGHT)
-            );
-
-            if (
-                canvas.width !== panoramicWidth ||
-                canvas.height !== LOGICAL_HEIGHT
-            ) {
-                canvas.width = panoramicWidth;
-                canvas.height = LOGICAL_HEIGHT;
+            // The canvas drawing coordinate system exactly matches the
+            // displayed mobile viewport. There is therefore no CSS
+            // aspect-ratio stretching and no cropping of the game height.
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
                 canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
             }
         };
@@ -340,7 +329,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 ref={mobileCanvasContainerRef}
                 className={
                     isMobile
-                        ? "absolute top-[90px] bottom-[64px] left-0 right-0 w-full flex items-center justify-center overflow-hidden"
+                        ? "absolute top-[90px] bottom-[64px] left-0 right-0 w-full overflow-hidden"
                         : "flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden"
                 }
             >
@@ -350,11 +339,9 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     style={{
                         touchAction: "none",
                         width: isMobile ? "100%" : "min(100%, calc((100dvh - 90px) * 16 / 9))",
-                        height: isMobile ? "auto" : "min(calc(100dvh - 90px), 56.25vw)",
-                        maxWidth: isMobile ? "100%" : undefined,
-                        maxHeight: isMobile ? "100%" : undefined,
+                        height: isMobile ? "100%" : "min(calc(100dvh - 90px), 56.25vw)",
                         aspectRatio: isMobile ? "auto" : "16 / 9",
-                        objectFit: isMobile ? "contain" : "contain",
+                        objectFit: "none",
                         display: "block",
                     }}
                 />
