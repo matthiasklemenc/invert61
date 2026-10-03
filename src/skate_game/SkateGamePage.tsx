@@ -128,6 +128,23 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             window.removeEventListener("orientationchange", resizeCanvas);
         };
     }, [canvasRef, isMobile, isLandscape]);
+
+    const handleStartGame = () => {
+        wrapperRef.current?.requestFullscreen?.().catch(() => {});
+        startGame();
+    };
+
+    const handlePlayAgain = () => {
+        wrapperRef.current?.requestFullscreen?.().catch(() => {});
+        playAgainFromLevelOne();
+    };
+
+    const handleExit = () => {
+        if (document.fullscreenElement) {
+            document.exitFullscreen?.().catch(() => {});
+        }
+        onClose();
+    };
     // -----------------------------------------
     // 🔥 DESKTOP KEYBOARD CONTROLS
     // -----------------------------------------
@@ -186,7 +203,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     Please play in landscape mode.
                 </p>
                 <button
-                    onClick={onClose}
+                    onClick={handleExit}
                     className="border border-gray-600 text-gray-400 px-6 py-2 rounded hover:text-white hover:border-white transition-colors"
                 >
                     Exit Game
@@ -214,7 +231,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 toggleMute={toggleMute}
                 isPaused={isPaused}
                 togglePause={togglePause}
-                onExit={onClose}
+                onExit={handleExit}
                 stats={stats}
                 showStats={uiState === "PLAYING"}
             />
@@ -261,13 +278,13 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                         </div>
                         <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
                             <button
-                                onClick={playAgainFromLevelOne}
+                                onClick={handlePlayAgain}
                                 className="bg-[#c52323] hover:bg-red-600 text-white font-black py-3 px-8 rounded-xl shadow-lg"
                             >
                                 PLAY AGAIN
                             </button>
                             <button
-                                onClick={onClose}
+                                onClick={handleExit}
                                 className="border border-gray-500 hover:border-white text-gray-200 font-bold py-3 px-8 rounded-xl"
                             >
                                 EXIT
@@ -325,8 +342,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     setUserName={setUserName}
                     character={character}
                     setCharacter={setCharacter}
-                    startGame={startGame}
-                    onExit={onClose}
+                    startGame={handleStartGame}
+                    onExit={handleExit}
                 />
             )}
             {uiState === "GAME_OVER" && (
@@ -334,7 +351,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     score={score}
                     highScore={highScore}
                     stats={stats}
-                    startGame={startGame}
+                    startGame={handleStartGame}
                     onMenu={() => setUiState("MENU")}
                 />
             )}
@@ -355,5 +372,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         </div>
     );
 }
+
 
 
