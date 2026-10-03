@@ -7,6 +7,10 @@ import { GRAVITY, JUMP_FORCE, BASE_FLOOR_Y, SPEED, STANDARD_OBSTACLES } from './
 import { GameProgress, loadGameProgress, saveGameProgress, addInventoryItem, discoverCode, awardKnowledge, awardSkill, unlockAchievement, unlockArea } from './GameProgress';
 import { drawSecretObject, drawSpaceSignalTransmitter } from './SecretObjects';
 
+// Basketball skill challenge: the yellow sweet-spot zone on the charge bar.
+const SKILL_SWEET_MIN = 0.43;
+const SKILL_SWEET_MAX = 0.59;
+
 export function useSkateGame() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const requestRef = useRef<number | null>(null);
@@ -89,7 +93,8 @@ export function useSkateGame() {
         skillGameResult: string,
         skillGameResultTimer: number,
         skillGameChargeStart: number,
-        skillPointEarned: boolean
+        skillPointEarned: boolean,
+        skillGameShotWillHit: boolean
     }>({
         status: 'MENU',
         score: 0,
@@ -181,7 +186,8 @@ export function useSkateGame() {
         skillGameResult: '',
         skillGameResultTimer: 0,
         skillGameChargeStart: 0,
-        skillPointEarned: false
+        skillPointEarned: false,
+        skillGameShotWillHit: false
     });
 
     const [uiState, setUiState] = useState<GameState>('MENU');
@@ -747,8 +753,15 @@ export function useSkateGame() {
         const basketX = canvasWidth * 0.75;
         const basketY = 180;
         const startY = 205;
-        const sweetSpot = 0.5;
-        const chargeOffset = charge - sweetSpot;
+        // The hit is decided the moment the player releases: inside the yellow
+        // zone = guaranteed basket. Outside = a clear miss (too short / too long).
+        const inSweetSpot = charge >= SKILL_SWEET_MIN && charge <= SKILL_SWEET_MAX;
+        state.skillGameShotWillHit = inSweetSpot;
+        const chargeOffset = inSweetSpot
+            ? 0
+            : charge < SKILL_SWEET_MIN
+                ? -(0.12 + (SKILL_SWEET_MIN - charge))
+                : (0.12 + (charge - SKILL_SWEET_MAX));
         const skillGravity = 2.89;
         state.skillGameBallX = startX + 22;
         state.skillGameBallY = startY;
@@ -798,25 +811,29 @@ export function useSkateGame() {
                 state.skillGameCharge = Math.min(1, (Date.now() - state.skillGameChargeStart) / 1200);
             }
             if (state.skillGameShotActive) {
-                state.skillGameBallX += state.skillGameBallVx * skillDt;
-                state.skillGameBallY += state.skillGameBallVy * skillDt;
-                state.skillGameBallVy += 2.89 * skillDt;
-                state.skillGameShotElapsed += skillDt;
+                // Exact constant-gravity integration: the arc is identical on
+                // fast and slow phones (no more missed hits from frame drops).
+                const stepDt = state.skillGameShotWillHit
+                    ? Math.max(0, Math.min(skillDt, 20 - state.skillGameShotElapsed))
+                    : skillDt;
+                state.skillGameBallX += state.skillGameBallVx * stepDt;
+                state.skillGameBallY += state.skillGameBallVy * stepDt + 0.5 * 2.89 * stepDt * stepDt;
+                state.skillGameBallVy += 2.89 * stepDt;
+                state.skillGameShotElapsed += stepDt;
                 const basketX = canvas.width * 0.75;
                 const basketY = 180;
-                const inSweetSpot = state.skillGameCharge >= 0.43 && state.skillGameCharge <= 0.59;
-                if (inSweetSpot &&
-                    state.skillGameBallX >= basketX - 18 && state.skillGameBallX <= basketX + 28 &&
-                    state.skillGameBallY >= basketY - 18 && state.skillGameBallY <= basketY + 18) {
+                if (state.skillGameShotWillHit && state.skillGameShotElapsed >= 20) {
+                    state.skillGameBallX = basketX;
+                    state.skillGameBallY = basketY;
                     state.skillGameHits += 1;
                     state.skillGameShotActive = false;
                     state.skillGameResult = 'BRAVO!';
                     getSoundManager().playBravo();
                     state.skillGameResultTimer = 45;
-                } else if (state.skillGameBallX > basketX + 60 || state.skillGameBallY > canvas.height + 40 || state.skillGameShotElapsed > 100) {
+                } else if (!state.skillGameShotWillHit && (state.skillGameBallX > basketX + 60 || state.skillGameBallY > canvas.height + 40 || state.skillGameShotElapsed > 40)) {
                     state.skillGameShotActive = false;
                     state.skillGameResult = 'MISS';
-            getSoundManager().playMiss();
+                    getSoundManager().playMiss();
                     state.skillGameResultTimer = 45;
                 }
             }
@@ -2335,10 +2352,24 @@ if (state.player.y > 600) {
         ctx.strokeStyle = '#64748b';
         ctx.lineWidth = 2;
         ctx.strokeRect(barX, barY, barW, barH);
-        ctx.fillStyle = '#f97316';
-        ctx.fillRect(barX + 2, barY + 2, (barW - 4) * state.skillGameCharge, barH - 4);
-        ctx.fillStyle = '#facc15';
-        ctx.fillRect(barX + barW * 0.43, barY - 4, barW * 0.16, barH + 8);
+        // Yellow sweet-spot zone is drawn FIRST, the charge fill is drawn on
+        // top semi-transparent, so the moving bar stays visible over the zone.
+        const zoneX = barX + 2 + (barW - 4) * SKILL_SWEET_MIN;
+        const zoneW = (barW - 4) * (SKILL_SWEET_MAX - SKILL_SWEET_MIN);
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.55)';
+        ctx.fillRect(zoneX, barY - 4, zoneW, barH + 8);
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(zoneX, barY - 4, zoneW, barH + 8);
+        const fillW = (barW - 4) * state.skillGameCharge;
+        ctx.fillStyle = 'rgba(249, 115, 22, 0.6)';
+        ctx.fillRect(barX + 2, barY + 2, fillW, barH - 4);
+        // Bright needle at the current charge position (green inside the zone).
+        if (state.skillGameCharge > 0) {
+            const inZone = state.skillGameCharge >= SKILL_SWEET_MIN && state.skillGameCharge <= SKILL_SWEET_MAX;
+            ctx.fillStyle = inZone ? '#22c55e' : '#ffffff';
+            ctx.fillRect(barX + 2 + fillW - 2, barY - 7, 4, barH + 14);
+        }
         ctx.font = 'bold 11px Arial';
         ctx.fillStyle = '#fde68a';
         ctx.fillText('SWEET SPOT', barX + barW * 0.51, barY + 32);

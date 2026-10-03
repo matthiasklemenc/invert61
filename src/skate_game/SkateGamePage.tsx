@@ -251,8 +251,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             onTouchEnd={handleTouchEnd}
         >
 
-            <GameProgressPanel progress={progress} onReset={resetGameProgress} />
             <GameHUD
+                leftSlot={<GameProgressPanel progress={progress} onReset={resetGameProgress} inline />}
                 score={score}
                 highScore={highScore}
                 lives={lives}
@@ -343,7 +343,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 ref={mobileCanvasContainerRef}
                 className={
                     isMobile
-                        ? "absolute top-[90px] bottom-[64px] left-0 right-0 w-full overflow-hidden"
+                        ? "absolute top-[30px] bottom-[64px] left-0 right-0 w-full overflow-hidden"
                         : "flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden"
                 }
             >

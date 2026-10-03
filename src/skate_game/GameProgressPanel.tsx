@@ -4,6 +4,7 @@ import type { GameProgress } from './GameProgress';
 type Props = {
   progress: GameProgress;
   onReset: () => void;
+  inline?: boolean;
 };
 
 const achievementNames: Record<string, string> = {
@@ -15,24 +16,24 @@ const achievementNames: Record<string, string> = {
   GARAGE_BREAKIN: 'Garage Break-In',
 };
 
-export default function GameProgressPanel({ progress, onReset }: Props) {
+export default function GameProgressPanel({ progress, onReset, inline = false }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
     <div
-      className="absolute top-[46px] left-1 lg:top-[96px] lg:left-2 z-30 select-none"
+      className={inline ? "relative z-30 select-none pointer-events-auto" : "absolute top-[46px] left-1 lg:top-[96px] lg:left-2 z-30 select-none"}
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
       <button
-        className="hud-button bg-black/75 border border-white/20 text-white px-2 py-1 rounded-lg text-[10px] lg:text-xs font-bold shadow-lg"
+        className="hud-button bg-black/75 border border-white/20 text-white px-1.5 py-0.5 lg:px-2 lg:py-1 rounded-lg text-[10px] lg:text-xs font-bold shadow-lg whitespace-nowrap"
         onClick={() => setOpen(v => !v)}
       >
         🧠 {progress.knowledgePoints}  💪 {progress.skillPoints}  🎒 {progress.inventory.length}  🏆 {progress.achievements.length}
       </button>
 
       {open && (
-        <div className="mt-2 w-64 max-h-[55vh] overflow-y-auto bg-gray-950/95 border border-gray-600 rounded-xl p-3 shadow-2xl text-xs text-gray-200">
+        <div className={`${inline ? "absolute left-0 top-full" : ""} mt-2 w-64 max-h-[55vh] overflow-y-auto bg-gray-950/95 border border-gray-600 rounded-xl p-3 shadow-2xl text-xs text-gray-200`}>
           <div className="font-black tracking-widest text-white mb-3">INVERT61 DISCOVERIES</div>
 
           <div className="grid grid-cols-2 gap-2 mb-3">
