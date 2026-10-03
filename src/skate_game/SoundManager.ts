@@ -1,4 +1,4 @@
-
+﻿
 import * as Tone from 'tone';
 
 class SoundManager {
@@ -507,6 +507,18 @@ class SoundManager {
         } catch(e) {}
     }
     
+    playBravo() {
+        if (this.isMuted) return;
+        try {
+            const now = this.getSafeTime();
+            const melody: [string, number][] = [['C5', 0], ['E5', 0.1], ['G5', 0.2], ['C6', 0.35]];
+            melody.forEach(([note, offset]) => {
+                this.lead.triggerAttackRelease(note, '16n', now + offset);
+            });
+            this.firecrackerSynth.triggerAttackRelease('32n', now + 0.35);
+        } catch(e){}
+    }
+
     toggleMute() {
         this.isMuted = !this.isMuted;
         Tone.Destination.mute = this.isMuted;
@@ -539,6 +551,7 @@ export const getSoundManager = () => {
                 playMetalHit: () => {},
                 playFirecracker: () => {},
                 playLevelComplete: () => {},
+                playBravo: () => {},
                 playSOSSignal: () => {},
                 toggleMute: () => {},
                 isMuted: true
@@ -547,3 +560,5 @@ export const getSoundManager = () => {
     }
     return instance;
 };
+
+

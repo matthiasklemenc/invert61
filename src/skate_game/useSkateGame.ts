@@ -773,13 +773,14 @@ export function useSkateGame() {
                 state.skillGameShotElapsed += skillDt;
                 const basketX = canvas.width * 0.75;
                 const basketY = 180;
-                const inSweetSpot = state.skillGameCharge >= 0.47 && state.skillGameCharge <= 0.55;
+                const inSweetSpot = state.skillGameCharge >= 0.43 && state.skillGameCharge <= 0.59;
                 if (inSweetSpot &&
                     state.skillGameBallX >= basketX - 18 && state.skillGameBallX <= basketX + 28 &&
                     state.skillGameBallY >= basketY - 18 && state.skillGameBallY <= basketY + 18) {
                     state.skillGameHits += 1;
                     state.skillGameShotActive = false;
-                    state.skillGameResult = 'SWISH!';
+                    state.skillGameResult = 'BRAVO!';
+                    getSoundManager().playBravo();
                     state.skillGameResultTimer = 45;
                 } else if (state.skillGameBallX > basketX + 60 || state.skillGameBallY > canvas.height + 40 || state.skillGameShotElapsed > 100) {
                     state.skillGameShotActive = false;
@@ -1299,13 +1300,15 @@ if (state.player.y > 600) {
                              const platW = 300 + Math.random() * 200; 
                              const lastPlat = state.obstacles[state.obstacles.length - 1];
                              let platY = BASE_FLOOR_Y - 80;
+                             const isFirstUnderworldPlatform = state.obstacles.filter(o => o.isPlatform).length === 1;
+                             const platformX = (isFirstUnderworldPlatform && lastPlat) ? lastPlat.x + lastPlat.w + gapSize : spawnX;
                              if (lastPlat && lastPlat.isPlatform) {
                                  platY = lastPlat.y + (Math.random() > 0.5 ? 30 : -30);
                                  if (platY > BASE_FLOOR_Y - 40) platY = BASE_FLOOR_Y - 40;
                                  if (platY < BASE_FLOOR_Y - 150) platY = BASE_FLOOR_Y - 150;
                              }
                              state.obstacles.push({
-                                id: Date.now(), x: spawnX, y: platY, w: platW, h: 20, 
+                                id: Date.now(), x: platformX, y: platY, w: platW, h: 20, 
                                 type: 'platform', isGrindable: false, isGap: false, isPlatform: true, passed: false
                              });
                              const coinSpacing = 50;
@@ -1314,7 +1317,7 @@ if (state.player.y > 600) {
                                  if (Math.random() > 0.08) {
                                      state.collectibles.push({
                                          id: Date.now() + i * 10,
-                                         x: spawnX + 50 + (i * coinSpacing),
+                                         x: platformX + 50 + (i * coinSpacing),
                                          y: platY - 40,
                                          type: Math.random() < 0.28 ? 'DIAMOND' : 'COIN',
                                          collected: false
@@ -1324,7 +1327,7 @@ if (state.player.y > 600) {
 
                              // Most fireballs are low and designed to be cleared with
                              // a normal jump. Only 2-4 per run are exceptionally high.
-                             const gapCenterX = spawnX + platW + gapSize / 2;
+                             const gapCenterX = platformX + platW + gapSize / 2;
                              const baseFireY = BASE_FLOOR_Y + 300;
                              const remainingHigh = Math.max(0, 4 - state.underworldHighFireballs);
                              const minimumHigh = Math.max(0, 2 - state.underworldHighFireballs);
@@ -2288,9 +2291,9 @@ if (state.player.y > 600) {
         ctx.restore();
 
         // Charge bar. The middle is the calibrated sweet spot.
-        const barX = playerX - 85;
+        const barX = playerX - 170;
         const barY = floorY + 25;
-        const barW = 170;
+        const barW = 340;
         const barH = 14;
         ctx.fillStyle = '#0f172a';
         ctx.fillRect(barX, barY, barW, barH);
@@ -2300,7 +2303,7 @@ if (state.player.y > 600) {
         ctx.fillStyle = '#f97316';
         ctx.fillRect(barX + 2, barY + 2, (barW - 4) * state.skillGameCharge, barH - 4);
         ctx.fillStyle = '#facc15';
-        ctx.fillRect(barX + barW * 0.47, barY - 4, barW * 0.08, barH + 8);
+        ctx.fillRect(barX + barW * 0.43, barY - 4, barW * 0.16, barH + 8);
         ctx.font = 'bold 11px Arial';
         ctx.fillStyle = '#fde68a';
         ctx.fillText('SWEET SPOT', barX + barW * 0.51, barY + 32);
@@ -2314,7 +2317,7 @@ if (state.player.y > 600) {
         }
         if (state.skillGameResult) {
             ctx.font = 'bold 28px Arial';
-            ctx.fillStyle = state.skillGameResult === 'SWISH!' ? '#facc15' : '#ef4444';
+            ctx.fillStyle = state.skillGameResult === 'BRAVO!' ? '#facc15' : '#ef4444';
             ctx.fillText(state.skillGameResult, w / 2, 90);
         }
         ctx.textAlign = 'left';
@@ -3097,6 +3100,17 @@ if (state.player.y > 600) {
         playAgainFromLevelOne
     };
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
