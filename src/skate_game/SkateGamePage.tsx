@@ -113,7 +113,9 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             }
             const wrapperRect = wrapperRef.current?.getBoundingClientRect();
             const wrapStr = wrapperRect ? (Math.round(wrapperRect.width) + "x" + Math.round(wrapperRect.height)) : "n/a";
-            setDebugInfo("win: " + window.innerWidth + "x" + window.innerHeight + "\ncont: " + containerWidth + "x" + containerHeight + "\nwrap: " + wrapStr + "\ncanvasBuf: " + canvas.width + "x" + canvas.height);
+            const cs = window.getComputedStyle(container);
+            const csStr = "pos=" + cs.position + " top=" + cs.top + " bot=" + cs.bottom + " h=" + cs.height + " disp=" + cs.display;
+            setDebugInfo("win: " + window.innerWidth + "x" + window.innerHeight + "\ncont: " + containerWidth + "x" + containerHeight + "\nwrap: " + wrapStr + "\ncanvasBuf: " + canvas.width + "x" + canvas.height + "\n" + csStr);
         };
         resizeCanvas();
         const observer = new ResizeObserver(resizeCanvas);
@@ -353,3 +355,4 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         </div>
     );
 }
+
