@@ -331,10 +331,12 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     className="block bg-gray-900"
                     style={{
                         touchAction: "none",
-                        width: "100%",
+                        width: "auto",
                         height: "100%",
-                        aspectRatio: "auto",
-                        objectFit: "fill",
+                        maxWidth: "100%",
+                        maxHeight: "100%",
+                        aspectRatio: "16 / 9",
+                        objectFit: "contain",
                         display: "block",
                     }}
                 />

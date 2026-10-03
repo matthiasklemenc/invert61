@@ -20,7 +20,7 @@ export default function GameProgressPanel({ progress, onReset }: Props) {
 
   return (
     <div
-      className="absolute top-1 left-1 z-30 select-none"
+      className="absolute top-1 left-1 lg:top-[96px] lg:left-2 z-30 select-none"
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
