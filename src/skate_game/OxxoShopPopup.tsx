@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect } from 'react';
 import { formatScore } from './GameConstants';
 
@@ -38,7 +38,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
             <div className="bg-gray-800 border-4 border-[#fbbf24] rounded-xl shadow-2xl overflow-hidden w-full max-w-3xl relative flex flex-col max-h-full">
                 
                 {/* Header - Sticky so Exit is always visible */}
-                <div className="bg-[#dc2626] p-2 md:p-3 flex justify-between items-center border-b-4 border-[#fbbf24] sticky top-0 z-30 shrink-0">
+                <div className="bg-[#dc2626] p-1 md:p-3 flex justify-between items-center border-b-4 border-[#fbbf24] sticky top-0 z-30 shrink-0">
                     <div className="flex flex-col">
                         <h2 className="text-white font-black text-xl md:text-2xl tracking-widest drop-shadow-md">OXXO SPACE</h2>
                         <span className="text-xs text-yellow-200 font-mono font-bold">PTS: {formatScore(currentScore)}</span>
@@ -49,7 +49,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                 {/* Scrollable Content Container */}
                 <div className="overflow-y-auto flex-grow">
                     {/* Scene - Reduced height on mobile to fit landscape screens */}
-                    <div className="relative h-24 md:h-64 bg-gray-900 overflow-hidden shrink-0">
+                    <div className="relative h-16 md:h-64 bg-gray-900 overflow-hidden shrink-0">
                         {/* Background Wall */}
                         <div className="absolute inset-0 bg-gradient-to-b from-gray-800 to-gray-700"></div>
                         
@@ -63,7 +63,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                         )}
                         
                         {/* Alien Cashier - Scaled for mobile */}
-                        <div className="absolute top-2 md:top-10 left-1/2 -translate-x-1/2 w-16 h-24 md:w-40 md:h-60">
+                        <div className="absolute top-0 md:top-10 left-1/2 -translate-x-1/2 w-11 h-16 md:w-40 md:h-60">
                             <svg viewBox="0 0 100 150" className="w-full h-full drop-shadow-lg">
                                 {/* Body */}
                                 <path d="M30 150 L30 100 Q50 90 70 100 L70 150 Z" fill="#dc2626" /> {/* Red Vest */}
@@ -86,10 +86,10 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                         </div>
 
                         {/* Counter */}
-                        <div className="absolute bottom-0 w-full h-6 md:h-12 bg-gray-600 border-t-4 border-gray-500"></div>
+                        <div className="absolute bottom-0 w-full h-4 md:h-12 bg-gray-600 border-t-4 border-gray-500"></div>
 
                         {/* Skater (Back of Head) */}
-                        <div className="absolute -bottom-4 md:-bottom-10 left-1/2 -translate-x-1/2 w-20 h-20 md:w-48 md:h-48">
+                        <div className="absolute -bottom-2 md:-bottom-10 left-1/2 -translate-x-1/2 w-14 h-14 md:w-48 md:h-48">
                             <svg viewBox="0 0 100 100" className="w-full h-full">
                                 {/* Shoulders */}
                                 <path d="M10 100 Q50 80 90 100" fill="#333" />
@@ -103,10 +103,10 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                     </div>
 
                     {/* Items Selection - 4 cols on all screens to save vertical space in landscape */}
-                    <div className="bg-gray-800 p-2 md:p-4 grid grid-cols-4 gap-2 md:gap-4">
+                    <div className="bg-gray-800 p-1 md:p-4 grid grid-cols-4 gap-1 md:gap-4">
                         <button 
                             onClick={() => handleAttemptBuy('CHIPS', 5000)}
-                            className={`flex flex-col items-center gap-1 md:gap-2 p-1 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordChips ? 'opacity-70' : ''}`}
+                            className={`flex flex-col items-center gap-0.5 md:gap-2 p-0.5 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordChips ? 'opacity-70' : ''}`}
                         >
                             <div className="w-10 h-10 md:w-12 md:h-12 bg-yellow-400 rounded-md flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform relative overflow-hidden">
                                 <span className="font-black text-red-600 -rotate-12 text-[8px] md:text-[10px]">CHIPS</span>
@@ -121,7 +121,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
 
                         <button 
                             onClick={() => handleAttemptBuy('COKE', 10000)}
-                            className={`flex flex-col items-center gap-1 md:gap-2 p-1 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordCoke ? 'opacity-70' : ''}`}
+                            className={`flex flex-col items-center gap-0.5 md:gap-2 p-0.5 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordCoke ? 'opacity-70' : ''}`}
                         >
                             <div className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                                 {/* Coke Bottle SVG */}
@@ -141,7 +141,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
 
                         <button 
                             onClick={() => handleAttemptBuy('KOROVA', 67)}
-                            className={`flex flex-col items-center gap-1 md:gap-2 p-1 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordKorova ? 'opacity-70' : ''}`}
+                            className={`flex flex-col items-center gap-0.5 md:gap-2 p-0.5 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordKorova ? 'opacity-70' : ''}`}
                         >
                             <div className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                                 {/* Tetra Pak SVG */}
@@ -161,7 +161,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
 
                         <button 
                             onClick={() => handleAttemptBuy('LIFE', 50000)}
-                            className={`flex flex-col items-center gap-1 md:gap-2 p-1 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordLife ? 'opacity-70' : ''}`}
+                            className={`flex flex-col items-center gap-0.5 md:gap-2 p-0.5 md:p-2 rounded-lg transition-colors group relative hover:bg-gray-700 cursor-pointer ${!canAffordLife ? 'opacity-70' : ''}`}
                         >
                             <div className="w-10 h-10 md:w-12 md:h-12 bg-green-600 rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform border-2 border-white">
                                 <span className="font-black text-white text-base md:text-lg">1UP</span>
@@ -174,7 +174,7 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
                         </button>
                     </div>
                     
-                    <div className="bg-gray-900 p-2 text-center text-[9px] text-gray-500 shrink-0">
+                    <div className="bg-gray-900 p-0.5 md:p-2 text-center text-[9px] text-gray-500 shrink-0">
                         Buying extends space time by 20s. Effects stack!
                     </div>
                 </div>
@@ -184,3 +184,11 @@ const OxxoShopPopup: React.FC<OxxoShopProps> = ({ onBuy, onClose, currentScore }
 };
 
 export default OxxoShopPopup;
+
+
+
+
+
+
+
+
