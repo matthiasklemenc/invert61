@@ -27,8 +27,17 @@ export const SPEED = 7;
 // to this fixed resolution once, and letting CSS (object-fit: contain)
 // scale it uniformly to fit whatever space is available, fixes this for
 // every screen size and aspect ratio at once.
+// Width is kept at 1280 because several spawn-distance formulas in
+// useSkateGame.ts scale off canvas.width (e.g. obstacle spawnAhead
+// distance) — changing it would change gameplay pacing, not just
+// proportions. Height is 480, not a "clean" 16:9 match for that width,
+// because BASE_FLOOR_Y is a fixed 250px from the top no matter what
+// height is chosen — so height only controls how much plain "ground"
+// shows below the floor line. 720 left ~470px of mostly-empty ground
+// below the floor (65% of the screen); 480 leaves ~230px (48%), which
+// looks like an actual street instead of a half-empty void.
 export const GAME_LOGICAL_WIDTH = 1280;
-export const GAME_LOGICAL_HEIGHT = 720;
+export const GAME_LOGICAL_HEIGHT = 480;
 
 // --- KAI SPRITE ASSETS ---
 export const KAI_SPRITES = {
