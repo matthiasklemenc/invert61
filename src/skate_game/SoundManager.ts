@@ -519,6 +519,17 @@ class SoundManager {
         } catch(e){}
     }
 
+    playMiss() {
+        if (this.isMuted) return;
+        try {
+            const now = this.getSafeTime();
+            const notes = [["A3", 0], ["F3", 0.12], ["D3", 0.26]];
+            notes.forEach(([note, offset]) => {
+                this.lead.triggerAttackRelease(note, "8n", now + offset);
+            });
+        } catch(e){}
+    }
+
     toggleMute() {
         this.isMuted = !this.isMuted;
         Tone.Destination.mute = this.isMuted;
@@ -552,6 +563,7 @@ export const getSoundManager = () => {
                 playFirecracker: () => {},
                 playLevelComplete: () => {},
                 playBravo: () => {},
+    playMiss: () => {},
                 playSOSSignal: () => {},
                 toggleMute: () => {},
                 isMuted: true
@@ -560,5 +572,7 @@ export const getSoundManager = () => {
     }
     return instance;
 };
+
+
 
 

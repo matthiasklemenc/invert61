@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Session, SessionDataPoint, Motion, GpsPoint, BoardSensorDataPoint, Stance } from '../types';
 
 interface SessionTrackerProps {
@@ -217,9 +217,7 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
 
       setTrackerStatus('tracking');
 
-      if (navigator.vibrate) {
-        navigator.vibrate([100, 50, 100]);
-      }
+
 
       if (navigator.geolocation) {
         watchIdRef.current = navigator.geolocation.watchPosition(
@@ -444,3 +442,4 @@ const SessionTracker: React.FC<SessionTrackerProps> = ({ onSessionComplete, onBa
 };
 
 export default SessionTracker;
+

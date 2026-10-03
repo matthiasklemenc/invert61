@@ -785,6 +785,7 @@ export function useSkateGame() {
                 } else if (state.skillGameBallX > basketX + 60 || state.skillGameBallY > canvas.height + 40 || state.skillGameShotElapsed > 100) {
                     state.skillGameShotActive = false;
                     state.skillGameResult = 'MISS';
+            getSoundManager().playMiss();
                     state.skillGameResultTimer = 45;
                 }
             }
@@ -1301,7 +1302,7 @@ if (state.player.y > 600) {
                              const lastPlat = state.obstacles[state.obstacles.length - 1];
                              let platY = BASE_FLOOR_Y - 80;
                              const isFirstUnderworldPlatform = state.obstacles.filter(o => o.isPlatform).length === 1;
-                             const platformX = (isFirstUnderworldPlatform && lastPlat) ? lastPlat.x + lastPlat.w + gapSize : spawnX;
+                             const platformX = lastPlat ? lastPlat.x + lastPlat.w + gapSize : spawnX;
                              if (lastPlat && lastPlat.isPlatform) {
                                  platY = lastPlat.y + (Math.random() > 0.5 ? 30 : -30);
                                  if (platY > BASE_FLOOR_Y - 40) platY = BASE_FLOOR_Y - 40;
@@ -3100,6 +3101,8 @@ if (state.player.y > 600) {
         playAgainFromLevelOne
     };
 }
+
+
 
 
 
