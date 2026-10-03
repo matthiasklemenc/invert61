@@ -11,6 +11,7 @@ export function useSkateGame() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const requestRef = useRef<number | null>(null);
     const lastTimeRef = useRef<number>(0);
+    const statsRef = useRef<GameStats | null>(null);
 
     const stateRef = useRef<{
         status: GameState,
@@ -2188,12 +2189,12 @@ if (state.player.y > 600) {
                 }
 
                 setScore(state.score);
-                setStats({
-                    grinds: state.grindsPerformed,
-                    jumps: state.jumpsPerformed,
-                    c180: state.count180,
-                    c360: state.count360
-                });
+                const nextStats = { grinds: state.grindsPerformed, jumps: state.jumpsPerformed, c180: state.count180, c360: state.count360 };
+                const prevStats = statsRef.current;
+                if (!prevStats || prevStats.grinds !== nextStats.grinds || prevStats.jumps !== nextStats.jumps || prevStats.c180 !== nextStats.c180 || prevStats.c360 !== nextStats.c360) {
+                    statsRef.current = nextStats;
+                    setStats(nextStats);
+                }
             }
         }
 
@@ -3096,5 +3097,7 @@ if (state.player.y > 600) {
         playAgainFromLevelOne
     };
 }
+
+
 
 
