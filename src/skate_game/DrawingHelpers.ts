@@ -370,7 +370,7 @@ function getCityLayerCache(layer: CityLayerDefinition): HTMLCanvasElement | null
         const bY = CITY_TILE_HEIGHT - h;
 
         tileCtx.fillStyle = layer.color;
-        tileCtx.fillRect(x, bY, layer.width + 1, h + 500);
+        tileCtx.fillRect(x, bY, layer.width + 1, h);
 
         if (layer.windows && hFactor > 0.4) {
             tileCtx.fillStyle = '#1e293b';

@@ -37,8 +37,8 @@ const GameHUD: React.FC<GameHUDProps> = ({
             {/* TOP BAR */}
             <div className="w-full bg-transparent lg:bg-gray-900/95 backdrop-blur-none lg:backdrop-blur-sm border-b-0 lg:border-b lg:border-white/10 p-0.5 lg:p-3 grid grid-cols-3 items-center pointer-events-auto h-[42px] lg:h-auto">
                 
-                {/* LEFT: Title & High Score */}
-                <div className="flex flex-col justify-center justify-self-start">
+                {/* LEFT: High Score on mobile; title stays on the right with lives */}
+                <div className="flex flex-col justify-center justify-self-start lg:block hidden">
                     <div className="flex items-baseline gap-1">
                         <h1 className="text-sm lg:text-3xl font-black italic tracking-tighter text-[#c52323]">
                             INVERT
@@ -53,6 +53,11 @@ const GameHUD: React.FC<GameHUDProps> = ({
                     </div>
                 </div>
 
+                <div className="absolute left-[205px] top-1 flex items-center gap-1 text-[8px] text-gray-400 font-mono leading-none lg:hidden">
+                    <span className="uppercase tracking-wider font-bold">High Score</span>
+                    <span className="text-white font-bold">{formatScore(highScore)}</span>
+                </div>
+
                 {/* CENTER: Current Score */}
                 <div className="flex justify-center justify-self-center items-center w-full">
                     <div className="font-mono text-xl lg:text-5xl font-black text-white drop-shadow-lg tracking-wider leading-none">
@@ -62,6 +67,7 @@ const GameHUD: React.FC<GameHUDProps> = ({
 
                 {/* RIGHT: Controls & Lives */}
                 <div className="flex items-center gap-1 lg:gap-2 justify-self-end">
+                    <h1 className="text-sm font-black italic tracking-tighter text-[#c52323] lg:hidden">INVERT</h1>
                     {/* Lives */}
                     <div className="flex gap-0.5 lg:gap-1 bg-black/30 p-0.5 lg:p-1 rounded-full border border-white/5 overflow-hidden max-w-[90px] lg:max-w-[150px]">
                         {livesArray.map((_, i) => (
