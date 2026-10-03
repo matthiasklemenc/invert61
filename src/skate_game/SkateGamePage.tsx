@@ -322,7 +322,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             <div
                 className={
                     isMobile
-                        ? "absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden"
+                        ? "absolute top-[42px] bottom-[64px] left-0 right-0 w-full flex items-center justify-center overflow-hidden"
                         : "flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden"
                 }
             >
@@ -331,10 +331,12 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     className="block bg-gray-900"
                     style={{
                         touchAction: "none",
-                        width: "auto",
-                        height: "100%",
-                        maxWidth: "100%",
-                        maxHeight: "100%",
+                        width: isMobile ? "auto" : "auto",
+                        height: isMobile ? "calc(100dvh - 106px)" : "100%",
+                        maxWidth: isMobile
+                            ? "calc((100dvh - 106px) * 16 / 9)"
+                            : "100%",
+                        maxHeight: isMobile ? "calc(100dvh - 106px)" : "100%",
                         aspectRatio: "16 / 9",
                         objectFit: "contain",
                         display: "block",
