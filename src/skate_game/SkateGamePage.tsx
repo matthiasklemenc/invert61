@@ -97,7 +97,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     } = useSkateGame();
     const mobileCanvasContainerRef = React.useRef<HTMLDivElement>(null);
     const wrapperRef = React.useRef<HTMLDivElement>(null);
-    const [debugInfo, setDebugInfo] = useState("");
+
     useEffect(() => {
         const canvas = canvasRef.current;
         const container = mobileCanvasContainerRef.current;
@@ -111,11 +111,11 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 canvas.height = GAME_LOGICAL_HEIGHT;
                 canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
             }
-            const wrapperRect = wrapperRef.current?.getBoundingClientRect();
-            const wrapStr = wrapperRect ? (Math.round(wrapperRect.width) + "x" + Math.round(wrapperRect.height)) : "n/a";
-            const cs = window.getComputedStyle(container);
-            const csStr = "pos=" + cs.position + " top=" + cs.top + " bot=" + cs.bottom + " h=" + cs.height + " disp=" + cs.display;
-            setDebugInfo("win: " + window.innerWidth + "x" + window.innerHeight + "\ncont: " + containerWidth + "x" + containerHeight + "\nwrap: " + wrapStr + "\ncanvasBuf: " + canvas.width + "x" + canvas.height + "\n" + csStr);
+
+
+
+
+
         };
         resizeCanvas();
         const observer = new ResizeObserver(resizeCanvas);
@@ -221,7 +221,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
         >
-            <div style={{ position: "fixed", top: 0, left: 0, zIndex: 999999, background: "rgba(0,0,0,0.85)", color: "#39ff14", fontSize: "11px", lineHeight: "1.3", fontFamily: "monospace", padding: "4px 6px", whiteSpace: "pre", pointerEvents: "none" }}>{"isMobile=" + isMobile + " isLandscape=" + isLandscape + "\n" + debugInfo}</div>
+
             <GameProgressPanel progress={progress} onReset={resetGameProgress} />
             <GameHUD
                 score={score}
@@ -372,6 +372,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         </div>
     );
 }
+
 
 
 

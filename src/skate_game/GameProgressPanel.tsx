@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import type { GameProgress } from './GameProgress';
 
 type Props = {
@@ -20,7 +20,7 @@ export default function GameProgressPanel({ progress, onReset }: Props) {
 
   return (
     <div
-      className="absolute top-1 left-1 lg:top-[96px] lg:left-2 z-30 select-none"
+      className="absolute top-[46px] left-1 lg:top-[96px] lg:left-2 z-30 select-none"
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
@@ -28,7 +28,7 @@ export default function GameProgressPanel({ progress, onReset }: Props) {
         className="hud-button bg-black/75 border border-white/20 text-white px-2 py-1 rounded-lg text-[10px] lg:text-xs font-bold shadow-lg"
         onClick={() => setOpen(v => !v)}
       >
-        🧠 {progress.knowledgePoints}  🎯 {progress.skillPoints}  🎒 {progress.inventory.length}  🏆 {progress.achievements.length}
+        ðŸ§  {progress.knowledgePoints}  ðŸŽ¯ {progress.skillPoints}  ðŸŽ’ {progress.inventory.length}  ðŸ† {progress.achievements.length}
       </button>
 
       {open && (
@@ -42,17 +42,17 @@ export default function GameProgressPanel({ progress, onReset }: Props) {
 
           <section className="mb-3">
             <div className="text-gray-500 font-bold mb-1">INVENTORY</div>
-            {progress.inventory.length === 0 ? <div className="text-gray-600">Nothing found yet.</div> : progress.inventory.map(item => <div key={item}>• {item}</div>)}
+            {progress.inventory.length === 0 ? <div className="text-gray-600">Nothing found yet.</div> : progress.inventory.map(item => <div key={item}>â€¢ {item}</div>)}
           </section>
 
           <section className="mb-3">
             <div className="text-gray-500 font-bold mb-1">CODES</div>
-            {progress.codes.length === 0 ? <div className="text-gray-600">No codes discovered.</div> : progress.codes.map(code => <div key={code}>🔢 {code}</div>)}
+            {progress.codes.length === 0 ? <div className="text-gray-600">No codes discovered.</div> : progress.codes.map(code => <div key={code}>ðŸ”¢ {code}</div>)}
           </section>
 
           <section>
             <div className="text-gray-500 font-bold mb-1">ACHIEVEMENTS</div>
-            {progress.achievements.length === 0 ? <div className="text-gray-600">No achievements yet.</div> : progress.achievements.map(id => <div key={id}>🏆 {achievementNames[id] ?? id}</div>)}
+            {progress.achievements.length === 0 ? <div className="text-gray-600">No achievements yet.</div> : progress.achievements.map(id => <div key={id}>ðŸ† {achievementNames[id] ?? id}</div>)}
           </section>
 
           <button
@@ -70,3 +70,4 @@ export default function GameProgressPanel({ progress, onReset }: Props) {
     </div>
   );
 }
+

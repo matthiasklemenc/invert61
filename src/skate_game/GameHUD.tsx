@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import SkateboardIcon from '../skate_session_review/SkateboardIcon';
 import { PauseIcon, PlayIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from './GameIcons';
 import { formatScore } from './GameConstants';
@@ -82,7 +82,7 @@ const GameHUD: React.FC<GameHUDProps> = ({
                     <div className="flex gap-0.5 lg:gap-2">
                         <button 
                             onClick={toggleMute} 
-                            className="bg-gray-800/90 lg:bg-gray-800 p-1 lg:p-1.5 rounded-md hover:bg-gray-700 border border-gray-600 text-gray-200"
+                            className="p-1 lg:p-1.5 text-gray-200 lg:rounded-md lg:hover:bg-gray-700/60"
                             title={isMuted ? "Unmute" : "Mute"}
                         >
                             {isMuted ? <SpeakerXMarkIcon className="w-3 h-3 lg:w-5 lg:h-5" /> : <SpeakerWaveIcon className="w-3 h-3 lg:w-5 lg:h-5" />}
@@ -90,7 +90,7 @@ const GameHUD: React.FC<GameHUDProps> = ({
                         
                         <button 
                             onClick={togglePause} 
-                            className="bg-gray-800/90 lg:bg-gray-800 p-1 lg:p-1.5 rounded-md hover:bg-gray-700 border border-gray-600 text-gray-200"
+                            className="p-1 lg:p-1.5 text-gray-200 lg:rounded-md lg:hover:bg-gray-700/60"
                             title={isPaused ? "Resume" : "Pause"}
                         >
                             {isPaused ? <PlayIcon className="w-3 h-3 lg:w-5 lg:h-5" /> : <PauseIcon className="w-3 h-3 lg:w-5 lg:h-5" />}
@@ -98,7 +98,7 @@ const GameHUD: React.FC<GameHUDProps> = ({
 
                         <button 
                             onClick={onExit} 
-                            className="bg-gray-800/90 lg:bg-gray-800 px-1.5 py-1 rounded-md hover:bg-gray-700 border border-gray-600 text-[8px] lg:text-xs font-bold uppercase tracking-wider text-gray-200"
+                            className="px-1.5 py-1 text-[8px] lg:text-xs font-bold uppercase tracking-wider text-gray-200 lg:rounded-md lg:hover:bg-gray-700/60"
                         >
                             Exit
                         </button>
@@ -137,3 +137,4 @@ const GameHUD: React.FC<GameHUDProps> = ({
 };
 
 export default GameHUD;
+
