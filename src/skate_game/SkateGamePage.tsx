@@ -1,5 +1,4 @@
-﻿
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { useSkateGame } from "./useSkateGame";
 import GameHUD from "./GameHUD";
 import GameMenu from "./GameMenu";
@@ -8,7 +7,6 @@ import OxxoShopPopup from "./OxxoShopPopup";
 import GameProgressPanel from "./GameProgressPanel";
 import SecretQuestionModal from "./SecretQuestionModal";
 import { GAME_LOGICAL_WIDTH, GAME_LOGICAL_HEIGHT } from "./GameConstants";
-
 export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     const [isLandscape, setIsLandscape] = useState(
         typeof window !== "undefined"
@@ -16,12 +14,10 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             : true
     );
     const [isMobile, setIsMobile] = useState(false);
-
     useEffect(() => {
         const handleResize = () => {
             setIsLandscape(window.innerWidth > window.innerHeight);
         };
-
         const checkMobile = () => {
             const ua =
                 typeof navigator !== "undefined"
@@ -39,19 +35,16 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             );
             setIsMobile(!!(isTouch || isMobileUA));
         };
-
         checkMobile();
         window.addEventListener("resize", handleResize);
         window.addEventListener("orientationchange", handleResize);
-
         return () => {
             window.removeEventListener("resize", handleResize);
             window.removeEventListener("orientationchange", handleResize);
         };
     }, []);
-
     // -----------------------------------------
-    // ðŸ”¥ FIX 100VH BUG ON MOBILE
+    // 🔥 FIX 100VH BUG ON MOBILE
     // -----------------------------------------
     useEffect(() => {
         const fixVH = () => {
@@ -61,16 +54,13 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             );
         };
         fixVH();
-
         window.addEventListener("resize", fixVH);
         window.addEventListener("orientationchange", fixVH);
-
         return () => {
             window.removeEventListener("resize", fixVH);
             window.removeEventListener("orientationchange", fixVH);
         };
     }, []);
-
     const {
         canvasRef,
         progress,
@@ -105,53 +95,42 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         levelComplete,
         playAgainFromLevelOne
     } = useSkateGame();
-
-    // -------------------------------------------------------
-    // FIXED LOGICAL RESOLUTION CANVAS (FIT MODE) â€” ALL DEVICES
-    // -------------------------------------------------------
-    // The canvas's internal drawing resolution was never being set
-    // anywhere in this app, on mobile OR desktop â€” it was silently
-    // falling back to the browser's 300x150 default, then displayed
-    // with `object-fit: none`, which shows that tiny buffer at native
-    // size instead of scaling it. That is the small rectangle floating
-    // in empty space you were seeing on every device.
-    //
-    // The fix: set the canvas's internal resolution ONCE to a fixed
-    // size (GAME_LOGICAL_WIDTH x GAME_LOGICAL_HEIGHT) that matches what
-    // the game's absolute-pixel values (BASE_FLOOR_Y, obstacle sizes,
-    // gravity, jump force, etc.) were tuned for. CSS (object-fit:
-    // contain, see the <canvas> style below) then scales that fixed-size
-    // canvas uniformly to fill the available space â€” letterboxed with
-    // bars on one axis if the container's aspect ratio doesn't match
-    // 16:9, but always fully visible and never stretched or cropped.
     const mobileCanvasContainerRef = React.useRef<HTMLDivElement>(null);
     const wrapperRef = React.useRef<HTMLDivElement>(null);
     const [debugInfo, setDebugInfo] = useState("");
-
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
-
-        if (canvas.width !== GAME_LOGICAL_WIDTH || canvas.height !== GAME_LOGICAL_HEIGHT) {
-            canvas.width = GAME_LOGICAL_WIDTH;
-            canvas.height = GAME_LOGICAL_HEIGHT;
-            canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
+        const container = mobileCanvasContainerRef.current;
+        if (!canvas || !container) return;
+        const resizeCanvas = () => {
+            const containerWidth = Math.max(1, container.clientWidth);
+            const containerHeight = Math.max(1, container.clientHeight);
+            const width = Math.max(1, Math.round(containerWidth * (GAME_LOGICAL_HEIGHT / containerHeight)));
+            if (canvas.width !== width || canvas.height !== GAME_LOGICAL_HEIGHT) {
+                canvas.width = width;
+                canvas.height = GAME_LOGICAL_HEIGHT;
+                canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
+            }
             const wrapperRect = wrapperRef.current?.getBoundingClientRect();
-            const containerRect2 = container.getBoundingClientRect();
-            const canvasRect2 = canvas.getBoundingClientRect();
-            const vv2 = (window as any).visualViewport;
-            const vvStr = vv2 ? (Math.round(vv2.width) + "x" + Math.round(vv2.height)) : "n/a";
             const wrapStr = wrapperRect ? (Math.round(wrapperRect.width) + "x" + Math.round(wrapperRect.height)) : "n/a";
-            setDebugInfo("win: " + window.innerWidth + "x" + window.innerHeight + "\ndocEl: " + document.documentElement.clientWidth + "x" + document.documentElement.clientHeight + "\nvvp: " + vvStr + "\ndpr: " + window.devicePixelRatio + "\nwrap: " + wrapStr + "\ncont: " + Math.round(containerRect2.width) + "x" + Math.round(containerRect2.height) + "\ncanvasCSS: " + Math.round(canvasRect2.width) + "x" + Math.round(canvasRect2.height) + "\ncanvasBuf: " + canvas.width + "x" + canvas.height);
-        }
+            setDebugInfo("win: " + window.innerWidth + "x" + window.innerHeight + "\ncont: " + containerWidth + "x" + containerHeight + "\nwrap: " + wrapStr + "\ncanvasBuf: " + canvas.width + "x" + canvas.height);
+        };
+        resizeCanvas();
+        const observer = new ResizeObserver(resizeCanvas);
+        observer.observe(container);
+        window.addEventListener("resize", resizeCanvas);
+        window.addEventListener("orientationchange", resizeCanvas);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener("resize", resizeCanvas);
+            window.removeEventListener("orientationchange", resizeCanvas);
+        };
     }, [canvasRef]);
-
     // -----------------------------------------
-    // ðŸ”¥ DESKTOP KEYBOARD CONTROLS
+    // 🔥 DESKTOP KEYBOARD CONTROLS
     // -----------------------------------------
     useEffect(() => {
         let arrowUpDownAt = 0;
-
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.code === "Space") {
                 e.preventDefault();
@@ -166,7 +145,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 }
             }
         };
-
         const handleKeyUp = (e: KeyboardEvent) => {
             if (e.code !== "ArrowUp") return;
             e.preventDefault();
@@ -178,7 +156,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 }
             }
         };
-
         window.addEventListener("keydown", handleKeyDown);
         window.addEventListener("keyup", handleKeyUp);
         return () => {
@@ -186,9 +163,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             window.removeEventListener("keyup", handleKeyUp);
         };
     }, [uiState, isPaused, triggerAction, startKeyboardJump, releaseKeyboardJump]);
-
     // -----------------------------------------
-    // ðŸ”¥ ROTATE DEVICE SCREEN
+    // 🔥 ROTATE DEVICE SCREEN
     // -----------------------------------------
     if (isMobile && !isLandscape) {
         return (
@@ -216,7 +192,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             </div>
         );
     }
-
     return (
         <div
             ref={wrapperRef}
@@ -229,7 +204,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         >
             <div style={{ position: "fixed", top: 0, left: 0, zIndex: 999999, background: "rgba(0,0,0,0.85)", color: "#39ff14", fontSize: "11px", lineHeight: "1.3", fontFamily: "monospace", padding: "4px 6px", whiteSpace: "pre", pointerEvents: "none" }}>{"isMobile=" + isMobile + " isLandscape=" + isLandscape + "\n" + debugInfo}</div>
             <GameProgressPanel progress={progress} onReset={resetGameProgress} />
-
             <GameHUD
                 score={score}
                 highScore={highScore}
@@ -242,7 +216,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 stats={stats}
                 showStats={uiState === "PLAYING"}
             />
-
             {/* LEVEL COMPLETE */}
             {levelComplete && uiState === "PLAYING" && (
                 <div className="absolute inset-0 z-[60] overflow-hidden bg-black/80 flex items-center justify-center">
@@ -271,7 +244,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                             </div>
                         ))}
                     </div>
-
                     <div className="relative z-10 text-center px-6">
                         <div className="text-sm md:text-base font-black tracking-[0.35em] text-cyan-300 mb-4">
                             LEVEL 1 COMPLETE
@@ -285,7 +257,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                         <div className="mt-2 text-lg md:text-xl font-bold text-gray-300">
                             IN CONSTRUCTION
                         </div>
-
                         <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
                             <button
                                 onClick={playAgainFromLevelOne}
@@ -303,7 +274,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     </div>
                 </div>
             )}
-
             {/* PAUSE OVERLAY */}
             {isPaused && uiState === "PLAYING" && !levelComplete && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20">
@@ -318,9 +288,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     </div>
                 </div>
             )}
-
             {/* -----------------------------------------
-               ðŸ”¥ FIXED RESPONSIVE CANVAS
+               🔥 FIXED RESPONSIVE CANVAS
             ------------------------------------------ */}
             <div
                 ref={mobileCanvasContainerRef}
@@ -337,8 +306,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                         touchAction: "none",
                         // The canvas's internal resolution is fixed (see the
                         // effect above). object-fit: contain scales that
-                        // fixed buffer uniformly to fill this box â€” on any
-                        // screen size, on any device â€” without ever
+                        // fixed buffer uniformly to fill this box — on any
+                        // screen size, on any device — without ever
                         // stretching or cropping it.
                         width: "100%",
                         height: "100%",
@@ -347,7 +316,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     }}
                 />
             </div>
-
             {uiState === "MENU" && (
                 <GameMenu
                     highScore={highScore}
@@ -359,7 +327,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     onExit={onClose}
                 />
             )}
-
             {uiState === "GAME_OVER" && (
                 <GameOver
                     score={score}
@@ -369,7 +336,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     onMenu={() => setUiState("MENU")}
                 />
             )}
-
             {secretQuestionOpen && (
                 <SecretQuestionModal
                     feedback={secretQuestionFeedback}
@@ -377,7 +343,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     questionType={secretQuestionType}
                 />
             )}
-
             {uiState === "OXXO_SHOP" && (
                 <OxxoShopPopup
                     onBuy={buyItem}
@@ -388,5 +353,3 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         </div>
     );
 }
-
-
