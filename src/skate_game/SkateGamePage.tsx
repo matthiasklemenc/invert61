@@ -125,6 +125,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     // bars on one axis if the container's aspect ratio doesn't match
     // 16:9, but always fully visible and never stretched or cropped.
     const mobileCanvasContainerRef = React.useRef<HTMLDivElement>(null);
+    const wrapperRef = React.useRef<HTMLDivElement>(null);
+    const [debugInfo, setDebugInfo] = useState("");
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -134,6 +136,13 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             canvas.width = GAME_LOGICAL_WIDTH;
             canvas.height = GAME_LOGICAL_HEIGHT;
             canvas.getContext("2d")?.setTransform(1, 0, 0, 1, 0, 0);
+            const wrapperRect = wrapperRef.current?.getBoundingClientRect();
+            const containerRect2 = container.getBoundingClientRect();
+            const canvasRect2 = canvas.getBoundingClientRect();
+            const vv2 = (window as any).visualViewport;
+            const vvStr = vv2 ? (Math.round(vv2.width) + "x" + Math.round(vv2.height)) : "n/a";
+            const wrapStr = wrapperRect ? (Math.round(wrapperRect.width) + "x" + Math.round(wrapperRect.height)) : "n/a";
+            setDebugInfo("win: " + window.innerWidth + "x" + window.innerHeight + "\ndocEl: " + document.documentElement.clientWidth + "x" + document.documentElement.clientHeight + "\nvvp: " + vvStr + "\ndpr: " + window.devicePixelRatio + "\nwrap: " + wrapStr + "\ncont: " + Math.round(containerRect2.width) + "x" + Math.round(containerRect2.height) + "\ncanvasCSS: " + Math.round(canvasRect2.width) + "x" + Math.round(canvasRect2.height) + "\ncanvasBuf: " + canvas.width + "x" + canvas.height);
         }
     }, [canvasRef]);
 
@@ -210,6 +219,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
 
     return (
         <div
+            ref={wrapperRef}
             className="fixed inset-0 bg-gray-900 text-white flex flex-col z-0"
             style={{ touchAction: "none", height: "calc(var(--vh, 1vh) * 100)" }}
             onMouseDown={handleTouchStart}
@@ -217,6 +227,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
         >
+            <div style={{ position: "fixed", top: 0, left: 0, zIndex: 999999, background: "rgba(0,0,0,0.85)", color: "#39ff14", fontSize: "11px", lineHeight: "1.3", fontFamily: "monospace", padding: "4px 6px", whiteSpace: "pre", pointerEvents: "none" }}>{"isMobile=" + isMobile + " isLandscape=" + isLandscape + "\n" + debugInfo}</div>
             <GameProgressPanel progress={progress} onReset={resetGameProgress} />
 
             <GameHUD
@@ -377,4 +388,5 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         </div>
     );
 }
+
 
