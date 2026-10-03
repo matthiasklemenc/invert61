@@ -1,4 +1,4 @@
-
+﻿
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { getSoundManager } from './SoundManager';
 import { drawStickman, drawObstacle, drawCityBackground, drawUnderworldBackground, drawSpaceBackground, drawCollectible, drawTransitionPipe, drawLaser, drawBeamDownSequence, CharacterType, ObstacleType, getOxxoPosition, getSpaceSignalX } from './DrawingHelpers';
@@ -1192,7 +1192,7 @@ if (state.player.y > 600) {
                     
                     if ((state.world as string) === 'SPACE') {
                          const platW = 200 + Math.random() * 300; 
-                         const gapW = 150 + Math.random() * 250;
+                         const gapW = 100 + Math.random() * 100;
 
                          const lastPlat = state.obstacles[state.obstacles.length - 1];
                          let platY = 250;
@@ -2831,6 +2831,13 @@ if (state.player.y > 600) {
              return;
          }
 
+         // Horizontal swipe to the right fires the laser in SPACE.
+         if ((state.world as string) === 'SPACE' && deltaX > 30 && Math.abs(deltaY) < 40) {
+             triggerAction();
+             state.player.isCrouching = false;
+             return;
+         }
+
          const pressDuration = Date.now() - state.touchStartTime;
 
          // --- NATAS / HYDRANT SPIN ---
@@ -3089,3 +3096,5 @@ if (state.player.y > 600) {
         playAgainFromLevelOne
     };
 }
+
+

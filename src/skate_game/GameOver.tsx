@@ -1,4 +1,4 @@
-
+﻿
 import React from 'react';
 import { formatScore } from './GameConstants';
 import { GameStats } from './GameTypes';
@@ -19,14 +19,14 @@ const GameOver: React.FC<GameOverProps> = ({
     onMenu
 }) => {
     return (
-        <div className="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center z-20 p-6">
-            <h2 className="text-5xl font-black text-white mb-4">GAME OVER</h2>
-            <div className="text-3xl font-mono mb-2">{formatScore(score)}</div>
-            <div className="text-sm text-white/80 mb-8">
+        <div className="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center z-20 p-6 overflow-y-auto">
+            <h2 className="text-2xl md:text-5xl font-black text-white mb-2 md:mb-4">GAME OVER</h2>
+            <div className="text-xl md:text-3xl font-mono mb-2">{formatScore(score)}</div>
+            <div className="text-sm text-white/80 mb-3 md:mb-8">
                 High Score: {formatScore(highScore)}
             </div>
             
-            <div className="flex gap-4 text-center mb-8 bg-black/20 p-4 rounded-lg">
+            <div className="flex gap-4 text-center mb-3 md:mb-8 bg-black/20 p-2 md:p-4 rounded-lg">
                  <div>
                     <div className="font-bold text-xl">{stats.grinds}</div>
                     <div className="text-xs text-gray-300">GRINDS</div>
@@ -58,3 +58,4 @@ const GameOver: React.FC<GameOverProps> = ({
 };
 
 export default GameOver;
+

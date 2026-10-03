@@ -71,3 +71,4 @@ export default function GameProgressPanel({ progress, onReset }: Props) {
   );
 }
 
+
