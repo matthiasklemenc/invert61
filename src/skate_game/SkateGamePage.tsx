@@ -201,6 +201,21 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             el.removeEventListener("contextmenu", stopMenu);
         };
     }, [isLandscape, isMobile]);
+    // ---- Level 2 ----
+    // Level 1 counts as done when the 3 points are reached (they are saved in the browser).
+    // The "done" flag is saved too, so Level 2 stays open after closing the app.
+    const LEVEL1_DONE_KEY = 'invert61-level1-done';
+    const level2Unlocked =
+        (progress.knowledgePoints >= 2 && progress.skillPoints >= 1) ||
+        (() => { try { return localStorage.getItem(LEVEL1_DONE_KEY) === '1'; } catch { return false; } })();
+    useEffect(() => {
+        if (levelComplete) { try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ } }
+    }, [levelComplete]);
+    const startLevel2 = () => {
+        try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ }
+        window.location.href = `${import.meta.env.BASE_URL}level2.html`;
+    };
+
     // -----------------------------------------
     // 🔥 ROTATE DEVICE SCREEN
     // -----------------------------------------
@@ -230,21 +245,6 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             </div>
         );
     }
-    // ---- Level 2 ----
-    // Level 1 counts as done when the 3 points are reached (they are saved in the browser).
-    // The "done" flag is saved too, so Level 2 stays open after closing the app.
-    const LEVEL1_DONE_KEY = 'invert61-level1-done';
-    const level2Unlocked =
-        (progress.knowledgePoints >= 2 && progress.skillPoints >= 1) ||
-        (() => { try { return localStorage.getItem(LEVEL1_DONE_KEY) === '1'; } catch { return false; } })();
-    useEffect(() => {
-        if (levelComplete) { try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ } }
-    }, [levelComplete]);
-    const startLevel2 = () => {
-        try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ }
-        window.location.href = `${import.meta.env.BASE_URL}level2.html`;
-    };
-
     return (
         <div
             ref={wrapperRef}

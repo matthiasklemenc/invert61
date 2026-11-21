@@ -1,0 +1,454 @@
+
+// =====================================================================
+//  LEVEL 2 – shared game state (all three worlds), languages, progress box
+// =====================================================================
+const SAVE_KEY = 'invert61-level2';
+const SAVE_DEFAULT = {
+  lang: 'de', hearts: 5, lives: 3, coins: 0, pearls: 0, starfish: 0,
+  items: { harpoon: false, star: false },
+  weapon: { sky: 'arrow', sea: 'harpoon' },                   // chosen weapon in the sky (light arrows / star blast)
+  outfit: { tee: '#1f3c6e', cap: '#1e4fa3', beanie: false, backpack: false, shoes: '#1b1b22', halo: false },
+  owned: {},                                   // bought clothes
+  done: { city: false, heaven: false, sea: false },
+  mini: { pinata: null, whale: null, football: null, harp: null },
+  checkpoint: null,                            // snapshot at the start of the current world
+};
+function loadSave() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(SAVE_DEFAULT));
+}
+const SAVE = loadSave();
+SAVE.weapon = Object.assign({ sky: 'arrow', sea: 'harpoon' }, SAVE.weapon); SAVE.owned = SAVE.owned || {}; if (SAVE.outfit.halo) SAVE.owned.halo = true;
+function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {} }
+function resetSave(keepLang = true) { const lang = SAVE.lang; Object.assign(SAVE, JSON.parse(JSON.stringify(SAVE_DEFAULT))); if (keepLang) SAVE.lang = lang; writeSave(); }
+// remember the state at the start of a world, so a game over only restarts that world
+function setCheckpoint(world) {
+  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
+  SAVE.cps = Object.assign({}, SAVE.cps, { [world]: SAVE.checkpoint }); writeSave();
+}
+// back in a world that was already started (e.g. the city after the sky): use that world's own checkpoint again
+function useCheckpoint(world) { if (SAVE.cps && SAVE.cps[world]) { SAVE.checkpoint = SAVE.cps[world]; writeSave(); } else setCheckpoint(world); }
+// world restart (all lives lost): hearts, coins, pearls and starfish go back to the world start –
+// but bought things STAY, and coins spent on them stay spent (see spendCoins)
+function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), pearls: c.pearls, starfish: c.starfish }); writeSave(); }
+// a purchase also lowers the coins the checkpoint would give back
+function spendCoins(n) { for (const c of new Set([SAVE.checkpoint, ...Object.values(SAVE.cps || {})])) if (c) c.coins = Math.max(0, c.coins - n); writeSave(); }
+// ---------------- lives ----------------
+// 3 lives: when all hearts are gone one life is lost and Kai simply carries on right there with full hearts.
+// Only when all 3 lives are gone the current world starts again (from its checkpoint).
+const LIVES_MAX = 3, LIFE_HEARTS = 5;
+// Level 3 only opens when all three bosses are beaten: garbage truck (city), harp finale (sky), giant squid (sea)
+const allBossesDone = () => !!(SAVE.done.city && SAVE.done.heaven && SAVE.done.sea);
+function openBosses() {
+  const l = [];
+  if (!SAVE.done.city) l.push(tx('Müllwagen in der Stadt besiegen'));
+  if (!SAVE.done.heaven) l.push(tx('Himmel bis zur Harfe schaffen'));
+  if (!SAVE.done.sea) l.push(tx('Riesenkalmar in der Tiefsee besiegen'));
+  return l;
+}
+function loseLife() { SAVE.lives = Math.max(0, (SAVE.lives ?? LIVES_MAX) - 1); writeSave(); return SAVE.lives > 0; }
+function restartWorldSave() { restoreCheckpoint(); SAVE.lives = LIVES_MAX; writeSave(); }
+// ======================================================================
+// INVENTORY (top left): weapons + outfit Kai owns, opened as a drop-down. The game pauses while it is open.
+// ======================================================================
+const INV = { open: false, btn: null, panel: null, chips: [] };
+const INV_WEAPONS = [
+  { id: 'arrow', name: 'Lichtpfeile', where: 'Himmel', world: 'himmel', owned: () => true, worn: () => !(SAVE.items.star && SAVE.weapon.sky === 'star'), pick: () => { SAVE.weapon.sky = 'arrow'; } },
+  { id: 'star', name: 'Sternen-Rundumschuss', where: 'Himmel', world: 'himmel', owned: () => !!SAVE.items.star, worn: () => SAVE.weapon.sky === 'star', pick: () => { SAVE.weapon.sky = 'star'; } },
+  { id: 'harpoon', name: 'Harpune', where: 'Tiefsee', world: 'tiefsee', owned: () => !!SAVE.items.harpoon, worn: () => !(SAVE.items.star && SAVE.weapon.sea === 'star'), pick: () => { SAVE.weapon.sea = 'harpoon'; } },
+  { id: 'starSea', name: 'Rundum-Harpunen', where: 'Tiefsee', world: 'tiefsee', owned: () => !!(SAVE.items.star && SAVE.items.harpoon), worn: () => SAVE.weapon.sea === 'star', pick: () => { SAVE.weapon.sea = 'star'; } },
+];
+const OUTFIT_GROUPS = [
+  { label: 'Kopf', opts: [
+    { id: 'capBlue', name: 'Blaue Kappe', sw: '#1e4fa3', owned: () => true, worn: o => !o.beanie && (o.cap || '#1e4fa3') === '#1e4fa3', apply: o => { o.cap = '#1e4fa3'; o.beanie = false; } },
+    { id: 'capRed', name: 'Rote Kappe', sw: '#d8352c', worn: o => !o.beanie && o.cap === '#d8352c', apply: o => { o.cap = '#d8352c'; o.beanie = false; } },
+    { id: 'capGreen', name: 'Grüne Kappe', sw: '#2f8a5f', worn: o => !o.beanie && o.cap === '#2f8a5f', apply: o => { o.cap = '#2f8a5f'; o.beanie = false; } },
+    { id: 'capGold', name: 'Goldene Kappe', sw: '#e8b923', worn: o => !o.beanie && o.cap === '#e8b923', apply: o => { o.cap = '#e8b923'; o.beanie = false; } },
+    { id: 'beanie', name: 'Beanie', sw: '#7a3fb8', worn: o => !!o.beanie, apply: o => { o.beanie = true; } },
+  ] },
+  { label: 'T-Shirt', opts: [
+    { id: 'teeBlue', name: 'Blaues T-Shirt', sw: '#1f3c6e', owned: () => true, worn: o => (o.tee || '#1f3c6e') === '#1f3c6e', apply: o => { o.tee = '#1f3c6e'; } },
+    { id: 'teeRed', name: 'Rotes T-Shirt', sw: '#c8352c', worn: o => o.tee === '#c8352c', apply: o => { o.tee = '#c8352c'; } },
+    { id: 'teeYellow', name: 'Gelbes T-Shirt', sw: '#e0a81e', worn: o => o.tee === '#e0a81e', apply: o => { o.tee = '#e0a81e'; } },
+  ] },
+  { label: 'Schuhe', opts: [
+    { id: 'shoesDark', name: 'Schwarze Schuhe', sw: '#1b1b22', owned: () => true, worn: o => (o.shoes || '#1b1b22') === '#1b1b22', apply: o => { o.shoes = '#1b1b22'; } },
+    { id: 'shoesRed', name: 'Rote Schuhe', sw: '#d8352c', worn: o => o.shoes === '#d8352c', apply: o => { o.shoes = '#d8352c'; } },
+  ] },
+  { label: 'Extras', toggle: true, opts: [
+    { id: 'backpack', name: 'Rucksack', sw: '#e0702b', worn: o => !!o.backpack, apply: o => { o.backpack = !o.backpack; } },
+    { id: 'halo', name: 'Heiligenschein', sw: '#ffd23a', worn: o => !!o.halo, apply: o => { o.halo = !o.halo; } },
+  ] },
+];
+const optOwned = it => it.owned ? it.owned() : !!SAVE.owned[it.id];
+function invCount() { return INV_WEAPONS.filter(w => w.owned() && w.id !== 'arrow').length + OUTFIT_GROUPS.reduce((n, g) => n + g.opts.filter(o => !o.owned && optOwned(o)).length, 0); }
+function drawInvButton(x, y) {
+  const b = { x, y, w: 92, h: 26 }; INV.btn = b;
+  ctx.save(); ctx.fillStyle = INV.open ? 'rgba(255,210,58,0.95)' : 'rgba(10,20,40,0.6)'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill();
+  // little backpack icon
+  ctx.translate(b.x + 15, b.y + 13); ctx.fillStyle = '#e0702b'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.3;
+  ctx.beginPath(); ctx.roundRect(-6, -7, 12, 14, 3); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#c2551a'; ctx.fillRect(-4, 0, 8, 4);
+  ctx.beginPath(); ctx.arc(0, -7, 3, Math.PI, 0); ctx.stroke();
+  ctx.translate(-b.x - 15, -b.y - 13);
+  ctx.fillStyle = INV.open ? OUT : '#ffffff'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(tx('ITEMS') + ' ' + (INV.open ? '▴' : '▾'), b.x + 27, b.y + 13);
+  const n = invCount();
+  if (n > 0) { ctx.fillStyle = '#ff5a4f'; ctx.beginPath(); ctx.arc(b.x + b.w - 4, b.y + 3, 8, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.fillText(String(n), b.x + b.w - 4, b.y + 3.5); }
+  ctx.restore();
+}
+function drawInvSwatch(id, sw, cx, cy) {
+  ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = OUT; ctx.lineWidth = 1.3; ctx.fillStyle = sw;
+  if (id === 'arrow') { ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(7, 0); ctx.stroke(); ctx.fillStyle = '#fff6b0'; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(3, -4); ctx.lineTo(3, 4); ctx.closePath(); ctx.fill(); }
+  else if (id === 'starSea') { ctx.strokeStyle = '#c9d3dc'; ctx.lineWidth = 2; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 3, Math.sin(a) * 3); ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9); ctx.stroke(); } }
+  else if (id === 'star') { ctx.fillStyle = '#ffd23a'; ctx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 3.5 : 8, a = i * Math.PI / 5 - Math.PI / 2; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (id === 'harpoon') { ctx.strokeStyle = '#c9d3dc'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(6, 0); ctx.stroke(); ctx.fillStyle = '#c9d3dc'; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(4, -4); ctx.lineTo(4, 4); ctx.closePath(); ctx.fill(); }
+  else if (id.startsWith('cap')) { ctx.beginPath(); ctx.arc(0, 2, 7, Math.PI, 0); ctx.lineTo(11, 2); ctx.lineTo(-7, 2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (id === 'beanie') { ctx.beginPath(); ctx.arc(0, 3, 7, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(0, -5, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+  else if (id.startsWith('tee')) { ctx.beginPath(); ctx.moveTo(-8, -5); ctx.lineTo(-3, -7); ctx.lineTo(3, -7); ctx.lineTo(8, -5); ctx.lineTo(6, -1); ctx.lineTo(4, -2); ctx.lineTo(4, 7); ctx.lineTo(-4, 7); ctx.lineTo(-4, -2); ctx.lineTo(-6, -1); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (id.startsWith('shoes')) { ctx.beginPath(); ctx.moveTo(-8, 3); ctx.lineTo(-8, -3); ctx.lineTo(-1, -3); ctx.quadraticCurveTo(8, -1, 9, 4); ctx.lineTo(-8, 4); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (id === 'halo') { ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(0, 0, 8, 3, 0, 0, Math.PI * 2); ctx.stroke(); }
+  else { ctx.beginPath(); ctx.roundRect(-6, -7, 12, 14, 3); ctx.fill(); ctx.stroke(); }
+  ctx.restore();
+}
+// panel layout (screen coordinates, right under the button)
+function drawInventoryPanel() {
+  if (!INV.open || !INV.btn) return;
+  const chipW = 150, chipH = 30, gap = 6, labelW = 74, cols = 4;
+  const x = 12, y0 = INV.btn.y + INV.btn.h + 6, w = labelW + cols * (chipW + gap) + 12;
+  const rows = [];
+  rows.push({ head: tx('WAFFEN') });
+  rows.push({ label: '', items: INV_WEAPONS.filter(it => it.owned()).map(it => ({ it, weapon: true })) });
+  rows.push({ head: tx('OUTFIT') });
+  for (const g of OUTFIT_GROUPS) { const items = g.opts.filter(optOwned).map(it => ({ it, g })); if (items.length) rows.push({ label: tx(g.label), items }); }
+  let h = 10; for (const r of rows) h += r.head ? 24 : chipH + gap; h += 6;
+  INV.panel = { x, y: y0, w, h }; INV.chips = [];
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, 0, W, VH);
+  ctx.fillStyle = 'rgba(12,24,48,0.96)'; ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(x, y0, w, h, 14); ctx.fill(); ctx.stroke();
+  let y = y0 + 10;
+  ctx.textBaseline = 'middle';
+  for (const r of rows) {
+    if (r.head) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'left'; ctx.fillText(r.head, x + 14, y + 11); ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(x + 14 + ctx.measureText(r.head).width + 8, y + 11, w - 40 - ctx.measureText(r.head).width, 1); y += 24; continue; }
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left'; ctx.fillText(r.label, x + 14, y + chipH / 2);
+    r.items.forEach((c, i) => {
+      // a weapon only counts in its own world: there it is green when chosen; elsewhere it is greyed out
+      const here = !c.weapon || (typeof CUR !== 'undefined' && CUR && CUR.key === c.it.world);
+      const cx = x + labelW + i * (chipW + gap), on = c.weapon ? here && c.it.worn() : c.it.worn(SAVE.outfit);
+      ctx.globalAlpha = here ? 1 : 0.4;
+      const rect = { x: cx, y, w: chipW, h: chipH }; INV.chips.push(Object.assign({ rect }, c));
+      ctx.fillStyle = on ? 'rgba(52,199,89,0.9)' : 'rgba(255,255,255,0.1)'; ctx.strokeStyle = on ? '#bff5cc' : 'rgba(255,255,255,0.25)';
+      ctx.beginPath(); ctx.roundRect(cx, y, chipW, chipH, 9); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(cx + 16, y + chipH / 2, 12, 0, Math.PI * 2); ctx.fill();
+      drawInvSwatch(c.it.id, c.it.sw, cx + 16, y + chipH / 2);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left';
+      let fs = 11; ctx.font = `bold ${fs}px Arial`; const nm = tx(c.it.name);
+      while (ctx.measureText(nm).width > chipW - 40 && fs > 8) { fs--; ctx.font = `bold ${fs}px Arial`; }
+      ctx.fillText(nm, cx + 32, y + (c.weapon ? 11 : chipH / 2));
+      if (c.weapon) { ctx.font = '9px Arial'; ctx.fillStyle = on ? '#eafff0' : 'rgba(255,255,255,0.6)'; ctx.fillText(here ? tx(c.it.where) : tx(c.it.world === 'himmel' ? 'nur im Himmel' : 'nur in der Tiefsee'), cx + 32, y + 22); }
+      if (on) { ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'right'; ctx.fillText('✓', cx + chipW - 8, y + chipH / 2 + 1); }
+      ctx.globalAlpha = 1;
+    });
+    y += chipH + gap;
+  }
+  ctx.restore();
+}
+// a click in screen coordinates; returns true when the inventory used it
+function invClick(hp) {
+  const inR = (p, b) => b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+  if (inR(hp, INV.btn)) { INV.open = !INV.open; Audio.play('tink'); return true; }
+  if (!INV.open) return false;
+  for (const c of INV.chips) if (inR(hp, c.rect)) {
+    if (c.weapon) { if (CUR.key !== c.it.world) { Audio.play('denied'); return true; } c.it.pick(); } else c.it.apply(SAVE.outfit);
+    writeSave(); Audio.play('flip'); return true;
+  }
+  if (!inR(hp, INV.panel)) INV.open = false;
+  return true;
+}
+// ======================================================================
+// PAUSE button (top right, next to music/sound) – also the P key
+// ======================================================================
+const PAUSE = { on: false, btn: { x: W - 346, y: 10, w: 86, h: 30 } };
+function setPause(on) { PAUSE.on = on; INV.open = false; Audio.pauseBg(on); Audio.play('tink'); }
+function drawPauseButton() {
+  const b = PAUSE.btn, label = PAUSE.on ? tx('WEITER') : tx('PAUSE');
+  ctx.save(); ctx.font = 'bold 13px Arial';
+  b.w = 46 + ctx.measureText(label).width; b.x = W - 262 - b.w;          // right edge stays next to the music button
+  ctx.fillStyle = PAUSE.on ? '#34c759' : 'rgba(10,20,40,0.6)'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 9); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  if (PAUSE.on) { ctx.beginPath(); ctx.moveTo(b.x + 14, b.y + 8); ctx.lineTo(b.x + 27, b.y + 15); ctx.lineTo(b.x + 14, b.y + 22); ctx.closePath(); ctx.fill(); }
+  else { ctx.fillRect(b.x + 13, b.y + 8, 4.5, 14); ctx.fillRect(b.x + 21, b.y + 8, 4.5, 14); }
+  ctx.font = 'bold 13px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, b.x + 34, b.y + 16);
+  ctx.restore();
+}
+function drawPauseOverlay() {
+  if (!PAUSE.on) return;
+  ctx.save(); ctx.fillStyle = 'rgba(8,16,32,0.55)'; ctx.fillRect(0, 0, W, VH);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 6;
+  ctx.font = 'bold 54px Arial'; ctx.strokeText(tx('PAUSE'), W / 2, VH / 2 - 14); ctx.fillText(tx('PAUSE'), W / 2, VH / 2 - 14);
+  ctx.font = 'bold 16px Arial'; ctx.fillStyle = '#bfe6ff'; ctx.fillText(tx('Tippe auf WEITER oder drücke P'), W / 2, VH / 2 + 30);
+  ctx.restore();
+  drawPauseButton();
+}
+// click in screen coordinates; returns true when used (while paused every click is used)
+function pauseClick(hp) {
+  const b = PAUSE.btn;
+  if (hp.x >= b.x && hp.x <= b.x + b.w && hp.y >= b.y && hp.y <= b.y + b.h) { setPause(!PAUSE.on); return true; }
+  return PAUSE.on;
+}
+function goToWorld(file, query = '') { writeSave(); beginTransition(file, query); }   // one page: the camera moves between the worlds
+const QUERY = new URLSearchParams(location.search);
+
+// ---------------- languages ----------------
+// German text is the key; English and Spanish translations below. {n} = placeholder.
+const LANGS = ['de', 'en', 'es'];
+const TR = {
+  // ---------- general ----------
+  'JA': ['YES', 'SÍ'], 'NEIN': ['NO', 'NO'],
+  // ---------- on-screen buttons · exit · main menu ----------
+  'NEIN – ZUM MENÜ': ['NO – MAIN MENU', 'NO – AL MENÚ'],
+  'Alle 3 Leben sind weg. Nochmal versuchen?': ['All 3 lives are gone. Try again?', 'Se acabaron las 3 vidas. ¿Intentar de nuevo?'],
+  'SPRUNG': ['JUMP', 'SALTO'], 'SCHUSS': ['SHOOT', 'DISPARO'], 'SCHLAG': ['HIT', 'GOLPE'],
+  'MENÜ': ['MENU', 'MENÚ'], 'SPIELEN': ['PLAY', 'JUGAR'],
+  'Zurück zur Invert-App': ['Back to the Invert app', 'Volver a la app Invert'],
+  'Rechtsklick / X = schießen': ['Right-click / X = shoot', 'Clic derecho / X = disparar'],
+  '¡Dale! Linke Taste = springen · rechte Taste = schlagen': ['¡Dale! Left button = jump · right button = hit', '¡Dale! Botón izquierdo = saltar · botón derecho = pegar'],
+  '¡Dale! Klick = springen · Rechtsklick / X = schlagen': ['¡Dale! Click = jump · right-click / X = hit', '¡Dale! Clic = saltar · clic derecho / X = pegar'],
+  'Linke Taste = springen  ·  rechte Taste = schlagen': ['Left button = jump  ·  right button = hit', 'Botón izquierdo = saltar  ·  botón derecho = pegar'],
+  'Klick / Leertaste = springen  ·  Rechtsklick / X = schlagen': ['Click / Space = jump  ·  right-click / X = hit', 'Clic / Espacio = saltar  ·  clic derecho / X = pegar'],
+  'Lichtpfeile: Schuss-Taste rechts (am PC Rechtsklick oder X). Schieß die Teufelchen ab!': ['Light arrows: shoot button on the right (on a computer right-click or X). Shoot the little devils!', 'Flechas de luz: botón de disparo a la derecha (en el PC clic derecho o X). ¡Dispara a los diablitos!'],
+  'Sprung-Taste links: tippen / halten = mit den Flügeln schlagen → Kai steigt. Loslassen = Kai gleitet nach unten.': ['Jump button on the left: tap / hold = flap the wings → Kai rises. Let go = Kai glides down.', 'Botón de salto a la izquierda: toca / mantén = aletear → Kai sube. Suelta = Kai planea hacia abajo.'],
+  'Schießen mit der Harpune: Schuss-Taste rechts, am PC Rechtsklick oder X (im Turbo und beim Kalmar).': ['Shoot the harpoon: shoot button on the right, on a computer right-click or X (in turbo and against the squid).', 'Dispara el arpón: botón de disparo a la derecha, en el PC clic derecho o X (en turbo y contra el calamar).'],
+  'NOCHMAL VERSUCHEN': ['TRY AGAIN', 'INTENTAR DE NUEVO'], 'NOCHMAL SPIELEN': ['PLAY AGAIN', 'JUGAR DE NUEVO'],
+  'GESCHAFFT!': ['YOU DID IT!', '¡LO LOGRASTE!'], 'WEITER': ['CONTINUE', 'CONTINUAR'],
+  'KEINE HERZEN MEHR!': ['NO HEARTS LEFT!', '¡SIN CORAZONES!'], 'KEINE LUFT MEHR!': ['OUT OF AIR!', '¡SIN AIRE!'],
+  'Sprache': ['Language', 'Idioma'], 'Überspringen': ['Skip', 'Saltar'],
+  'Strecke: {p}%   ·   Münzen: {c}': ['Distance: {p}%   ·   Coins: {c}', 'Recorrido: {p}%   ·   Monedas: {c}'],
+  'Münzen: {c}   ·   Herzen: {h}': ['Coins: {c}   ·   Hearts: {h}', 'Monedas: {c}   ·   Corazones: {h}'],
+  'Welten': ['Worlds', 'Mundos'], 'Stadt': ['City', 'Ciudad'], 'Himmel': ['Sky', 'Cielo'], 'Tiefsee': ['Deep sea', 'Mar profundo'],
+  'Harpune': ['Harpoon', 'Arpón'], 'Gegenstände': ['Items', 'Objetos'],
+  'Du startest diese Welt neu.': ['You restart this world.', 'Reinicias este mundo.'],
+  'LEBEN VERLOREN! Noch {n} Leben': ['LIFE LOST! {n} lives left', '¡VIDA PERDIDA! Quedan {n} vidas'],
+  'LEBEN VERLOREN! Letztes Leben!': ['LIFE LOST! Last life!', '¡VIDA PERDIDA! ¡Última vida!'],
+  'KEINE LEBEN MEHR!': ['NO LIVES LEFT!', '¡SIN VIDAS!'],
+  'Alle 3 Leben sind weg – diese Welt startet neu.': ['All 3 lives are gone – this world starts again.', 'Se acabaron las 3 vidas – este mundo empieza de nuevo.'],
+  'Runtergefallen! Zurück in der Stadt.': ['You fell down! Back in the city.', '¡Te caíste! De vuelta en la ciudad.'],
+  'Weiter dort, wo du abgesprungen bist.': ['Carry on where you took off.', 'Sigue donde despegaste.'],
+  'Engelsflügel-Rampe! Ab in den Himmel!': ['Angel wing ramp! Up into the sky!', '¡Rampa de alas de ángel! ¡Al cielo!'],
+  'Zu tief! Nicht die Wolken berühren!': ['Too low! Don\'t touch the clouds!', '¡Muy bajo! ¡No toques las nubes!'],
+  'Kai fällt durch die Wolken…': ['Kai falls through the clouds…', 'Kai cae entre las nubes…'],
+  'Tippen = schießen. Der Pfeil zeigt, wohin.': ['Tap = shoot. The arrow shows where.', 'Toca = tirar. La flecha muestra a dónde.'],
+  'Engelsrampe': ['Angel ramp', 'Rampa de ángel'],
+  'Müllwagen in der Stadt besiegen': ['Beat the garbage truck in the city', 'Vence al camión de basura en la ciudad'],
+  'Himmel bis zur Harfe schaffen': ['Finish the sky up to the harp', 'Termina el cielo hasta el arpa'],
+  'Riesenkalmar in der Tiefsee besiegen': ['Beat the giant squid in the deep sea', 'Vence al calamar gigante en el mar profundo'],
+  'Noch offen für Level 3:': ['Still to do for Level 3:', 'Falta para el nivel 3:'],
+  'DER RIESENKALMAR IST BESIEGT!': ['THE GIANT SQUID IS BEATEN!', '¡EL CALAMAR GIGANTE ESTÁ VENCIDO!'],
+  'WEITER': ['CONTINUE', 'SEGUIR'],
+  'Weiter dort, wo du in die Tiefe gerutscht bist.': ['Carry on where you slid down.', 'Sigue donde bajaste por el tubo.'],
+  'EIS! +1 Herz': ['ICE CREAM! +1 heart', '¡HELADO! +1 corazón'],
+  'WEITERSPIELEN': ['CONTINUE', 'CONTINUAR'], 'Komplett neu anfangen': ['Start all over', 'Empezar de cero'],
+  'Wirklich alles löschen?': ['Really delete everything?', '¿De verdad borrar todo?'],
+  'Gekaufte Sachen, Münzen und geschaffte Welten sind dann weg.': ['Bought items, coins and finished worlds will be gone.', 'Se pierden los objetos comprados, las monedas y los mundos superados.'],
+  'JA, LÖSCHEN': ['YES, DELETE', 'SÍ, BORRAR'], 'NEIN': ['NO', 'NO'],
+  'Dein Spielstand ist gespeichert.': ['Your progress is saved.', 'Tu progreso está guardado.'],
+  'INVERT – LEVEL 2': ['INVERT – LEVEL 2', 'INVERT – NIVEL 2'],
+  'Finde alle Paare!   Paare: {p}/{n}   ·   Züge: {m}   ·   jedes Paar = +2 Seesterne': ['Find all pairs!   Pairs: {p}/{n}   ·   Moves: {m}   ·   each pair = +2 starfish', '¡Encuentra todas las parejas!   Parejas: {p}/{n}   ·   Jugadas: {m}   ·   cada pareja = +2 estrellas de mar'],
+  'Wie viele Karten?': ['How many cards?', '¿Cuántas cartas?'], 'Standard': ['Standard', 'Normal'], '{n} Paare': ['{n} pairs', '{n} parejas'],
+  'NOCHMAL SPIELEN': ['PLAY AGAIN', 'JUGAR OTRA VEZ'], 'Noch einmal?': ['Again?', '¿Otra vez?'],
+  'Rundum-Harpunen': ['All-round harpoons', 'Arpones en todas direcciones'], 'TREFFER! + LUFT': ['HIT! + AIR', '¡IMPACTO! + AIRE'],
+  'STADT NOCHMAL': ['CITY AGAIN', 'CIUDAD OTRA VEZ'], 'HIMMEL NOCHMAL': ['SKY AGAIN', 'CIELO OTRA VEZ'], 'TIEFSEE NOCHMAL': ['DEEP SEA AGAIN', 'MAR OTRA VEZ'],
+  'Oder eine Welt nochmal spielen (du verlierst nichts):': ['Or play one world again (you keep everything):', 'O juega un mundo otra vez (no pierdes nada):'],
+  'ZURÜCK': ['BACK', 'ATRÁS'], 'Goldene Kappe': ['Golden cap', 'Gorra dorada'],
+  '100 %-POKAL! Alle Minispiele geschafft · +50 Münzen · Goldene Kappe': ['100 % TROPHY! All little games won · +50 coins · Golden cap', '¡TROFEO 100 %! Todos los minijuegos ganados · +50 monedas · Gorra dorada'],
+  'Minispiele {n}/4 – alle 4 = 100 %-Pokal': ['Little games {n}/4 – all 4 = 100 % trophy', 'Minijuegos {n}/4 – los 4 = trofeo 100 %'], 'nur im Himmel': ['sky only', 'solo en el cielo'], 'nur in der Tiefsee': ['deep sea only', 'solo en el mar'],
+  'PAUSE': ['PAUSE', 'PAUSA'], 'Tippe auf WEITER oder drücke P': ['Tap CONTINUE or press P', 'Toca SEGUIR o pulsa P'],
+  'ITEMS': ['ITEMS', 'OBJETOS'], 'WAFFEN': ['WEAPONS', 'ARMAS'], 'OUTFIT': ['OUTFIT', 'ROPA'],
+  'Kopf': ['Head', 'Cabeza'], 'T-Shirt': ['T-shirt', 'Camiseta'], 'Schuhe': ['Shoes', 'Zapatos'], 'Extras': ['Extras', 'Extras'],
+  'Lichtpfeile': ['Light arrows', 'Flechas de luz'], 'Blaue Kappe': ['Blue cap', 'Gorra azul'], 'Blaues T-Shirt': ['Blue T-shirt', 'Camiseta azul'],
+  'Schwarze Schuhe': ['Black shoes', 'Zapatos negros'], 'Heiligenschein': ['Halo', 'Aureola'],
+  'Ab durchs Rohr in die Tiefsee!': ['Down the tube into the deep sea!', '¡Por el tubo al mar profundo!'],
+  'Rohr!': ['Tube!', '¡Tubo!'],
+  // ---------- city ----------
+  'DIE STADT': ['THE CITY', 'LA CIUDAD'], 'LEVEL 2 · NORMALE WELT': ['LEVEL 2 · NORMAL WORLD', 'NIVEL 2 · MUNDO NORMAL'],
+  'Tippen / Leertaste = Springen (Ollie). Länger halten = höher springen.': ['Tap / Space = jump (ollie). Hold longer = jump higher.', 'Toca / Espacio = saltar (ollie). Mantén = saltar más alto.'],
+  'In der Luft nochmal tippen = Kickflip (+3 Münzen). Auf Bänken und Geländern landen = Grinden.': ['Tap again in the air = kickflip (+3 coins). Land on benches and rails = grind.', 'Toca otra vez en el aire = kickflip (+3 monedas). Cae en bancas y barandales = grind.'],
+  'Auf einem Hydranten landen = Spin! Weiter tippen = mehr Drehungen (+3 Münzen je Drehung, 3 Drehungen = +1 Herz).': ['Land on a hydrant = spin! Keep tapping = more spins (+3 coins each, 3 spins = +1 heart).', '¡Cae en un hidrante = giro! Sigue tocando = más giros (+3 monedas cada uno, 3 giros = +1 corazón).'],
+  'Jeder Zusammenstoß kostet ein Herz. Tacos schenken dir +2 Herzen.': ['Every crash costs a heart. Tacos give you +2 hearts.', 'Cada choque cuesta un corazón. Los tacos te dan +2 corazones.'],
+  'Auf Rampen tippen = großer Sprung. Am Ende: Über die Rampe des Müllwagens aufs Dach springen – 3×!': ['Tap on ramps = big jump. At the end: jump over the garbage truck\'s ramp onto its roof – 3×!', 'Toca en las rampas = gran salto. Al final: ¡salta por la rampa del camión de basura a su techo – 3×!'],
+  'Tippen oder Leertaste zum Losfahren': ['Tap or press Space to start', 'Toca o pulsa Espacio para empezar'],
+  'Tipp: Tacos geben +2 Herzen!': ['Tip: tacos give +2 hearts!', 'Consejo: ¡los tacos dan +2 corazones!'],
+  'Der Müllwagen ist erledigt!': ['The garbage truck is done for!', '¡El camión de basura está acabado!'],
+  'STADT': ['CITY', 'CIUDAD'], 'MÜLLWAGEN': ['GARBAGE TRUCK', 'CAMIÓN'],
+  'Pylone!': ['Cone!', '¡Cono!'], 'Hydrant!': ['Hydrant!', '¡Hidrante!'], 'Mülltonne!': ['Trash can!', '¡Bote de basura!'], 'Bank!': ['Bench!', '¡Banca!'],
+  'Auto!': ['Car!', '¡Coche!'], 'Eiswagen!': ['Ice cream truck!', '¡Carrito de helados!'], 'Taco-Stand!': ['Taco stand!', '¡Puesto de tacos!'],
+  'Wau! Der Hund!': ['Woof! The dog!', '¡Guau! ¡El perro!'], 'Autsch!': ['Ouch!', '¡Ay!'], 'Schlagloch!': ['Pothole!', '¡Bache!'],
+  'Müllsack!': ['Trash bag!', '¡Bolsa de basura!'], 'Dosen!': ['Cans!', '¡Latas!'],
+  'BUSTED! −3 Herzen': ['BUSTED! −3 hearts', '¡ATRAPADO! −3 corazones'],
+  'KICKFLIP! +{n}': ['KICKFLIP! +{n}', '¡KICKFLIP! +{n}'], '{k}× KICKFLIP! +{n}': ['{k}× KICKFLIP! +{n}', '{k}× ¡KICKFLIP! +{n}'],
+  'GRIND!': ['GRIND!', '¡GRIND!'], 'BIG AIR!': ['BIG AIR!', '¡GRAN SALTO!'],
+  'TACO! +2 Herzen': ['TACO! +2 hearts', '¡TACO! +2 corazones'],
+  'SPIN! Tippen = weiterdrehen': ['SPIN! Tap = keep spinning', '¡GIRO! Toca = seguir girando'],
+  '3 SPINS! +1 Herz': ['3 SPINS! +1 heart', '¡3 GIROS! +1 corazón'], '{n}× SPIN! +3': ['{n}× SPIN! +3', '{n}× ¡GIRO! +3'],
+  'DER MÜLLWAGEN!': ['THE GARBAGE TRUCK!', '¡EL CAMIÓN DE BASURA!'],
+  'Spring über die Rampe auf sein Dach! 3×': ['Jump over the ramp onto its roof! 3×', '¡Salta por la rampa a su techo! 3×'],
+  'Rampe! Fahr drüber – aufs Dach!': ['Ramp! Tap on it – onto the roof!', '¡Rampa! ¡Toca en ella – al techo!'],
+  'VOLLTREFFER! Noch {n}×': ['DIRECT HIT! {n} more', '¡GOLPE DIRECTO! Faltan {n}'],
+  'DER MÜLLWAGEN IST ERLEDIGT!': ['THE GARBAGE TRUCK IS DONE FOR!', '¡EL CAMIÓN ESTÁ ACABADO!'],
+  'RAMPE': ['RAMP', 'RAMPA'], 'WAU!': ['WOOF!', '¡GUAU!'], 'TACOS': ['TACOS', 'TACOS'], 'HELADOS': ['HELADOS', 'HELADOS'], 'POLICÍA': ['POLICE', 'POLICÍA'],
+  'HAFEN': ['HARBOR', 'MUELLE'], 'Weiter zum Hafen!': ['On to the harbor!', '¡Al muelle!'],
+  'Du brauchst zuerst die Harpune aus dem OXXO im Himmel!': ['First you need the harpoon from the OXXO in the sky!', '¡Primero necesitas el arpón del OXXO en el cielo!'],
+  'Engelsflügel-Rampe! Tippen = ab in den Himmel!': ['Angel wing ramp! Tap = up into the sky!', '¡Rampa de alas! ¡Toca = al cielo!'],
+  'Mit der Harpune ab in die Tiefsee!': ['With the harpoon into the deep sea!', '¡Con el arpón al mar profundo!'],
+  // piñata
+  '¡Kai! Hilfst du uns mit der Piñata?': ['Kai! Will you help us with the piñata?', '¡Kai! ¿Nos ayudas con la piñata?'],
+  'Welche Piñata?': ['Which piñata?', '¿Qué piñata?'], 'Stern': ['Star', 'Estrella'], 'T-Rex': ['T-Rex', 'T-Rex'], 'Rakete': ['Rocket', 'Cohete'],
+  '¡Dale! Tippen = springen · nach rechts wischen = schlagen': ['¡Dale! Tap = jump · swipe right = hit', '¡Dale! Toca = saltar · desliza a la derecha = pegar'],
+  '¡Dale! Klick = springen · X = schlagen': ['¡Dale! Click = jump · X = hit', '¡Dale! Clic = saltar · X = pegar'],
+  'Tippen = springen  ·  → wischen = schlagen': ['Tap = jump  ·  → swipe = hit', 'Toca = saltar  ·  → desliza = pegar'],
+  'Klick / Leertaste = springen  ·  X = schlagen': ['Click / Space = jump  ·  X = hit', 'Clic / Espacio = saltar  ·  X = pegar'],
+  'Hochgezogen! Spring hoch und schlag zu!': ['Pulled up! Jump and hit it!', '¡La subieron! ¡Salta y pégale!'],
+  '¡Se acabó el tiempo! Keine Geschenke…': ['¡Se acabó el tiempo! No presents…', '¡Se acabó el tiempo! Sin regalos…'],
+  '¡PIÑATA! +15 Münzen · +1 Herz': ['¡PIÑATA! +15 coins · +1 heart', '¡PIÑATA! +15 monedas · +1 corazón'],
+  'Viel Spaß noch!': ['Have fun!', '¡Diviértanse!'], 'Strophe {a} / {b}': ['Verse {a} / {b}', 'Estrofa {a} / {b}'],
+  '¡FIESTA!': ['¡FIESTA!', '¡FIESTA!'], 'PIÑATA': ['PIÑATA', 'PIÑATA'],
+  // ---------- sea ----------
+  'DIE TIEFSEE': ['THE DEEP SEA', 'EL MAR PROFUNDO'], 'LEVEL 2 · UNTERWASSERWELT': ['LEVEL 2 · UNDERWATER WORLD', 'NIVEL 2 · MUNDO SUBMARINO'],
+  'Gedrückt halten (Tippen / Leertaste) = Propeller → Kai steigt. Loslassen = Kai sinkt.': ['Hold (tap / Space) = propeller → Kai rises. Let go = Kai sinks.', 'Mantén (toca / Espacio) = hélice → Kai sube. Suelta = Kai baja.'],
+  'Die Luft wird immer weniger – sammle Luftblasen! Ohne Luft verlierst du alle 2 Sek. ein Herz.': ['Your air keeps running out – collect air bubbles! Without air you lose a heart every 2 s.', 'El aire se acaba – ¡junta burbujas! Sin aire pierdes un corazón cada 2 s.'],
+  'Jeder Treffer kostet ein Herz. Schatztruhen schenken dir +2 Herzen.': ['Every hit costs a heart. Treasure chests give you +2 hearts.', 'Cada golpe cuesta un corazón. Los cofres te dan +2 corazones.'],
+  'Schießen mit der Harpune: X-Taste oder am Handy kurz nach rechts wischen (im Turbo und beim Kalmar).': ['Shoot the harpoon: X key, or swipe right on the phone (in turbo and against the squid).', 'Dispara el arpón: tecla X o desliza a la derecha en el móvil (en turbo y contra el calamar).'],
+  'Am Ende wartet der Riesenkalmar – triff sein Auge 3× mit der Harpune.': ['At the end the giant squid is waiting – hit its eye 3× with the harpoon.', 'Al final te espera el calamar gigante – dale 3× en el ojo con el arpón.'],
+  'Tippen oder Leertaste zum Abtauchen': ['Tap or press Space to dive', 'Toca o pulsa Espacio para bucear'],
+  'Strecke: {p}%   ·   Seesterne: {s}   ·   Perlen: {pe}': ['Distance: {p}%   ·   Starfish: {s}   ·   Pearls: {pe}', 'Recorrido: {p}%   ·   Estrellas de mar: {s}   ·   Perlas: {pe}'],
+  'Tipp: Achte auf die O₂-Luftblasen!': ['Tip: watch for the O₂ air bubbles!', 'Consejo: ¡fíjate en las burbujas de O₂!'],
+  'Tipp: Schatztruhen geben +2 Herzen!': ['Tip: treasure chests give +2 hearts!', 'Consejo: ¡los cofres dan +2 corazones!'],
+  'TIEFSEE': ['DEEP SEA', 'PROFUNDO'], 'KALMAR': ['SQUID', 'CALAMAR'], 'RIESENKALMAR': ['GIANT SQUID', 'CALAMAR GIGANTE'],
+  'BOOM! Seemine!': ['BOOM! Sea mine!', '¡BUM! ¡Mina marina!'], 'Bzzzt! Qualle!': ['Bzzzt! Jellyfish!', '¡Bzzzt! ¡Medusa!'], 'Au! Seeigel!': ['Ouch! Sea urchin!', '¡Ay! ¡Erizo de mar!'],
+  'Hai-Biss!': ['Shark bite!', '¡Mordida de tiburón!'], 'Autsch! Kugelfisch!': ['Ouch! Pufferfish!', '¡Ay! ¡Pez globo!'], 'Erwischt!': ['Got you!', '¡Te atrapó!'],
+  '+ LUFT': ['+ AIR', '+ AIRE'], 'KEINE LUFT! Schnell eine Luftblase!': ['NO AIR! Quick, grab a bubble!', '¡SIN AIRE! ¡Rápido, una burbuja!'],
+  'Tinte! Du siehst kaum noch was!': ['Ink! You can hardly see!', '¡Tinta! ¡Casi no ves nada!'],
+  'TREFFER! +2': ['HIT! +2', '¡IMPACTO! +2'], 'TURBO! Doppelt schnell – jetzt schießen!': ['TURBO! Double speed – shoot now!', '¡TURBO! Doble velocidad – ¡dispara!'],
+  'Turbo vorbei': ['Turbo over', 'Se acabó el turbo'], 'GRIND ↓': ['GRIND ↓', 'GRIND ↓'],
+  'SCHATZTRUHE! +2 Herzen · +3 Perlen': ['TREASURE CHEST! +2 hearts · +3 pearls', '¡COFRE! +2 corazones · +3 perlas'],
+  'Hallo Kai! Spielen wir Memory?': ['Hi Kai! Shall we play memory?', '¡Hola Kai! ¿Jugamos memorama?'],
+  'WAL-MEMORY': ['WHALE MEMORY', 'MEMORAMA DE LA BALLENA'],
+  'Finde alle Paare!   Paare: {p}/6   ·   Züge: {m}   ·   jedes Paar = +2 Seesterne': ['Find all pairs!   Pairs: {p}/6   ·   Moves: {m}   ·   each pair = +2 starfish', '¡Encuentra los pares!   Pares: {p}/6   ·   Jugadas: {m}   ·   cada par = +2 estrellas'],
+  'GESCHAFFT! +{s} Seesterne · +{p} Perlen': ['DONE! +{s} starfish · +{p} pearls', '¡LISTO! +{s} estrellas · +{p} perlas'],
+  'Danke Kai! Gute Reise!': ['Thanks Kai! Safe travels!', '¡Gracias Kai! ¡Buen viaje!'], 'Der Wal schwimmt weiter...': ['The whale swims on...', 'La ballena sigue nadando...'],
+  'DER RIESENKALMAR!': ['THE GIANT SQUID!', '¡EL CALAMAR GIGANTE!'], 'Schieß ihm 3× ins Auge!': ['Shoot it in the eye 3 times!', '¡Dispárale 3× en el ojo!'],
+  'TREFFER! Noch {n}×': ['HIT! {n} more', '¡IMPACTO! Faltan {n}'], 'Das Auge ist zu!': ['The eye is closed!', '¡El ojo está cerrado!'],
+  'VOLLTREFFER! Der Kalmar ist besiegt!': ['DIRECT HIT! The squid is defeated!', '¡GOLPE DIRECTO! ¡El calamar está vencido!'],
+  'Zurück an die Oberfläche!': ['Back to the surface!', '¡De vuelta a la superficie!'],
+  'X = schießen': ['X = shoot', 'X = disparar'], '→ nach rechts wischen = schießen': ['→ swipe right = shoot', '→ desliza a la derecha = disparar'],
+  // ---------- sky ----------
+  'DER HIMMEL': ['THE SKY', 'EL CIELO'], 'LEVEL 2 · HIMMELSWELT': ['LEVEL 2 · SKY WORLD', 'NIVEL 2 · MUNDO DEL CIELO'],
+  'Tippen / halten = mit den Flügeln schlagen → Kai steigt. Loslassen = Kai gleitet nach unten.': ['Tap / hold = flap the wings → Kai rises. Let go = Kai glides down.', 'Toca / mantén = aletear → Kai sube. Suelta = Kai planea hacia abajo.'],
+  'Lichtpfeile: X-Taste oder am Handy kurz nach rechts wischen. Schieß die Teufelchen ab!': ['Light arrows: X key, or swipe right on the phone. Shoot the little devils!', 'Flechas de luz: tecla X o desliza a la derecha en el móvil. ¡Dispara a los diablitos!'],
+  'Im OXXO auf der Wolke kaufst du die Harpune – ohne sie kommst du nicht in die Tiefsee.': ['In the OXXO on the cloud you buy the harpoon – without it you can\'t enter the deep sea.', 'En el OXXO de la nube compras el arpón – sin él no entras al mar profundo.'],
+  'Am Ende spielt der Engel eine Melodie – spiel sie auf dem Klavier nach.': ['At the end the angel plays a melody – play it back on the piano.', 'Al final el ángel toca una melodía – repítela en el piano.'],
+  'Tippen oder Leertaste zum Losfliegen': ['Tap or press Space to fly', 'Toca o pulsa Espacio para volar'],
+  'HIMMEL': ['SKY', 'CIELO'], 'HARFE': ['HARP', 'ARPA'],
+  'Teufelchen!': ['Little devil!', '¡Diablito!'], 'Dreizack!': ['Pitchfork!', '¡Tridente!'], 'Blitz!': ['Lightning!', '¡Rayo!'], 'Gewitterwolke!': ['Storm cloud!', '¡Nube de tormenta!'],
+  'TREFFER! +3': ['HIT! +3', '¡IMPACTO! +3'], 'Die Wolke löst sich auf!': ['The cloud is dissolving!', '¡La nube se deshace!'],
+  'REGENBOGEN-GRIND!': ['RAINBOW GRIND!', '¡GRIND DE ARCOÍRIS!'],
+  'Willkommen im OXXO!': ['Welcome to OXXO!', '¡Bienvenido a OXXO!'], 'Zu wenig Münzen!': ['Not enough coins!', '¡No tienes suficientes monedas!'],
+  'Gekauft!': ['Bought!', '¡Comprado!'], 'Schon gekauft': ['Already bought', 'Ya comprado'], 'Kaufen': ['Buy', 'Comprar'], 'Anziehen': ['Wear', 'Ponerse'], 'Angezogen': ['Wearing', 'Puesto'],
+  'Pflicht für die Tiefsee!': ['Needed for the deep sea!', '¡Necesario para el mar profundo!'],
+  'Turbo': ['Turbo', 'Turbo'], 'Doppelt schnell, doppelt so viel zu sammeln': ['Double speed, twice as much to collect', 'Doble velocidad, el doble para juntar'],
+  'Sternen-Rundumschuss': ['Star blast', 'Disparo de estrellas'], '8 Sterne in alle Richtungen': ['8 stars in all directions', '8 estrellas en todas direcciones'],
+  'Herz': ['Heart', 'Corazón'], '+1 Herz': ['+1 heart', '+1 corazón'],
+  'Rote Kappe': ['Red cap', 'Gorra roja'], 'Grüne Kappe': ['Green cap', 'Gorra verde'], 'Beanie': ['Beanie', 'Gorro'], 'Rucksack': ['Backpack', 'Mochila'],
+  'Rotes T-Shirt': ['Red T-shirt', 'Playera roja'], 'Gelbes T-Shirt': ['Yellow T-shirt', 'Playera amarilla'], 'Rote Schuhe': ['Red shoes', 'Tenis rojos'],
+  'Kleidung': ['Clothes', 'Ropa'], 'Münzen': ['Coins', 'Monedas'],
+  'Das OXXO auf der Wolke! Willst du reingehen?': ['The OXXO on the cloud! Want to go in?', '¡El OXXO en la nube! ¿Quieres entrar?'],
+  'Sternen-Rundumschuss aktiv!': ['Star blast active!', '¡Disparo de estrellas activo!'],
+  'Kai, ein Elfmeter-Duell gegen mich?': ['Kai, a penalty duel against me?', 'Kai, ¿un duelo de penales contra mí?'],
+  'ENGEL-ELFMETER': ['ANGEL PENALTIES', 'PENALES DEL ÁNGEL'],
+  'Tore: {g} / 3   ·   Schüsse: {s} / 5': ['Goals: {g} / 3   ·   Shots: {s} / 5', 'Goles: {g} / 3   ·   Tiros: {s} / 5'],
+  'Tippen / X = schießen, wenn der Pfeil richtig zeigt': ['Tap / X = shoot when the arrow points right', 'Toca / X = tirar cuando la flecha apunte bien'],
+  'TOR!': ['GOAL!', '¡GOOOL!'], 'Gehalten!': ['Saved!', '¡Atajada!'], 'Daneben!': ['Missed!', '¡Fuera!'],
+  'GEWONNEN! +15 Münzen · +1 Herz': ['YOU WON! +15 coins · +1 heart', '¡GANASTE! +15 monedas · +1 corazón'],
+  'Knapp verloren – weiter geht\'s!': ['Close one – let\'s go on!', 'Casi – ¡sigamos!'],
+  'Hör gut zu und spiel die Melodie nach!': ['Listen carefully and play the melody back!', '¡Escucha bien y repite la melodía!'],
+  'Hör zu…': ['Listen…', 'Escucha…'], 'Du bist dran!': ['Your turn!', '¡Te toca!'], 'Falsch – hör nochmal zu!': ['Wrong – listen again!', 'Incorrecto – ¡escucha otra vez!'],
+  'Versuch {a} / {b}': ['Try {a} / {b}', 'Intento {a} / {b}'],
+  'WUNDERSCHÖN! Der goldene Heiligenschein gehört dir!': ['BEAUTIFUL! The golden halo is yours!', '¡HERMOSO! ¡La aureola dorada es tuya!'],
+  'Wir üben nächstes Mal weiter!': ['We\'ll practise again next time!', '¡Practicamos la próxima vez!'],
+  'Die Himmelstreppe führt zurück in die Stadt…': ['The stairway leads back to the city…', 'La escalera te lleva de vuelta a la ciudad…'],
+  'Ich spiele langsamer…': ['I\'ll play slower…', 'Toco más despacio…'], 'Ich helfe dir ein bisschen…': ['I\'ll help you a little…', 'Te ayudo un poquito…'],
+  // ---------- level end ----------
+  'LEVEL 2 GESCHAFFT!': ['LEVEL 2 COMPLETE!', '¡NIVEL 2 COMPLETADO!'], 'LEVEL 3 FREIGESCHALTET': ['LEVEL 3 UNLOCKED', 'NIVEL 3 DESBLOQUEADO'],
+  'LEVEL 3: UNDER CONSTRUCTION': ['LEVEL 3: UNDER CONSTRUCTION', 'NIVEL 3: EN CONSTRUCCIÓN'],
+  'Perlen {p} × 5 + Seesterne {s} = {c} Münzen': ['Pearls {p} × 5 + starfish {s} = {c} coins', 'Perlas {p} × 5 + estrellas {s} = {c} monedas'],
+  'Münzen gesamt: {c}   ·   Herzen: {h}': ['Total coins: {c}   ·   Hearts: {h}', 'Monedas totales: {c}   ·   Corazones: {h}'],
+  'Piñata': ['Piñata', 'Piñata'], 'Wal-Memory': ['Whale memory', 'Memorama'], 'Elfmeter': ['Penalties', 'Penales'], 'Harfe': ['Harp', 'Arpa'],
+  'NEUES SPIEL': ['NEW GAME', 'NUEVO JUEGO'],
+  'ZURÜCK IN DER STADT': ['BACK IN THE CITY', 'DE VUELTA EN LA CIUDAD'],
+  'Ab zum Hafen – mit der Harpune in die Tiefsee!': ['Off to the harbor – into the deep sea with the harpoon!', '¡Al muelle – con el arpón al mar profundo!'],
+  'Tippen oder Leertaste zum Weiterfahren': ['Tap or press Space to continue', 'Toca o pulsa Espacio para continuar'],
+  'Der Riesenkalmar ist besiegt – Kai taucht zurück in die Stadt.': ['The giant squid is defeated – Kai swims back to the city.', 'El calamar gigante está vencido – Kai vuelve a la ciudad.'],
+};
+function tx(key, params) {
+  let s = key;
+  const i = LANGS.indexOf(SAVE.lang);
+  if (i > 0 && TR[key]) s = TR[key][i - 1];
+  if (params) for (const k in params) s = s.split('{' + k + '}').join(params[k]);
+  return s;
+}
+
+// ---------------- language picker (start screens) ----------------
+const LANG_BTNS = LANGS.map((l, i) => ({ l, x: W - 150 + i * 46, y: H - 40, w: 40, h: 28 }));
+function drawLangPicker() {
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = 'bold 11px Arial'; ctx.fillText(tx('Sprache'), W - 82, H - 50);
+  for (const b of LANG_BTNS) {
+    const on = SAVE.lang === b.l;
+    ctx.fillStyle = on ? '#ffd23a' : 'rgba(255,255,255,0.15)'; ctx.strokeStyle = on ? '#ffffff' : 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = on ? OUT : '#ffffff'; ctx.font = 'bold 13px Arial'; ctx.fillText(b.l.toUpperCase(), b.x + b.w / 2, b.y + b.h / 2 + 1);
+  }
+  ctx.restore();
+}
+function langPickerClick(p) {
+  for (const b of LANG_BTNS) if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) { SAVE.lang = b.l; writeSave(); return true; }
+  return false;
+}
+
+// ---------------- progress box (top left, like Level 1) ----------------
+function drawWorldIcon(type, cx, cy, done) {
+  ctx.save(); ctx.translate(cx, cy); ctx.lineJoin = 'round'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.3;
+  ctx.fillStyle = done ? '#2f8a5f' : 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = done ? '#ffffff' : 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.strokeStyle = OUT; ctx.lineWidth = 1.2;
+  if (type === 'city') { ctx.fillStyle = '#f6c94c'; ctx.fillRect(-6, -3, 5, 9); ctx.strokeRect(-6, -3, 5, 9); ctx.fillStyle = '#f28ab2'; ctx.fillRect(0, -6, 6, 12); ctx.strokeRect(0, -6, 6, 12); }
+  if (type === 'heaven') { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(-3, 2, 4, 0, Math.PI * 2); ctx.arc(2, 0, 5, 0, Math.PI * 2); ctx.arc(5, 3, 3, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(1, -6, 4, 1.5, 0, 0, Math.PI * 2); ctx.stroke(); }
+  if (type === 'sea') { ctx.fillStyle = '#36c6f4'; ctx.beginPath(); ctx.moveTo(-7, 2); ctx.quadraticCurveTo(-3, -4, 0, 2); ctx.quadraticCurveTo(3, -4, 7, 2); ctx.lineTo(7, 6); ctx.lineTo(-7, 6); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if (type === 'harpoon') { ctx.strokeStyle = '#a0703a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-6, 6); ctx.lineTo(4, -4); ctx.stroke(); ctx.fillStyle = '#d8dee6'; ctx.strokeStyle = OUT; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(7, -7); ctx.lineTo(1, -5); ctx.lineTo(5, -1); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if (done && type !== 'harpoon') { ctx.fillStyle = '#ffffff'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center'; ctx.fillText('✓', 7, 9); }
+  ctx.restore();
+}
+function drawLifeIcon(cx, cy, on) {
+  ctx.save(); ctx.translate(cx, cy); ctx.globalAlpha = on ? 1 : 0.3; ctx.strokeStyle = OUT; ctx.lineWidth = 1.2;
+  ctx.fillStyle = '#f2c26b'; ctx.beginPath(); ctx.moveTo(-7, 0); ctx.quadraticCurveTo(-8, 8, -5, 8); ctx.lineTo(5, 8); ctx.quadraticCurveTo(8, 8, 7, 0); ctx.closePath(); ctx.fill(); // hair
+  ctx.fillStyle = '#ffd9b8'; ctx.beginPath(); ctx.arc(0, 1, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = on ? SAVE.outfit.cap || '#1e4fa3' : '#888'; ctx.beginPath(); ctx.arc(0, -1, 6, Math.PI, 0); ctx.lineTo(10, -1); ctx.lineTo(6, 1); ctx.lineTo(-6, 1); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function drawProgressBox(x, y) {
+  ctx.save();
+  // lives (3 little Kai heads) – box to the right of the world icons
+  const lw = 76, w0 = SAVE.items.harpoon ? 116 : 92;
+  ctx.fillStyle = 'rgba(10,20,40,0.6)'; ctx.beginPath(); ctx.roundRect(x + w0 + 6, y, lw, 26, 10); ctx.fill();
+  for (let i = 0; i < LIVES_MAX; i++) drawLifeIcon(x + w0 + 22 + i * 22, y + 12, i < (SAVE.lives ?? LIVES_MAX));
+  const w = w0;
+  ctx.fillStyle = 'rgba(10,20,40,0.6)'; ctx.beginPath(); ctx.roundRect(x, y, w, 26, 10); ctx.fill();
+  drawWorldIcon('city', x + 15, y + 13, SAVE.done.city);
+  drawWorldIcon('heaven', x + 39, y + 13, SAVE.done.heaven);
+  drawWorldIcon('sea', x + 63, y + 13, SAVE.done.sea);
+  if (SAVE.items.harpoon) { ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(x + 78, y + 5, 1.5, 16); drawWorldIcon('harpoon', x + 96, y + 13, true); }
+  ctx.restore();
+  drawInvButton(x + w0 + 6 + lw + 6, y);
+}
