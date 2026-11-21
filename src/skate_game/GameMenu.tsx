@@ -14,6 +14,8 @@ interface GameMenuProps {
     setCharacter: (char: CharacterType) => void;
     startGame: () => void;
     onExit: () => void;
+    level2Unlocked?: boolean;
+    onLevel2?: () => void;
 }
 
 const GameMenu: React.FC<GameMenuProps> = ({
@@ -23,7 +25,9 @@ const GameMenu: React.FC<GameMenuProps> = ({
     character,
     setCharacter,
     startGame,
-    onExit
+    onExit,
+    level2Unlocked,
+    onLevel2
 }) => {
     const currentCharacterInfo = CHARACTERS.find(c => c.id === character);
     const defaultName = currentCharacterInfo ? currentCharacterInfo.defaultName.toUpperCase() : "PLAYER";
@@ -77,6 +81,15 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 }}
             />
             
+            {level2Unlocked && onLevel2 && (
+                <button
+                    onClick={onLevel2}
+                    className="mb-6 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-3 px-8 rounded-xl shadow-lg tracking-wider"
+                >
+                    ▶ LEVEL 2
+                </button>
+            )}
+
             <div className="relative group w-full max-w-xs mb-8 text-center">
                 <label className="block text-[10px] text-gray-500 uppercase tracking-[0.2em] font-bold mb-2">
                     Choose your own name

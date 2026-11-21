@@ -230,6 +230,21 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             </div>
         );
     }
+    // ---- Level 2 ----
+    // Level 1 counts as done when the 3 points are reached (they are saved in the browser).
+    // The "done" flag is saved too, so Level 2 stays open after closing the app.
+    const LEVEL1_DONE_KEY = 'invert61-level1-done';
+    const level2Unlocked =
+        (progress.knowledgePoints >= 2 && progress.skillPoints >= 1) ||
+        (() => { try { return localStorage.getItem(LEVEL1_DONE_KEY) === '1'; } catch { return false; } })();
+    useEffect(() => {
+        if (levelComplete) { try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ } }
+    }, [levelComplete]);
+    const startLevel2 = () => {
+        try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ }
+        window.location.href = `${import.meta.env.BASE_URL}level2.html`;
+    };
+
     return (
         <div
             ref={wrapperRef}
@@ -302,10 +317,13 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                         <div className="mt-5 text-2xl md:text-3xl font-black text-yellow-300">
                             LEVEL 2 UNLOCKED
                         </div>
-                        <div className="mt-2 text-lg md:text-xl font-bold text-gray-300">
-                            IN CONSTRUCTION
-                        </div>
                         <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+                            <button
+                                onClick={startLevel2}
+                                className="bg-yellow-400 hover:bg-yellow-300 text-black font-black py-3 px-8 rounded-xl shadow-lg"
+                            >
+                                ▶ LEVEL 2 STARTEN
+                            </button>
                             <button
                                 onClick={handlePlayAgain}
                                 className="bg-[#c52323] hover:bg-red-600 text-white font-black py-3 px-8 rounded-xl shadow-lg"
@@ -366,6 +384,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             </div>
             {uiState === "MENU" && (
                 <GameMenu
+                    level2Unlocked={level2Unlocked}
+                    onLevel2={startLevel2}
                     highScore={highScore}
                     userName={userName}
                     setUserName={setUserName}
