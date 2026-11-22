@@ -273,16 +273,19 @@ function screenP(e) { const r = canvas.getBoundingClientRect(), sc = Math.min(r.
 // left edge:  SPRUNG – tap = jump / push, hold = Kai rises (the touch simply goes on to the world as a normal tap)
 // right edge: SCHUSS – only shown while Kai can shoot (sky: light arrows, sea: harpoon, piñata: hit)
 // on the computer: right mouse button = shoot (click / Space = jump, X still works)
-const CTRL = { R: 56, jumpP: new Set(), shootP: new Set(), right: false };
+const CTRL = { R: 56, jumpP: new Set(), shootP: new Set(), right: false,
+  // the buttons are only for phones / tablets: shown after a finger touch, hidden again when a mouse is used
+  touch: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches) };
 const ctlOn = () => !TRANS && CUR && CUR.ctl && !CUR.S.noHud && !MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open;
-const jumpVisible = () => ctlOn() && CUR.ctl.showJump();
-const shootVisible = () => ctlOn() && CUR.ctl.canShoot();
+const canShootNow = () => ctlOn() && CUR.ctl.canShoot();
+const jumpVisible = () => CTRL.touch && ctlOn() && CUR.ctl.showJump();
+const shootVisible = () => CTRL.touch && canShootNow();
 const jumpC = () => ({ x: 20 + CTRL.R, y: VH - 20 - CTRL.R });
 const shootC = () => ({ x: W - 20 - CTRL.R, y: VH - 20 - CTRL.R });
 // generous touch zones at the bottom corners (a thumb does not hit exactly)
 const inShootZone = p => p.x > W - 220 && p.y > VH - 220;
 const inJumpZone = p => p.x < 220 && p.y > VH - 220;
-function ctlShoot() { if (shootVisible()) { Audio.init(); CUR.ctl.shoot(); } }
+function ctlShoot() { if (canShootNow()) { Audio.init(); CUR.ctl.shoot(); } }
 function ctlButton(c, pressed, label, icon) {
   const R = CTRL.R;
   ctx.save();
@@ -315,7 +318,7 @@ function drawControls() {
 }
 function updateControls() {
   // holding the shoot button (or the right mouse button) keeps shooting – the weapon's own cooldown sets the pace
-  if ((CTRL.shootP.size > 0 || CTRL.right) && shootVisible() && CUR.ctl.auto) CUR.ctl.shoot();
+  if ((CTRL.shootP.size > 0 || CTRL.right) && canShootNow() && CUR.ctl.auto) CUR.ctl.shoot();
 }
 // right mouse button: works even while the left button is held (that arrives as pointermove with new buttons)
 function mouseButtons(e) {
@@ -349,6 +352,7 @@ function drawExitButton() {
 
 canvas.addEventListener('pointerdown', e => {
   const p = screenP(e);
+  if (e.pointerType === 'touch') CTRL.touch = true; else if (e.pointerType === 'mouse') CTRL.touch = false;
   // right mouse button never jumps – it shoots
   if (e.pointerType === 'mouse' && e.button === 2) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); mouseButtons(e); return; }
   if (EXIT.btn && exitVisible() && inB(p, EXIT.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); toMainMenu(); return; }

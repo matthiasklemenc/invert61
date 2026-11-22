@@ -394,8 +394,8 @@ function drawHUD() {
     const t = tx('Rechtsklick / X = schießen');
     ctx.textAlign = 'right'; ctx.font = 'bold 14px Arial';
     const tw = ctx.measureText(t).width;
-    ctx.fillStyle = 'rgba(160,30,20,0.85)'; ctx.beginPath(); ctx.roundRect(W - tw - 164, H - 44, tw + 22, 30, 12); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.fillText(t, W - 153, H - 28);
+    ctx.fillStyle = 'rgba(160,30,20,0.85)'; ctx.beginPath(); ctx.roundRect(W - tw - 34, H - 44, tw + 22, 30, 12); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(t, W - 23, H - 28);
   }
   ctx.restore();
 }

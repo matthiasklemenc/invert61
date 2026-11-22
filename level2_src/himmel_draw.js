@@ -528,7 +528,7 @@ function drawHUD() {
   }
   if (S.phase === 'play') {
     drawProgress();
-    if (!isTouch) { const hint = tx('Rechtsklick / X = schießen'); ctx.textAlign = 'right'; ctx.font = 'bold 12px Arial'; ctx.fillStyle = 'rgba(20,40,80,0.7)'; ctx.fillText(hint, W - 130, H - 14); }
+    if (!isTouch) { const hint = tx('Rechtsklick / X = schießen'); ctx.textAlign = 'right'; ctx.font = 'bold 12px Arial'; ctx.fillStyle = 'rgba(20,40,80,0.7)'; ctx.fillText(hint, W - 16, H - 14); }
   }
   if (S.msgTimer > 0) { ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20); ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial'; ctx.strokeText(S.msg, W / 2, 80); ctx.fillText(S.msg, W / 2, 80); ctx.globalAlpha = 1; }
   ctx.restore();
