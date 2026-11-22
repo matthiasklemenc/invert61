@@ -478,7 +478,11 @@ function drawTruck(b) {
 }
 function drawProjectile(p) {
   ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.lineJoin = 'round'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
-  if (p.kind === 'bin') {
+  if (p.kind === 'ramp') {
+    // the boss ramp flying out of the garbage truck
+    ctx.fillStyle = '#ffb02e'; ctx.beginPath(); ctx.moveTo(-48, 18); ctx.quadraticCurveTo(19, 14, 48, -18); ctx.lineTo(48, 18); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#9aa6b1'; ctx.fillRect(45, -18, 6, 36); ctx.strokeRect(45, -18, 6, 36);
+  } else if (p.kind === 'bin') {
     ctx.fillStyle = '#6b7884'; ctx.beginPath(); ctx.roundRect(-14, -18, 28, 36, 4); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#4a525c'; ctx.fillRect(-16, -20, 32, 6); ctx.strokeRect(-16, -20, 32, 6);
     ctx.strokeStyle = 'rgba(255,255,255,0.3)'; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * 7, -10); ctx.lineTo(i * 7, 14); ctx.stroke(); }

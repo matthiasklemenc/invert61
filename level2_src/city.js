@@ -259,7 +259,7 @@ const DEF = {
   rail:     { w: 170, h: 42, grind: true },
   car:      { w: 160, h: 54, solid: true, platform: true, topX1: 28, topX2: 120 },
   icecream: { w: 200, h: 104, solid: true, platform: true, topX1: 6, topX2: 194 },
-  taco:     { w: 130, h: 72, solid: true },
+  taco:     { w: 130, h: 72, solid: true, platform: true, topX1: 4, topX2: 126 },   // like the ice-cream van: jump on top, ride / jump off again
   hole:     { w: 74, h: 0 },
   ramp:     { w: 96, h: 36 },
   dog:      { w: 46, h: 30, solid: true },
@@ -581,9 +581,11 @@ function updateBoss(dt) {
   b.rampT -= dt;
   if (b.rampT < 60 && b.throwT < 60) b.throwT = 60;   // no trash right before a ramp
   if (b.rampT <= 0) {
-    const o = addObject('ramp', b.x - 120); o.bossRamp = true;
+    // the truck THROWS the ramp out of the back – it flies in an arc, does a flip and lands behind the truck
+    const hx = b.x - 20, landC = b.x - 72;
     S.projectiles = S.projectiles.filter(p => p.x < b.x - 260 || p.x > b.x);   // keep the way to the ramp clear
-    flash(tx('Rampe! Fahr drüber – aufs Dach!'), 90);
+    S.projectiles.push({ kind: 'ramp', x: hx, y: FLOOR - 110, vx: (landC - hx) / 46, vy: -6.5, rot: 0, r: 18, ground: false });
+    Audio.play('throwit');
     b.rampT = rand(300, 380);
   }
 }
@@ -592,11 +594,18 @@ function updateProjectiles(dt) {
   for (const p of S.projectiles) {
     if (p.ground) { p.x += (p.vx - S.speed) * dt; if (p.kind !== 'bag') p.rot -= (p.kind === 'bin' ? 0.12 : 0.3) * dt; }
     else {
-      p.x += p.vx * dt; p.vy += 0.35 * dt; p.y += p.vy * dt; p.rot += 0.15 * dt;
+      p.x += p.vx * dt; p.vy += 0.35 * dt; p.y += p.vy * dt; p.rot += (p.kind === 'ramp' ? 0.137 : 0.15) * dt;
+      if (p.kind === 'ramp' && p.y >= FLOOR - 18 && p.vy > 0) {
+        // the thrown ramp lands on the street → it becomes the real ramp up to the roof
+        const o = addObject('ramp', p.x - 48); o.bossRamp = true; p.dead = true;
+        burst(p.x, FLOOR - 4, '#8a6a3a', 12, 3); Audio.play('stomp'); S.shake = Math.max(S.shake, 6);
+        flash(tx('Rampe! Fahr drüber – aufs Dach!'), 90);
+        continue;
+      }
       if (p.y >= FLOOR - p.r) { p.y = FLOOR - p.r; p.ground = true; p.vx = 0; p.rot = 0; burst(p.x, FLOOR - 4, '#8a6a3a', 6, 2); }
     }
     // hit box: Kai's whole body
-    if (!p.dead && p.x + p.r > k.x - 18 && p.x - p.r < k.x + 30 && p.y + p.r > k.y - 100 && p.y - p.r < k.y - 4) {
+    if (!p.dead && p.kind !== 'ramp' && p.x + p.r > k.x - 18 && p.x - p.r < k.x + 30 && p.y + p.r > k.y - 100 && p.y - p.r < k.y - 4) {
       if (hurt(p.kind === 'bin' ? tx('Mülltonne!') : p.kind === 'bag' ? tx('Müllsack!') : tx('Dosen!'), p.x, p.y)) { p.dead = true; burst(p.x, p.y, '#8a6a3a', 10); }
     }
   }
