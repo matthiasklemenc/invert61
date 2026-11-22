@@ -683,14 +683,14 @@ function update(dt) {
   const body = { x1: k.x - 14, x2: k.x + 22, y1: k.y - 100, y2: k.y - 4 };
   for (const o of S.objects) {
     if (o.done) continue;
-    if (o.type === 'coin') { if (o.x + o.r > k.x - 26 && o.x - o.r < k.x + 42 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; S.coins++; burst(o.x, o.y, '#ffd23a', 8, 3); Audio.play('coin'); } continue; }
+    if (o.type === 'coin') { if (o.x + o.r > k.x - 43 && o.x - o.r < k.x + 44 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; S.coins++; burst(o.x, o.y, '#ffd23a', 8, 3); Audio.play('coin'); } continue; }
     if (o.type === 'icecream' && !o.coneTaken) {
       const cx = o.x + 160, cy = o.top - 26;
-      if (cx + 14 > k.x - 26 && cx - 14 < k.x + 42 && cy + 18 > k.y - 114 && cy - 14 < k.y + 4) {
+      if (cx + 14 > k.x - 43 && cx - 14 < k.x + 44 && cy + 18 > k.y - 114 && cy - 14 < k.y + 4) {
         o.coneTaken = true; S.hearts++; S.heartFlash = -40; burst(cx, cy, '#ff8fb8', 18, 4); burst(cx, cy, '#ffd23a', 8, 3); Audio.play('taco'); flash(tx('EIS! +1 Herz'), 90);
       }
     }
-    if (o.type === 'tacoItem') { if (o.x + o.r > k.x - 26 && o.x - o.r < k.x + 42 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; S.hearts += 2; S.heartFlash = -40; burst(o.x, o.y, '#ffd23a', 20, 5); burst(o.x, o.y, '#ff5a7a', 10, 4); Audio.play('taco'); flash(tx('TACO! +2 Herzen'), 100); } continue; }
+    if (o.type === 'tacoItem') { if (o.x + o.r > k.x - 43 && o.x - o.r < k.x + 44 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; S.hearts += 2; S.heartFlash = -40; burst(o.x, o.y, '#ffd23a', 20, 5); burst(o.x, o.y, '#ff5a7a', 10, 4); Audio.play('taco'); flash(tx('TACO! +2 Herzen'), 100); } continue; }
     if (!o.solid || o.hit || o.spun || k.platform === o || k.natas) continue;
     const ox1 = o.x + 4, ox2 = o.x + o.w - 4, oy1 = o.top + 6;
     if (body.x2 > ox1 && body.x1 < ox2 && body.y2 > oy1 && body.y1 < FLOOR) {

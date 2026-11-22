@@ -21,7 +21,8 @@ const RB = { base: FLOOR - 78, h: 118 };
 const ceilY = () => Math.min(100, 150 - DY);     // highest point Kai can fly (just under the HUD)
 const skyY = (a, b) => rand(ceilY() + a, b);       // random height inside the whole open sky
 // does a point (with some padding) touch Kai anywhere – head, wings, body, legs, board?
-function onKai(px, py, pad) { const k = S.kai; return px > k.x - 34 - pad && px < k.x + 44 + pad && py > k.y - 118 - pad && py < k.y + 8 + pad; }
+// the whole figure counts: head to board, board tail (-43) to nose (+44)
+function onKai(px, py, pad) { const k = S.kai; return px > k.x - 43 - pad && px < k.x + 44 + pad && py > k.y - 118 - pad && py < k.y + 8 + pad; }
 // small OXXO up in the clouds (about twice the size of Kai's head)
 const OXXO_W = 108, OXXO_H = 68;      // twice the first size (the screen is taller now)
 function touchesOxxo(o) {
@@ -504,7 +505,7 @@ function update(dt) {
     if (o.type === 'devil' && onKai(o.x, o.y, 16)) hurt('Teufelchen!', o.x, o.y);
     if (o.type === 'storm' && onKai(o.x, o.y, o.r * 0.7)) hurt('Gewitterwolke!', o.x, o.y);
     if (o.type === 'lightning' && o.t > 60 && Math.abs(o.x + o.w / 2 - kx) < o.w / 2 + 14) hurt('Blitz!', kx, ky);
-    if (o.type === 'coin' && o.x + o.r > k.x - 26 && o.x - o.r < k.x + 42 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; coinGot(1, o.x, o.y); }
+    if (o.type === 'coin' && onKai(o.x, o.y, o.r)) { o.done = true; coinGot(1, o.x, o.y); }
     if (o.type === 'cloudp' && o.life <= 0) o.done = true;
   }
   // arrows hit devils (and burst storm clouds)

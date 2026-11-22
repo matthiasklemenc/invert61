@@ -211,6 +211,20 @@ function spawnTurboWave() {
 
 // ================= HARPOON =================
 // one kick upwards per tap / click / Space – fast taps keep climbing
+// ---- touching Kai / Bali: the WHOLE body counts (helmet + head, chest, legs, the board from tail to nose, air tank) ----
+const BODY = [
+  { x: 4, y: -92, r: 26 },     // head in the diving helmet
+  { x: 2, y: -64, r: 20 },     // chest / t-shirt
+  { x: 2, y: -38, r: 18 },     // hips and legs
+  { x: -21, y: -66, r: 12 },   // air tank on the back
+];
+function bodyHit(px, py, r) {
+  const k = S.kai;
+  for (const b of BODY) if (Math.hypot(px - (k.x + b.x), py - (k.y + b.y)) < b.r + r) return true;
+  // the board: a capsule from the tail (x -42) to the nose (x +43), feet included
+  const bx = clamp(px, k.x - 42, k.x + 43);
+  return Math.hypot(px - bx, py - (k.y - 12)) < 11 + r;
+}
 function tapHop() { const k = S.kai; k.platform = null; k.onRail = false; k.vy = Math.max(-7.5, Math.min(k.vy, 0) - 5); k.tapT = 20; for (let i = 0; i < 4; i++) S.bubbles.push({ x: k.x - 30 + rand(-8, 8), y: k.y - 20, vx: rand(-1, 0), vy: rand(-0.5, 0.5), r: rand(2, 4), life: 1 }); }
 const harpoonTip = (h, d) => ({ x: h.x + Math.cos(h.rot || 0) * d, y: h.y + Math.sin(h.rot || 0) * d });
 function fireHarpoon() {
@@ -414,7 +428,7 @@ function updateBoss(dt) {
       const reach = s.t < 85 ? (s.t - 60) / 25 : 1;
       const tipX = b.x - 120 - reach * (b.x - 180);
       const k = S.kai, ky = k.y - 46;
-      if (k.x + 30 > tipX && Math.abs(ky - s.y) < 30) hurt('tentacle', k.x + 20, ky);
+      if (k.x + 45 > tipX && s.y > k.y - 120 && s.y < k.y + 4) hurt('tentacle', k.x + 20, s.y);   // the tentacle hits wherever it touches the body
     }
     if (s.t === 60 || (s.t > 60 && s.t - dt <= 60)) Audio.play('slap');
     if (s.t > 135) { b.slam = null; b.slamTimer = rand(300, 420) - (3 - b.hp) * 50; }
@@ -587,8 +601,7 @@ function update(dt) {
       }
       if (o.done) continue;
     }
-    const d = Math.hypot(o.x - kx, o.y - ky);
-    if (d < kr + o.r) {
+    if (bodyHit(o.x, o.y, o.r)) {
       if (['mine', 'jelly', 'minijelly', 'urchin', 'shark', 'puffer', 'octopus', 'minisquid'].includes(o.type)) {
         if (hurt(o.type, o.x, o.y) && (o.type === 'mine' || o.type === 'minisquid' || o.type === 'minijelly')) o.done = true;
       } else {
