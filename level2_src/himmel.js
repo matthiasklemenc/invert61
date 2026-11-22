@@ -207,14 +207,19 @@ const SHOP = [
   { id: 'turbo', name: 'Turbo', desc: 'Doppelt schnell, doppelt so viel zu sammeln', price: 25, kind: 'power' },
   { id: 'star', name: 'Sternen-Rundumschuss', desc: '8 Sterne in alle Richtungen', price: 30, kind: 'power' },
   { id: 'heart', name: 'Herz', desc: '+1 Herz', price: 20, kind: 'power' },
-  { id: 'capRed', name: 'Rote Kappe', price: 10, kind: 'cloth', apply: o => { o.cap = '#d8352c'; o.beanie = false; } },
-  { id: 'capGreen', name: 'Grüne Kappe', price: 10, kind: 'cloth', apply: o => { o.cap = '#2f8a5f'; o.beanie = false; } },
+  { id: 'capRed', who: 'kai', name: 'Rote Kappe', price: 10, kind: 'cloth', apply: o => { o.cap = '#d8352c'; o.beanie = false; } },
+  { id: 'capGreen', who: 'kai', name: 'Grüne Kappe', price: 10, kind: 'cloth', apply: o => { o.cap = '#2f8a5f'; o.beanie = false; } },
+  { id: 'capBali', who: 'bali', name: 'Schildkappe', desc: 'Kappe für Bali', price: 10, kind: 'cloth', apply: o => { o.cap = '#f48fb8'; o.beanie = false; } },
+  { id: 'shorts', who: 'bali', name: 'Kurze Hose', desc: 'Jeans-Shorts für den Sommer', price: 15, kind: 'cloth', apply: o => { o.bottom = 'shorts'; } },
+  { id: 'skirt', who: 'bali', name: 'Rock', desc: 'Rock bis zu den Knien', price: 15, kind: 'cloth', apply: o => { o.bottom = 'skirt'; } },
   { id: 'beanie', name: 'Beanie', price: 15, kind: 'cloth', apply: o => { o.beanie = true; } },
   { id: 'backpack', name: 'Rucksack', price: 20, kind: 'cloth', apply: o => { o.backpack = !o.backpack; } },
   { id: 'teeRed', name: 'Rotes T-Shirt', price: 10, kind: 'cloth', apply: o => { o.tee = '#c8352c'; } },
   { id: 'teeYellow', name: 'Gelbes T-Shirt', price: 10, kind: 'cloth', apply: o => { o.tee = '#e0a81e'; } },
   { id: 'shoesRed', name: 'Rote Schuhe', price: 15, kind: 'cloth', apply: o => { o.shoes = '#d8352c'; } },
 ];
+// what the OXXO sells depends on who is riding (Kai or Bali)
+const shopList = () => SHOP.filter(forChar);
 const SHOP_CARD = { cols: 6, w: 172, h: 112, gap: 10 };
 SHOP_CARD.x0 = (W - (SHOP_CARD.cols * SHOP_CARD.w + (SHOP_CARD.cols - 1) * SHOP_CARD.gap)) / 2; SHOP_CARD.y0 = 52;
 function shopCardRect(i) { const c = i % SHOP_CARD.cols, r = Math.floor(i / SHOP_CARD.cols); return { x: SHOP_CARD.x0 + c * (SHOP_CARD.w + SHOP_CARD.gap), y: SHOP_CARD.y0 + r * (SHOP_CARD.h + SHOP_CARD.gap), w: SHOP_CARD.w, h: SHOP_CARD.h }; }
@@ -227,7 +232,7 @@ function shopOwned(it) {
 }
 function shopClick(p) {
   if (inRect(p, BTN.shopDone)) { leaveShop(); return; }
-  SHOP.forEach((it, i) => {
+  shopList().forEach((it, i) => {
     if (!inRect(p, shopCardRect(i))) return;
     const owned = shopOwned(it);
     if (owned && it.kind === 'cloth') { it.apply(SAVE.outfit); writeSave(); Audio.play('flip'); S.shopMsg = tx('Angezogen'); S.shopMsgT = 60; return; }

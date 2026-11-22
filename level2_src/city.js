@@ -121,7 +121,7 @@ function sayAhoi() {
   try {
     if (!Audio.sfxOn || !window.speechSynthesis) return;
     const l = SAVE.lang || 'de';
-    const u = new SpeechSynthesisUtterance({ de: 'Ahoi, Kapitän Kai!', en: 'Ahoy, Captain Kai!', es: '¡Ahoy, capitán Kai!' }[l] || 'Ahoi, Kapitän Kai!');
+    const u = new SpeechSynthesisUtterance(tx('Ahoi, Kapitän Kai!'));      // "… Kapitän Bali!" when Bali rides
     u.lang = { de: 'de-DE', en: 'en-US', es: 'es-MX' }[l] || 'de-DE'; u.rate = 1.05; u.pitch = 1.3; u.volume = 1;
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   } catch (e) {}

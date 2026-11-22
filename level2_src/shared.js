@@ -7,7 +7,11 @@ const SAVE_DEFAULT = {
   lang: 'de', hearts: 5, lives: 3, coins: 0, pearls: 0, starfish: 0,
   items: { harpoon: false, star: false },
   weapon: { sky: 'arrow', sea: 'harpoon' },                   // chosen weapon in the sky (light arrows / star blast)
-  outfit: { tee: '#1f3c6e', cap: '#1e4fa3', beanie: false, backpack: false, shoes: '#1b1b22', halo: false },
+  outfit: { char: 'kai', tee: '#1f3c6e', cap: '#1e4fa3', beanie: false, backpack: false, shoes: '#1b1b22', halo: false },
+  // two playable characters, each with her / his own clothes. SAVE.outfit is always the one being played.
+  char: 'kai',
+  outfitKai: null,
+  outfitBali: { char: 'bali', tee: '#f6a3c4', cap: null, beanie: false, backpack: false, shoes: '#ffffff', halo: false, bottom: 'jeans' },
   owned: {},                                   // bought clothes
   done: { city: false, heaven: false, sea: false },
   mini: { pinata: null, whale: null, football: null, harp: null },
@@ -16,12 +20,24 @@ const SAVE_DEFAULT = {
 function loadSave() {
   try {
     const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
+    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
   } catch (e) {}
   return JSON.parse(JSON.stringify(SAVE_DEFAULT));
 }
 const SAVE = loadSave();
 SAVE.weapon = Object.assign({ sky: 'arrow', sea: 'harpoon' }, SAVE.weapon); SAVE.owned = SAVE.owned || {}; if (SAVE.outfit.halo) SAVE.owned.halo = true;
+SAVE.char = SAVE.char === 'bali' ? 'bali' : 'kai'; SAVE.outfit.char = SAVE.char;
+// switch between Kai and Bali: the clothes of the one who leaves are kept, the other one's clothes come back
+function setCharacter(c) {
+  if (c !== 'kai' && c !== 'bali') return;
+  if (SAVE.char === c) return;
+  if (SAVE.char === 'bali') SAVE.outfitBali = SAVE.outfit; else SAVE.outfitKai = SAVE.outfit;
+  SAVE.char = c;
+  SAVE.outfit = c === 'bali' ? Object.assign({}, SAVE_DEFAULT.outfitBali, SAVE.outfitBali) : Object.assign({}, SAVE_DEFAULT.outfit, SAVE.outfitKai || {});
+  SAVE.outfit.char = c;
+  writeSave();
+}
+const forChar = it => !it.who || it.who === SAVE.char;   // items only one of the two can wear
 function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {} }
 function resetSave(keepLang = true) { const lang = SAVE.lang; Object.assign(SAVE, JSON.parse(JSON.stringify(SAVE_DEFAULT))); if (keepLang) SAVE.lang = lang; writeSave(); }
 // remember the state at the start of a world, so a game over only restarts that world
@@ -63,19 +79,28 @@ const INV_WEAPONS = [
 ];
 const OUTFIT_GROUPS = [
   { label: 'Kopf', opts: [
-    { id: 'capBlue', name: 'Blaue Kappe', sw: '#1e4fa3', owned: () => true, worn: o => !o.beanie && (o.cap || '#1e4fa3') === '#1e4fa3', apply: o => { o.cap = '#1e4fa3'; o.beanie = false; } },
-    { id: 'capRed', name: 'Rote Kappe', sw: '#d8352c', worn: o => !o.beanie && o.cap === '#d8352c', apply: o => { o.cap = '#d8352c'; o.beanie = false; } },
-    { id: 'capGreen', name: 'Grüne Kappe', sw: '#2f8a5f', worn: o => !o.beanie && o.cap === '#2f8a5f', apply: o => { o.cap = '#2f8a5f'; o.beanie = false; } },
+    { id: 'capBlue', who: 'kai', name: 'Blaue Kappe', sw: '#1e4fa3', owned: () => true, worn: o => !o.beanie && (o.cap || '#1e4fa3') === '#1e4fa3', apply: o => { o.cap = '#1e4fa3'; o.beanie = false; } },
+    { id: 'capRed', who: 'kai', name: 'Rote Kappe', sw: '#d8352c', worn: o => !o.beanie && o.cap === '#d8352c', apply: o => { o.cap = '#d8352c'; o.beanie = false; } },
+    { id: 'capGreen', who: 'kai', name: 'Grüne Kappe', sw: '#2f8a5f', worn: o => !o.beanie && o.cap === '#2f8a5f', apply: o => { o.cap = '#2f8a5f'; o.beanie = false; } },
+    { id: 'hairFree', who: 'bali', name: 'Ohne Mütze', sw: '#e8cd8e', owned: () => true, worn: o => !o.beanie && !o.cap, apply: o => { o.cap = null; o.beanie = false; } },
+    { id: 'capBali', who: 'bali', name: 'Schildkappe', sw: '#f48fb8', worn: o => !o.beanie && o.cap === '#f48fb8', apply: o => { o.cap = '#f48fb8'; o.beanie = false; } },
     { id: 'capGold', name: 'Goldene Kappe', sw: '#e8b923', worn: o => !o.beanie && o.cap === '#e8b923', apply: o => { o.cap = '#e8b923'; o.beanie = false; } },
     { id: 'beanie', name: 'Beanie', sw: '#7a3fb8', worn: o => !!o.beanie, apply: o => { o.beanie = true; } },
   ] },
   { label: 'T-Shirt', opts: [
-    { id: 'teeBlue', name: 'Blaues T-Shirt', sw: '#1f3c6e', owned: () => true, worn: o => (o.tee || '#1f3c6e') === '#1f3c6e', apply: o => { o.tee = '#1f3c6e'; } },
+    { id: 'teeBlue', who: 'kai', name: 'Blaues T-Shirt', sw: '#1f3c6e', owned: () => true, worn: o => (o.tee || '#1f3c6e') === '#1f3c6e', apply: o => { o.tee = '#1f3c6e'; } },
+    { id: 'teePink', who: 'bali', name: 'Rosa T-Shirt', sw: '#f6a3c4', owned: () => true, worn: o => (o.tee || '#f6a3c4') === '#f6a3c4', apply: o => { o.tee = '#f6a3c4'; } },
     { id: 'teeRed', name: 'Rotes T-Shirt', sw: '#c8352c', worn: o => o.tee === '#c8352c', apply: o => { o.tee = '#c8352c'; } },
     { id: 'teeYellow', name: 'Gelbes T-Shirt', sw: '#e0a81e', worn: o => o.tee === '#e0a81e', apply: o => { o.tee = '#e0a81e'; } },
   ] },
+  { label: 'Hose', opts: [
+    { id: 'jeans', who: 'bali', name: 'Jeans', sw: '#4a78b8', owned: () => true, worn: o => (o.bottom || 'jeans') === 'jeans', apply: o => { o.bottom = 'jeans'; } },
+    { id: 'shorts', who: 'bali', name: 'Kurze Hose', sw: '#4a78b8', worn: o => o.bottom === 'shorts', apply: o => { o.bottom = 'shorts'; } },
+    { id: 'skirt', who: 'bali', name: 'Rock', sw: '#d94f7c', worn: o => o.bottom === 'skirt', apply: o => { o.bottom = 'skirt'; } },
+  ] },
   { label: 'Schuhe', opts: [
-    { id: 'shoesDark', name: 'Schwarze Schuhe', sw: '#1b1b22', owned: () => true, worn: o => (o.shoes || '#1b1b22') === '#1b1b22', apply: o => { o.shoes = '#1b1b22'; } },
+    { id: 'shoesDark', who: 'kai', name: 'Schwarze Schuhe', sw: '#1b1b22', owned: () => true, worn: o => (o.shoes || '#1b1b22') === '#1b1b22', apply: o => { o.shoes = '#1b1b22'; } },
+    { id: 'shoesWhite', who: 'bali', name: 'Weisse Schuhe', sw: '#ffffff', owned: () => true, worn: o => (o.shoes || '#ffffff') === '#ffffff', apply: o => { o.shoes = '#ffffff'; } },
     { id: 'shoesRed', name: 'Rote Schuhe', sw: '#d8352c', worn: o => o.shoes === '#d8352c', apply: o => { o.shoes = '#d8352c'; } },
   ] },
   { label: 'Extras', toggle: true, opts: [
@@ -83,8 +108,13 @@ const OUTFIT_GROUPS = [
     { id: 'halo', name: 'Heiligenschein', sw: '#ffd23a', worn: o => !!o.halo, apply: o => { o.halo = !o.halo; } },
   ] },
 ];
+// the two characters (first row in ITEMS)
+const INV_CHARS = [
+  { id: 'kai', name: 'Kai', worn: () => SAVE.char === 'kai' },
+  { id: 'bali', name: 'Bali', worn: () => SAVE.char === 'bali' },
+];
 const optOwned = it => it.owned ? it.owned() : !!SAVE.owned[it.id];
-function invCount() { return INV_WEAPONS.filter(w => w.owned() && w.id !== 'arrow').length + OUTFIT_GROUPS.reduce((n, g) => n + g.opts.filter(o => !o.owned && optOwned(o)).length, 0); }
+function invCount() { return INV_WEAPONS.filter(w => w.owned() && w.id !== 'arrow').length + OUTFIT_GROUPS.reduce((n, g) => n + g.opts.filter(o => forChar(o) && !o.owned && optOwned(o)).length, 0); }
 function drawInvButton(x, y) {
   const b = { x, y, w: 92, h: 26 }; INV.btn = b;
   ctx.save(); ctx.fillStyle = INV.open ? 'rgba(255,210,58,0.95)' : 'rgba(10,20,40,0.6)'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill();
@@ -109,6 +139,18 @@ function drawInvSwatch(id, sw, cx, cy) {
   else if (id === 'beanie') { ctx.beginPath(); ctx.arc(0, 3, 7, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(0, -5, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   else if (id.startsWith('tee')) { ctx.beginPath(); ctx.moveTo(-8, -5); ctx.lineTo(-3, -7); ctx.lineTo(3, -7); ctx.lineTo(8, -5); ctx.lineTo(6, -1); ctx.lineTo(4, -2); ctx.lineTo(4, 7); ctx.lineTo(-4, 7); ctx.lineTo(-4, -2); ctx.lineTo(-6, -1); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else if (id.startsWith('shoes')) { ctx.beginPath(); ctx.moveTo(-8, 3); ctx.lineTo(-8, -3); ctx.lineTo(-1, -3); ctx.quadraticCurveTo(8, -1, 9, 4); ctx.lineTo(-8, 4); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (id === 'kai' || id === 'bali') {
+    // little head: Kai with his blue cap, Bali with blond hair
+    if (id === 'bali') { ctx.fillStyle = '#e8cd8e'; ctx.beginPath(); ctx.moveTo(-8, -3); ctx.quadraticCurveTo(-8, -10, 0, -10); ctx.quadraticCurveTo(8, -10, 8, -3); ctx.lineTo(8, 7); ctx.lineTo(-8, 7); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = id === 'bali' ? '#f6d3b8' : '#f6cfa6'; ctx.beginPath(); ctx.arc(1, 1, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (id === 'kai') { ctx.fillStyle = '#f2c14e'; ctx.fillRect(-8, -1, 4, 7); ctx.fillStyle = '#1e4fa3'; ctx.beginPath(); ctx.arc(1, -2, 6.5, Math.PI, 0); ctx.lineTo(11, -2); ctx.lineTo(-6, -2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    else { ctx.fillStyle = '#e8cd8e'; ctx.beginPath(); ctx.arc(1, -2, 6.5, Math.PI, 0); ctx.quadraticCurveTo(3, -4, -5, -1); ctx.closePath(); ctx.fill(); }
+    ctx.fillStyle = OUT; ctx.beginPath(); ctx.arc(4, 1, 1, 0, Math.PI * 2); ctx.fill();
+  }
+  else if (id === 'hairFree') { ctx.beginPath(); ctx.moveTo(-7, 6); ctx.quadraticCurveTo(-8, -8, 0, -8); ctx.quadraticCurveTo(8, -8, 7, 6); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (id === 'jeans') { ctx.beginPath(); ctx.moveTo(-6, -7); ctx.lineTo(6, -7); ctx.lineTo(7, 8); ctx.lineTo(2, 8); ctx.lineTo(0, -1); ctx.lineTo(-2, 8); ctx.lineTo(-7, 8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (id === 'shorts') { ctx.beginPath(); ctx.moveTo(-7, -5); ctx.lineTo(7, -5); ctx.lineTo(8, 4); ctx.lineTo(1, 4); ctx.lineTo(0, 0); ctx.lineTo(-1, 4); ctx.lineTo(-8, 4); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (id === 'skirt') { ctx.beginPath(); ctx.moveTo(-5, -6); ctx.lineTo(5, -6); ctx.lineTo(9, 7); ctx.quadraticCurveTo(0, 9, -9, 7); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else if (id === 'halo') { ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(0, 0, 8, 3, 0, 0, Math.PI * 2); ctx.stroke(); }
   else { ctx.beginPath(); ctx.roundRect(-6, -7, 12, 14, 3); ctx.fill(); ctx.stroke(); }
   ctx.restore();
@@ -119,10 +161,12 @@ function drawInventoryPanel() {
   const chipW = 150, chipH = 30, gap = 6, labelW = 74, cols = 4;
   const x = 12, y0 = INV.btn.y + INV.btn.h + 6, w = labelW + cols * (chipW + gap) + 12;
   const rows = [];
+  rows.push({ head: tx('FIGUR') });
+  rows.push({ label: '', items: INV_CHARS.map(it => ({ it, figure: true })) });
   rows.push({ head: tx('WAFFEN') });
   rows.push({ label: '', items: INV_WEAPONS.filter(it => it.owned()).map(it => ({ it, weapon: true })) });
   rows.push({ head: tx('OUTFIT') });
-  for (const g of OUTFIT_GROUPS) { const items = g.opts.filter(optOwned).map(it => ({ it, g })); if (items.length) rows.push({ label: tx(g.label), items }); }
+  for (const g of OUTFIT_GROUPS) { const items = g.opts.filter(it => forChar(it) && optOwned(it)).map(it => ({ it, g })); if (items.length) rows.push({ label: tx(g.label), items }); }
   let h = 10; for (const r of rows) h += r.head ? 24 : chipH + gap; h += 6;
   INV.panel = { x, y: y0, w, h }; INV.chips = [];
   ctx.save();
@@ -136,7 +180,7 @@ function drawInventoryPanel() {
     r.items.forEach((c, i) => {
       // a weapon only counts in its own world: there it is green when chosen; elsewhere it is greyed out
       const here = !c.weapon || (typeof CUR !== 'undefined' && CUR && CUR.key === c.it.world);
-      const cx = x + labelW + i * (chipW + gap), on = c.weapon ? here && c.it.worn() : c.it.worn(SAVE.outfit);
+      const cx = x + labelW + i * (chipW + gap), on = c.weapon ? here && c.it.worn() : c.figure ? c.it.worn() : c.it.worn(SAVE.outfit);
       ctx.globalAlpha = here ? 1 : 0.4;
       const rect = { x: cx, y, w: chipW, h: chipH }; INV.chips.push(Object.assign({ rect }, c));
       ctx.fillStyle = on ? 'rgba(52,199,89,0.9)' : 'rgba(255,255,255,0.1)'; ctx.strokeStyle = on ? '#bff5cc' : 'rgba(255,255,255,0.25)';
@@ -144,7 +188,7 @@ function drawInventoryPanel() {
       ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(cx + 16, y + chipH / 2, 12, 0, Math.PI * 2); ctx.fill();
       drawInvSwatch(c.it.id, c.it.sw, cx + 16, y + chipH / 2);
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left';
-      let fs = 11; ctx.font = `bold ${fs}px Arial`; const nm = tx(c.it.name);
+      let fs = 11; ctx.font = `bold ${fs}px Arial`; const nm = c.figure ? c.it.name : tx(c.it.name);   // the names Kai / Bali are never swapped
       while (ctx.measureText(nm).width > chipW - 40 && fs > 8) { fs--; ctx.font = `bold ${fs}px Arial`; }
       ctx.fillText(nm, cx + 32, y + (c.weapon ? 11 : chipH / 2));
       if (c.weapon) { ctx.font = '9px Arial'; ctx.fillStyle = on ? '#eafff0' : 'rgba(255,255,255,0.6)'; ctx.fillText(here ? tx(c.it.where) : tx(c.it.world === 'himmel' ? 'nur im Himmel' : 'nur in der Tiefsee'), cx + 32, y + 22); }
@@ -161,7 +205,7 @@ function invClick(hp) {
   if (inR(hp, INV.btn)) { INV.open = !INV.open; Audio.play('tink'); return true; }
   if (!INV.open) return false;
   for (const c of INV.chips) if (inR(hp, c.rect)) {
-    if (c.weapon) { if (CUR.key !== c.it.world) { Audio.play('denied'); return true; } c.it.pick(); } else c.it.apply(SAVE.outfit);
+    if (c.weapon) { if (CUR.key !== c.it.world) { Audio.play('denied'); return true; } c.it.pick(); } else if (c.figure) setCharacter(c.it.id); else c.it.apply(SAVE.outfit);
     writeSave(); Audio.play('flip'); return true;
   }
   if (!inR(hp, INV.panel)) INV.open = false;
@@ -210,6 +254,11 @@ const TR = {
   'JA': ['YES', 'SÍ'], 'NEIN': ['NO', 'NO'],
   // ---------- on-screen buttons · exit · main menu ----------
   'NEIN – ZUM MENÜ': ['NO – MAIN MENU', 'NO – AL MENÚ'],
+  'FIGUR': ['CHARACTER', 'PERSONAJE'], 'Wer fährt?': ['Who rides?', '¿Quién patina?'], 'Hose': ['Pants', 'Pantalón'],
+  'Ohne Mütze': ['No cap', 'Sin gorra'], 'Schildkappe': ['Cap', 'Gorra'], 'Rosa T-Shirt': ['Pink T-shirt', 'Camiseta rosa'],
+  'Jeans': ['Jeans', 'Jeans'], 'Kurze Hose': ['Shorts', 'Shorts'], 'Rock': ['Skirt', 'Falda'], 'Weisse Schuhe': ['White shoes', 'Tenis blancos'],
+  'Rock bis zu den Knien': ['Knee-length skirt', 'Falda hasta las rodillas'], 'Jeans-Shorts für den Sommer': ['Denim shorts for summer', 'Shorts de mezclilla'],
+  'Kappe für Bali': ['Cap for Bali', 'Gorra para Bali'],
   'SEGEL-BOING! +20': ['SAIL BOING! +20', '¡BOING EN LA VELA! +20'], '{n}× SEGEL-BOING! +20': ['{n}× SAIL BOING! +20', '¡{n}× BOING EN LA VELA! +20'],
   'Ahoi, Kapitän Kai!': ['Ahoy, Captain Kai!', '¡Ahoy, capitán Kai!'],
   'HAFEN-SPRUNG! +10': ['HARBOR JUMP! +10', '¡SALTO DEL MUELLE! +10'], 'Ab in die Tiefsee!': ['Into the deep sea!', '¡Al mar profundo!'],
@@ -402,6 +451,8 @@ function tx(key, params) {
   const i = LANGS.indexOf(SAVE.lang);
   if (i > 0 && TR[key]) s = TR[key][i - 1];
   if (params) for (const k in params) s = s.split('{' + k + '}').join(params[k]);
+  // whoever is riding is greeted by name: "Hallo Bali!", "Ahoi, Kapitän Bali!" …
+  if (SAVE.char === 'bali') s = s.replace(/\bKai\b/g, 'Bali');
   return s;
 }
 
@@ -439,7 +490,8 @@ function drawLifeIcon(cx, cy, on) {
   ctx.save(); ctx.translate(cx, cy); ctx.globalAlpha = on ? 1 : 0.3; ctx.strokeStyle = OUT; ctx.lineWidth = 1.2;
   ctx.fillStyle = '#f2c26b'; ctx.beginPath(); ctx.moveTo(-7, 0); ctx.quadraticCurveTo(-8, 8, -5, 8); ctx.lineTo(5, 8); ctx.quadraticCurveTo(8, 8, 7, 0); ctx.closePath(); ctx.fill(); // hair
   ctx.fillStyle = '#ffd9b8'; ctx.beginPath(); ctx.arc(0, 1, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = on ? SAVE.outfit.cap || '#1e4fa3' : '#888'; ctx.beginPath(); ctx.arc(0, -1, 6, Math.PI, 0); ctx.lineTo(10, -1); ctx.lineTo(6, 1); ctx.lineTo(-6, 1); ctx.closePath(); ctx.fill(); ctx.stroke();
+  if (SAVE.char === 'bali' && !SAVE.outfit.cap) { ctx.fillStyle = on ? '#e8cd8e' : '#888'; ctx.beginPath(); ctx.arc(0, -1, 6.2, Math.PI, 0); ctx.quadraticCurveTo(2, -3, -6, 1); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else { ctx.fillStyle = on ? SAVE.outfit.cap || '#1e4fa3' : '#888'; ctx.beginPath(); ctx.arc(0, -1, 6, Math.PI, 0); ctx.lineTo(10, -1); ctx.lineTo(6, 1); ctx.lineTo(-6, 1); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   ctx.restore();
 }
 function drawProgressBox(x, y) {

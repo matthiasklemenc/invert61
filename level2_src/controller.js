@@ -231,6 +231,22 @@ function drawMenu() {
   mButton(MENU.btns.cont, '▶  ' + tx(prog ? 'WEITERSPIELEN' : 'SPIELEN'), '#34c759', '#1f8f3c');
   if (prog) mButton(MENU.btns.reset, tx('Komplett neu anfangen'), 'rgba(200,60,50,0.55)', 'rgba(150,30,25,0.55)', true);
   mButton(MENU.btns.app, '◀  ' + tx('Zurück zur Invert-App'), '#4a6fa5', '#2c4a78');
+  // WHO RIDES? Kai on the left, Bali on the right of the buttons – tap to choose
+  ctx.save();
+  ctx.fillStyle = '#bfe6ff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(tx('Wer fährt?'), W / 2 - 330, cy - 92); ctx.fillText(tx('Wer fährt?'), W / 2 + 330, cy - 92);
+  ctx.restore();
+  for (const [id, cx] of [['kai', W / 2 - 330], ['bali', W / 2 + 330]]) {
+    const b = MENU.btns[id] = { x: cx - 78, y: cy - 78, w: 156, h: 196 }, on = SAVE.char === id;
+    ctx.save();
+    ctx.fillStyle = on ? 'rgba(52,199,89,0.28)' : 'rgba(255,255,255,0.08)'; ctx.strokeStyle = on ? '#7dffa0' : 'rgba(255,255,255,0.3)'; ctx.lineWidth = on ? 4 : 2;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 16); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    const of = id === SAVE.char ? SAVE.outfit : id === 'bali' ? Object.assign({}, SAVE_DEFAULT.outfitBali, SAVE.outfitBali) : Object.assign({}, SAVE_DEFAULT.outfit, SAVE.outfitKai || {}, { char: 'kai' });
+    drawKaiFigure({ x: cx - 6, y: b.y + b.h - 40, tilt: 0, crouch: 2, push: 0, flip: 0, wind: 0.6, outfit: of });
+    ctx.save(); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText((on ? '✓ ' : '') + (id === 'kai' ? 'Kai' : 'Bali'), cx, b.y + b.h - 18); ctx.restore();
+  }
   ctx.save(); ctx.translate(0, DY); drawLangPicker(); ctx.restore();
 }
 function drawConfirm() {
@@ -374,6 +390,8 @@ canvas.addEventListener('pointerdown', e => {
     if (inB(p, MENU.btns.cont)) continueGame();
     else if (inB(p, MENU.btns.reset)) askNewGame();
     else if (inB(p, MENU.btns.app)) goToApp();
+    else if (inB(p, MENU.btns.kai)) { setCharacter('kai'); Audio.play('flip'); }
+    else if (inB(p, MENU.btns.bali)) { setCharacter('bali'); Audio.play('flip'); }
     else langPickerClick({ x: p.x, y: p.y - DY });
     return;
   }

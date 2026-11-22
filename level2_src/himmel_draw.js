@@ -234,10 +234,12 @@ function drawShopIcon(id, cx, cy) {
   if (id === 'turbo') { ctx.fillStyle = '#ffd23a'; ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#ff8a00'; ctx.beginPath(); ctx.moveTo(3, -12); ctx.lineTo(-7, 2); ctx.lineTo(-1, 2); ctx.lineTo(-4, 12); ctx.lineTo(7, -3); ctx.lineTo(1, -3); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   if (id === 'star') { ctx.fillStyle = '#fff3a0'; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.save(); ctx.rotate(a); ctx.beginPath(); ctx.moveTo(10, -3); ctx.lineTo(22, 0); ctx.lineTo(10, 3); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); } ctx.fillStyle = '#ffd23a'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   if (id === 'heart') { drawHeart(0, 0, 16, true); }
-  if (id === 'capRed' || id === 'capGreen') { ctx.fillStyle = id === 'capRed' ? '#d8352c' : '#2f8a5f'; ctx.beginPath(); ctx.moveTo(-16, 6); ctx.quadraticCurveTo(-14, -16, 4, -14); ctx.quadraticCurveTo(16, -12, 14, 6); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(10, 4); ctx.quadraticCurveTo(24, 3, 28, 7); ctx.lineTo(12, 8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if (id === 'capRed' || id === 'capGreen' || id === 'capBali') { ctx.fillStyle = id === 'capRed' ? '#d8352c' : id === 'capBali' ? '#f48fb8' : '#2f8a5f'; ctx.beginPath(); ctx.moveTo(-16, 6); ctx.quadraticCurveTo(-14, -16, 4, -14); ctx.quadraticCurveTo(16, -12, 14, 6); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(10, 4); ctx.quadraticCurveTo(24, 3, 28, 7); ctx.lineTo(12, 8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   if (id === 'beanie') { ctx.fillStyle = '#7a3fb8'; ctx.beginPath(); ctx.moveTo(-15, 8); ctx.quadraticCurveTo(-15, -18, 0, -17); ctx.quadraticCurveTo(15, -16, 15, 8); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#9b63d6'; ctx.beginPath(); ctx.roundRect(-16, 2, 32, 8, 3); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#ffd23a'; ctx.beginPath(); ctx.arc(0, -19, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   if (id === 'backpack') { ctx.fillStyle = '#e8463c'; ctx.beginPath(); ctx.roundRect(-13, -16, 26, 32, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#ffd23a'; ctx.fillRect(-9, 0, 18, 6); ctx.strokeRect(-9, 0, 18, 6); }
   if (id === 'teeRed' || id === 'teeYellow') { ctx.fillStyle = id === 'teeRed' ? '#c8352c' : '#e0a81e'; ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(-20, -6); ctx.lineTo(-15, 2); ctx.lineTo(-10, -1); ctx.lineTo(-10, 16); ctx.lineTo(10, 16); ctx.lineTo(10, -1); ctx.lineTo(15, 2); ctx.lineTo(20, -6); ctx.lineTo(8, -14); ctx.quadraticCurveTo(0, -8, -8, -14); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if (id === 'shorts') { ctx.fillStyle = '#4a78b8'; ctx.beginPath(); ctx.moveTo(-16, -12); ctx.lineTo(16, -12); ctx.lineTo(18, 8); ctx.lineTo(3, 8); ctx.lineTo(0, -2); ctx.lineTo(-3, 8); ctx.lineTo(-18, 8); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.strokeStyle = '#2f5a96'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-16, -7); ctx.lineTo(16, -7); ctx.stroke(); }
+  if (id === 'skirt') { ctx.fillStyle = '#d94f7c'; ctx.beginPath(); ctx.moveTo(-11, -14); ctx.lineTo(11, -14); ctx.lineTo(20, 14); ctx.quadraticCurveTo(0, 19, -20, 14); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-4, -12); ctx.lineTo(-8, 15); ctx.moveTo(4, -12); ctx.lineTo(8, 15); ctx.stroke(); }
   if (id === 'shoesRed') { ctx.fillStyle = '#d8352c'; ctx.beginPath(); ctx.roundRect(-20, -4, 26, 10, 4); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.roundRect(0, 4, 26, 10, 4); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.fillRect(-19, 3, 24, 2.5); ctx.fillRect(1, 11, 24, 2.5); }
   ctx.restore();
 }
@@ -247,7 +249,7 @@ function drawShop() {
   ctx.fillStyle = '#d8241f'; ctx.beginPath(); ctx.roundRect(W / 2 - 90, 8, 180, 34, 10); ctx.fill(); ctx.fillStyle = '#ffd23a'; ctx.fillRect(W / 2 - 90, 8, 180, 5); ctx.fillRect(W / 2 - 90, 37, 180, 5);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 22px Arial Black, Arial'; ctx.fillText('OXXO', W / 2, 26);
   ctx.textAlign = 'left'; ctx.font = 'bold 15px Arial'; drawCoin({ x: W / 2 + 140, y: 25, p: 0 }); ctx.fillStyle = '#fff'; ctx.fillText(String(S.coins), W / 2 + 156, 26);
-  SHOP.forEach((it, i) => {
+  shopList().forEach((it, i) => {
     const r = shopCardRect(i), owned = shopOwned(it), afford = S.coins >= it.price;
     const worn = it.kind === 'cloth' && owned && isWorn(it.id);
     ctx.fillStyle = owned ? '#eaf7ea' : afford ? '#fff8e8' : '#d9d2c8'; ctx.strokeStyle = it.id === 'harpoon' && !owned ? '#ffd23a' : OUT; ctx.lineWidth = it.id === 'harpoon' && !owned ? 4 : 2.5;
@@ -272,7 +274,7 @@ function drawShop() {
 }
 function isWorn(id) {
   const o = SAVE.outfit;
-  return (id === 'capRed' && o.cap === '#d8352c' && !o.beanie) || (id === 'capGreen' && o.cap === '#2f8a5f' && !o.beanie) || (id === 'beanie' && o.beanie) || (id === 'backpack' && o.backpack) || (id === 'teeRed' && o.tee === '#c8352c') || (id === 'teeYellow' && o.tee === '#e0a81e') || (id === 'shoesRed' && o.shoes === '#d8352c');
+  return (id === 'capRed' && o.cap === '#d8352c' && !o.beanie) || (id === 'capGreen' && o.cap === '#2f8a5f' && !o.beanie) || (id === 'beanie' && o.beanie) || (id === 'backpack' && o.backpack) || (id === 'teeRed' && o.tee === '#c8352c') || (id === 'teeYellow' && o.tee === '#e0a81e') || (id === 'shoesRed' && o.shoes === '#d8352c') || (id === 'capBali' && o.cap === '#f48fb8' && !o.beanie) || (id === 'shorts' && o.bottom === 'shorts') || (id === 'skirt' && o.bottom === 'skirt');
 }
 function wrapText(text, x, y, maxW, lh) {
   const words = text.split(' '); let line = '';
@@ -281,19 +283,22 @@ function wrapText(text, x, y, maxW, lh) {
 }
 // Kai seen from behind (penalty game)
 function drawKaiBack(x, y, sc, kick) {
-  const OF = SAVE.outfit || {}, SKIN = '#f2c79e', TEE = OF.tee || '#1f3c6e', CAP = OF.cap || '#1e4fa3', SHORTS = '#b4652e', SHOE = OF.shoes || '#1b1b22';
+  const OF = SAVE.outfit || {}, isBali = OF.char === 'bali', SKIN = isBali ? '#f6d3b8' : '#f2c79e', TEE = OF.tee || (isBali ? '#f6a3c4' : '#1f3c6e'), CAP = OF.cap || '#1e4fa3';
+  const BOTTOM = isBali ? (OF.bottom || 'jeans') : 'shorts', SHORTS = isBali ? (BOTTOM === 'skirt' ? '#d94f7c' : '#4a78b8') : '#b4652e', SHOE = OF.shoes || (isBali ? '#ffffff' : '#1b1b22');
   ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.2;
   ctx.fillStyle = 'rgba(80,110,160,0.25)'; ctx.beginPath(); ctx.ellipse(0, 0, 26, 6, 0, 0, Math.PI * 2); ctx.fill();
   // legs (right leg swings for the kick)
   const kk = Math.sin(kick * Math.PI);
   for (const sd of [-1, 1]) {
     const lift = sd === 1 ? kk * 10 : 0, fx = sd * 9 + (sd === 1 ? -kk * 4 : 0);
-    ctx.fillStyle = SKIN; ctx.beginPath(); ctx.roundRect(sd * 9 - 5, -34, 10, 28 - lift, 4); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(sd * 9 - 5, -12 - lift, 10, 5); ctx.strokeRect(sd * 9 - 5, -12 - lift, 10, 5);
+    ctx.fillStyle = BOTTOM === 'jeans' ? SHORTS : SKIN; ctx.beginPath(); ctx.roundRect(sd * 9 - 5, -34, 10, 28 - lift, 4); ctx.fill(); ctx.stroke();
+    if (BOTTOM !== 'jeans') { ctx.fillStyle = '#ffffff'; ctx.fillRect(sd * 9 - 5, -12 - lift, 10, 5); ctx.strokeRect(sd * 9 - 5, -12 - lift, 10, 5); }
     ctx.fillStyle = SHOE; ctx.beginPath(); ctx.ellipse(fx, -4 - lift, 8, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   // shorts
-  ctx.fillStyle = SHORTS; ctx.beginPath(); ctx.moveTo(-16, -50); ctx.lineTo(16, -50); ctx.lineTo(17, -30); ctx.lineTo(2, -30); ctx.lineTo(0, -36); ctx.lineTo(-2, -30); ctx.lineTo(-17, -30); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = SHORTS;
+  if (BOTTOM === 'skirt') { ctx.beginPath(); ctx.moveTo(-15, -50); ctx.lineTo(15, -50); ctx.lineTo(21, -24); ctx.quadraticCurveTo(0, -20, -21, -24); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else { ctx.beginPath(); ctx.moveTo(-16, -50); ctx.lineTo(16, -50); ctx.lineTo(17, -30); ctx.lineTo(2, -30); ctx.lineTo(0, -36); ctx.lineTo(-2, -30); ctx.lineTo(-17, -30); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   // arms
   for (const sd of [-1, 1]) {
     ctx.fillStyle = SKIN; ctx.beginPath(); ctx.roundRect(sd * 19 - 4, -76, 8, 34, 4); ctx.fill(); ctx.stroke();
@@ -315,13 +320,18 @@ function drawKaiBack(x, y, sc, kick) {
   ctx.fillStyle = SKIN; ctx.fillRect(-4, -88, 8, 8);
   ctx.fillStyle = SKIN; ctx.beginPath(); ctx.ellipse(-14, -100, 3, 5, 0, 0, Math.PI * 2); ctx.ellipse(14, -100, 3, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   // shoulder-length blond hair, a soft bob that flicks out at the ends
-  ctx.fillStyle = '#f2c26b'; ctx.beginPath(); ctx.moveTo(-15, -104);
+  ctx.fillStyle = isBali ? '#e8cd8e' : '#f2c26b'; ctx.beginPath(); ctx.moveTo(-15, -104);
   ctx.quadraticCurveTo(-19, -92, -17, -82); ctx.quadraticCurveTo(-12, -78, -8, -82); ctx.quadraticCurveTo(-4, -78, 0, -81);
   ctx.quadraticCurveTo(4, -78, 8, -82); ctx.quadraticCurveTo(12, -78, 17, -82); ctx.quadraticCurveTo(19, -92, 15, -104); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.strokeStyle = 'rgba(170,115,40,0.55)'; ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.moveTo(-7, -100); ctx.quadraticCurveTo(-9, -90, -8, -84); ctx.moveTo(7, -100); ctx.quadraticCurveTo(9, -90, 8, -84); ctx.stroke();
   ctx.strokeStyle = OUT; ctx.lineWidth = 2.2;
   if (OF.beanie) { ctx.fillStyle = '#7a3fb8'; ctx.beginPath(); ctx.arc(0, -106, 16, Math.PI, 0); ctx.lineTo(16, -101); ctx.lineTo(-16, -101); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (isBali && !OF.cap) {
+    // Bali without a cap: smooth blond hair on top of the head
+    ctx.fillStyle = '#e8cd8e'; ctx.beginPath(); ctx.arc(0, -104, 16, Math.PI, 0); ctx.lineTo(16, -100); ctx.lineTo(-16, -100); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(170,115,40,0.55)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, -119); ctx.lineTo(0, -106); ctx.stroke(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.2;
+  }
   else {
     // cap from behind: dome, the round opening above the strap shows a bit of hair
     ctx.fillStyle = CAP; ctx.beginPath(); ctx.arc(0, -105, 16, Math.PI, 0); ctx.lineTo(16, -102); ctx.lineTo(-16, -102); ctx.closePath(); ctx.fill(); ctx.stroke();
