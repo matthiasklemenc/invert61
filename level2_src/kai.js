@@ -49,8 +49,8 @@ function drawKaiFigure(o) {
     if (kx < px) { kx = px + h * dy / d * 0.12; ky = py - h * dx / d * 0.12; }
     if (out) {
       // Bali (regular, facing us): the knee opens outwards – back knee to the back, front knee to the front
-      kx = px - h * dy / d * 0.55; ky = py + h * dx / d * 0.55;
-      if ((kx - px) * out < 0) { kx = px + h * dy / d * 0.55; ky = py - h * dx / d * 0.55; }
+      kx = px - h * dy / d * 0.16; ky = py + h * dx / d * 0.16;
+      if ((kx - px) * out < 0) { kx = px + h * dy / d * 0.16; ky = py - h * dx / d * 0.16; }
     }
     return { kx, ky, ax, ay };
   };
@@ -167,7 +167,7 @@ function drawKaiFigure(o) {
   if (baliPush) pushLeg(true);
   // shorts / jeans top: waist + short legs that follow the thighs
   ctx.fillStyle = SHORTS;
-  if (BOTTOM !== 'skirt') for (const [hx, j] of [[-8, jb], [11, jf]]) {
+  if (BOTTOM === 'shorts') for (const [hx, j] of [[-8, jb], [11, jf]]) {     // jeans: the legs already are denim – no band across the thighs
     if (!j) continue;
     const dx = j.kx - hx, dy = j.ky - hipY, d = Math.hypot(dx, dy) || 1;
     limb(hx, hipY, hx + dx / d * 10, hipY + dy / d * 10, 7, 6.5, SHORTS);
@@ -180,38 +180,21 @@ function drawKaiFigure(o) {
     ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(-4, hipY); ctx.lineTo(-8 + sw, kneeY + 2); ctx.moveTo(8, hipY); ctx.lineTo(12 + sw, kneeY + 2); ctx.stroke();
     ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.fillStyle = '#d94f7c';
   }
-  ctx.beginPath(); ctx.roundRect(-16, hipY - 8, 34, 13, 3); ctx.fill(); ctx.stroke();
   if (isBali && BOTTOM !== 'skirt') {
-    // front of the jeans: button + fly in the middle, the legs part at the crotch
-    ctx.strokeStyle = 'rgba(20,40,80,0.55)'; ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.moveTo(1, hipY - 5); ctx.lineTo(1, hipY + 5); ctx.stroke();
-    ctx.fillStyle = '#e0b95a'; ctx.beginPath(); ctx.arc(1, hipY - 5.5, 1.4, 0, Math.PI * 2); ctx.fill();
-  }
+    // no line across the hips: the jeans top is filled over the tops of both legs, only the waist and the sides get an outline
+    ctx.beginPath(); ctx.moveTo(-15, hipY - 8); ctx.lineTo(16, hipY - 8); ctx.lineTo(15, hipY + 3); ctx.lineTo(-14, hipY + 3); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-14, hipY + 3); ctx.lineTo(-15, hipY - 8); ctx.lineTo(16, hipY - 8); ctx.lineTo(15, hipY + 3); ctx.stroke();
+    // front of the jeans: button + a short fly
+    ctx.strokeStyle = 'rgba(20,40,80,0.5)'; ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.moveTo(1, hipY - 4); ctx.lineTo(1, hipY + 2); ctx.stroke();
+    ctx.fillStyle = '#e0b95a'; ctx.beginPath(); ctx.arc(1, hipY - 5.5, 1.3, 0, Math.PI * 2); ctx.fill();
+  } else if (!isBali || BOTTOM === 'skirt') { ctx.beginPath(); ctx.roundRect(-16, hipY - 8, 34, 13, 3); ctx.fill(); ctx.stroke(); }
   ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
 
   // ---------- torso ----------
   const ty = crouch + pp * 12;
   const armUp = o.armsUp ? -10 : 0;
-  if (isBali) {
-    // ===== BALI FROM THE FRONT: chest towards us, both arms in front of the body =====
-    if (!o.diver) { ctx.fillStyle = SKIN; ctx.fillRect(-2, -82 + ty, 8, 9); ctx.strokeRect(-2, -82 + ty, 8, 9); }
-    ctx.fillStyle = TEE;
-    ctx.beginPath();
-    ctx.moveTo(-16, -75 + ty); ctx.quadraticCurveTo(2, -80 + ty, 19, -75 + ty);
-    ctx.lineTo(20, -51 + ty); ctx.lineTo(-17, -51 + ty); ctx.closePath(); ctx.fill(); ctx.stroke();
-    // round neckline at the front + little heart on the chest
-    if (!o.diver) { ctx.fillStyle = SKIN; ctx.beginPath(); ctx.moveTo(-4, -78 + ty); ctx.quadraticCurveTo(2, -70 + ty, 8, -78 + ty); ctx.closePath(); ctx.fill(); ctx.stroke(); }
-    ctx.fillStyle = '#ffffff'; ctx.lineWidth = 1.4;
-    ctx.beginPath(); const hx0 = 2, hy0 = -60 + ty;
-    ctx.moveTo(hx0, hy0 + 5); ctx.bezierCurveTo(hx0 - 7, hy0, hx0 - 5, hy0 - 6, hx0, hy0 - 3); ctx.bezierCurveTo(hx0 + 5, hy0 - 6, hx0 + 7, hy0, hx0, hy0 + 5); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.lineWidth = 2.5;
-    // back arm (her right arm) – out to the back for balance, in front of the body
-    ctx.fillStyle = TEE;
-    ctx.beginPath(); ctx.moveTo(-12, -76 + ty); ctx.lineTo(-23, -69 + ty); ctx.lineTo(-18, -61 + ty); ctx.lineTo(-9, -66 + ty); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = SKIN;
-    ctx.beginPath(); ctx.moveTo(-21, -69 + ty); ctx.quadraticCurveTo(-31, -62 + ty - armUp * 0.4, -35, -54 + ty + armUp * 1.2); ctx.lineTo(-31, -51 + ty + armUp * 1.2); ctx.quadraticCurveTo(-28, -58 + ty, -18, -62 + ty); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.arc(-34, -51 + ty + armUp * 1.2, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  } else {
+  {
   ctx.fillStyle = SKIN;
   ctx.beginPath(); ctx.moveTo(-12, -70 + ty); ctx.quadraticCurveTo(-26, -60 + ty, -24, -48 + ty); ctx.lineTo(-19, -48 + ty); ctx.quadraticCurveTo(-20, -58 + ty, -8, -64 + ty); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.arc(-22, -46 + ty, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -222,6 +205,14 @@ function drawKaiFigure(o) {
   ctx.moveTo(-14, -76 + ty); ctx.quadraticCurveTo(2, -80 + ty, 16, -74 + ty);
   ctx.lineTo(20, -51 + ty); ctx.lineTo(-17, -51 + ty); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(-14, -76 + ty); ctx.lineTo(-22, -64 + ty); ctx.lineTo(-13, -60 + ty); ctx.closePath(); ctx.fill(); ctx.stroke();
+  if (isBali) {
+    // Bali faces us: round neckline at the front and a little heart on her chest
+    if (!o.diver) { ctx.fillStyle = SKIN; ctx.beginPath(); ctx.moveTo(-1, -78.5 + ty); ctx.quadraticCurveTo(5, -71 + ty, 11, -77.5 + ty); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = '#ffffff'; ctx.lineWidth = 1.4;
+    const hx0 = 3, hy0 = -62 + ty;
+    ctx.beginPath(); ctx.moveTo(hx0, hy0 + 5); ctx.bezierCurveTo(hx0 - 7, hy0, hx0 - 5, hy0 - 6, hx0, hy0 - 3); ctx.bezierCurveTo(hx0 + 5, hy0 - 6, hx0 + 7, hy0, hx0, hy0 + 5); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 2.5;
+  }
   }
   ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   // front arm (raised a bit in the air)
