@@ -29,7 +29,7 @@ EVENTS.sort((a, b) => a.at - b.at);
 // spawn them that much earlier, so the timeline icon and the object arrive at the same time
 const LEAD = (W + 60) - 250;
 for (const ev of EVENTS) ev.spawnAt = Math.max(0, ev.at - LEAD);
-const wingsActive = () => !SAVE.done.heaven;
+const wingsActive = () => true;     // the angel-wing ramps always stay – also when the sky is already done (play it again)
 // green tubes: jump on top → with the harpoon Kai slides down into the deep sea
 const PIPE_EVERY = 4000;
 for (let a = Math.round(4200 * SCALE); a < LEVEL_LENGTH - 1200; a += PIPE_EVERY) {
@@ -47,7 +47,7 @@ const START_MODE = !REPLAY && (FROM_SKY || FROM_SEA || CONT) && SAVE.done.city ?
 const RESUME = !REPLAY && (FROM_SKY || FROM_SEA || CONT) && !SAVE.done.city && SAVE.cityResume ? SAVE.cityResume : null;
 function newState(mode = START_MODE) {
   return {
-    mode, outroIdx: 0, pierWarned: false,
+    mode, outroIdx: 0, pierWarned: false, outroDist: 0, wingSpawned: false, pierSpawned: false, harbor: null, overWater: false, finalAfter: 0, splashed: false, sailBoings: 0, ahoiT: 0,
     phase: 'start', t: 0, scroll: 0, speed: SPEED, dist: 0, eventIdx: 0,
     kai: { x: 250, y: FLOOR, vy: 0, vx: 0, ground: true, platform: null, grind: false, flip: 0, flipping: false, pushT: 0, hitTimer: 0, grindT: 0, combo: 0, bossFly: false },
     hearts: SAVE.hearts, coins: SAVE.coins, heartFlash: 0, lostBy: '',
@@ -72,14 +72,79 @@ function beginWorld() {
 }
 function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; writeSave(); }
 // ---- after the garbage truck: on to the harbor; wing ramps lead up into the sky ----
-const OUTRO = { pier: 700, firstWing: 1500, wingEvery: 1300 };
+// first one angel-wing ramp (the way up to the sky always stays open), then the HARBOR:
+// the street turns into water, Kai rides over a long wooden pier, at its end a ramp → jump (+10) → splash → deep sea
+const OUTRO = { wing: 600, harbor: 1800, wingEvery: 1300, pierLen: 1700 };
+const WATER_Y = FLOOR + 20;                 // the water line lies BELOW the street / pier
+const SAIL_Y = WATER_Y - 72;                // where Kai bounces off a sail (trampoline)
+function clearAhead() { S.objects = S.objects.filter(o => !(o.x > W - 60 && o.type !== 'coin')); }
 function updateOutro(move) {
   if (S.mode === 'main') return;
   S.outroDist = (S.outroDist || 0) + move;
   const d = S.outroDist;
-  if (!S.pierSpawned && d >= OUTRO.pier) { S.pierSpawned = true; addObject('pier', W + 40); S.nextSpawn = Math.max(S.nextSpawn, 500); }
-  const needWing = (!SAVE.items.harpoon || SAVE.done.sea) && wingsActive();
-  if (needWing && d >= OUTRO.firstWing + S.outroIdx * OUTRO.wingEvery) { S.outroIdx++; const o = addObject('ramp', W + 60); o.wings = true; S.nextSpawn = Math.max(S.nextSpawn, 420); }
+  if (!S.wingSpawned && d >= OUTRO.wing && wingsActive()) {
+    S.wingSpawned = true; clearAhead();
+    const o = addObject('ramp', W + 60); o.wings = true; addCoinArc(W - 160, FLOOR - 40, 4, 0, 34); S.nextSpawn = Math.max(S.nextSpawn, 560);
+  }
+  if (!S.pierSpawned && d >= OUTRO.harbor) {
+    S.pierSpawned = true;
+    if (SAVE.items.harpoon) startHarbor();
+    else { clearAhead(); addObject('pier', W + 40); S.nextSpawn = Math.max(S.nextSpawn, 500); }    // closed gate: no harpoon yet
+  }
+  // without the harpoon: more wing ramps up to the sky (the OXXO up there sells the harpoon)
+  if (S.pierSpawned && !S.harbor && !SAVE.items.harpoon && d >= OUTRO.harbor + 900 + S.outroIdx * OUTRO.wingEvery) {
+    S.outroIdx++; const o = addObject('ramp', W + 60); o.wings = true; S.nextSpawn = Math.max(S.nextSpawn, 420);
+  }
+}
+function startHarbor() {
+  clearAhead();
+  const x = W + 40, len = OUTRO.pierLen;
+  // sailboats in the open water after the pier – about one ramp jump / one sail bounce apart
+  S.harbor = addObject('boardwalk', x, { w: len, boats: [270, 600, 930].map((d, i) => ({ d: len + d, i: i + 1, hits: 0, rock: 0 })) });
+  const r = addObject('ramp', x + len - 96); r.pierRamp = true;           // the ramp sits right at the end of the pier
+  for (let i = 0; i < 3; i++) addCoinArc(x + 260 + i * 440, FLOOR - 40, 5, 0, 34);
+  addCoinArc(x + len + 10, FLOOR - 150, 5, 50, 42);                     // coins over the water: only reachable with the ramp jump
+  addCoinArc(x + len + 330, FLOOR - 230, 5, 40, 44);                    // high up: only reachable with a sail bounce
+  addCoinArc(x + len + 660, FLOOR - 230, 5, 40, 44);
+}
+// SEGEL-TRAMPOLIN: landing on a sail throws Kai up high – BOING! + "Ahoi, Kapitän Kai!"
+function sailHit(prevY, y) {
+  const k = S.kai;
+  for (const b of S.harbor.boats) {
+    const bx = S.harbor.x + b.d;
+    if (k.x > bx - 58 && k.x < bx + 62 && prevY <= SAIL_Y && y >= SAIL_Y) return b;
+  }
+  return null;
+}
+function sayAhoi() {
+  // the phone / browser speaks it (built-in voice); the text is shown anyway
+  try {
+    if (!Audio.sfxOn || !window.speechSynthesis) return;
+    const l = SAVE.lang || 'de';
+    const u = new SpeechSynthesisUtterance({ de: 'Ahoi, Kapitän Kai!', en: 'Ahoy, Captain Kai!', es: '¡Ahoy, capitán Kai!' }[l] || 'Ahoi, Kapitän Kai!');
+    u.lang = { de: 'de-DE', en: 'en-US', es: 'es-MX' }[l] || 'de-DE'; u.rate = 1.05; u.pitch = 1.3; u.volume = 1;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch (e) {}
+}
+function sailBoing(b) {
+  const k = S.kai;
+  k.y = SAIL_Y; k.vy = -16.5; k.rampJump = true; k.ground = false; k.platform = null;
+  b.hits++; b.rock = 1; S.coins += 20; S.sailBoings = (S.sailBoings || 0) + 1;
+  Audio.play('boing'); Audio.play('coin');
+  for (let i = 0; i < 16; i++) S.particles.push({ x: k.x + rand(-30, 30), y: SAIL_Y + rand(-10, 10), vx: rand(-3, 3), vy: rand(-4, 1), r: rand(2, 4), color: i % 2 ? '#ffffff' : '#ffd23a', life: 1, g: 0.15 });
+  flash(S.sailBoings > 1 ? tx('{n}× SEGEL-BOING! +20', { n: S.sailBoings }) : tx('SEGEL-BOING! +20'), 70);
+  S.ahoiT = 130; sayAhoi();
+}
+// into the water at the end of the pier
+function splashIntoWater() {
+  const k = S.kai;
+  S.phase = 'dive'; S.diveT = 0; S.splashed = true; k.ground = false; k.platform = null;
+  Audio.grindLoop(false); Audio.play('pop'); Audio.play('air');
+  for (let i = 0; i < 44; i++) S.particles.push({ x: k.x + rand(-24, 24), y: WATER_Y, vx: rand(-5, 5), vy: rand(-11, -3), r: rand(2, 6), color: i % 3 ? '#7fd6ef' : '#ffffff', life: 1.5, g: 0.35 });
+  saveProgress();
+  if (allBossesDone()) { S.finalAfter = 55; flash(tx('Alle Bosse besiegt!'), 90); return; }      // everything done: the big final screen
+  flash(tx('Ab in die Tiefsee!'), 90);
+  goToWorld('tiefsee.html', 'from=stadt&splash=1');             // the camera follows Kai under water
 }
 function startAscend() {
   const k = S.kai;
@@ -92,7 +157,7 @@ function startAscend() {
 }
 function enterPipe(o) {
   const k = S.kai;
-  if (SAVE.done.sea) return;                       // the deep sea is already done
+  // the tube always stays open – also when the deep sea is already done (play it again)
   if (!SAVE.items.harpoon) {
     // no harpoon yet: the tube stays closed
     if (!o.warned) { o.warned = true; Audio.play('denied'); flash(tx('Du brauchst zuerst die Harpune aus dem OXXO im Himmel!'), 150); }
@@ -200,6 +265,7 @@ const DEF = {
   dog:      { w: 46, h: 30, solid: true },
   police:   { w: 150, h: 54, solid: true },
   pier:     { w: 360, h: 0 },
+  boardwalk: { w: 1700, h: 0 },        // the long harbor pier over the water (instead of the street)
   pipe:     { w: 84, h: 82, solid: true, platform: true, topX1: -6, topX2: 90 },   // big green tube – the way down to the deep sea
   party:    { w: 700, h: 0 },
 };
@@ -308,6 +374,12 @@ function launchFromRamp(o, boost) {
   const k = S.kai;
   o.riding = false; o.done = true;
   if (o.wings) { startAscend(); return; }
+  if (o.pierRamp) {
+    // big jump off the end of the pier into the water: +10 coins
+    jump(RAMP_V * 1.08); k.rampJump = true; S.coins += 10;
+    Audio.play('ramp'); Audio.play('coin'); flash(tx('HAFEN-SPRUNG! +10'), 90);
+    return;
+  }
   jump(RAMP_V * boost); k.rampJump = true;
   Audio.play('ramp'); flash(tx('BIG AIR!'), 50);
   if (o.bossRamp && S.boss) aimAtTruck();
@@ -369,7 +441,9 @@ function updateKai(dt) {
       }
       if (!k.platform && S.boss) bossRoofCheck(prevY);
     }
-    if (!k.platform && k.y >= FLOOR) {
+    if (S.overWater && S.phase === 'play' && k.vy > 0) { const b = sailHit(prevY, k.y); if (b) sailBoing(b); }
+    if (S.overWater && !k.platform && k.y >= WATER_Y + 4 && S.phase === 'play') { splashIntoWater(); return; }
+    if (!k.platform && k.y >= FLOOR && !S.overWater) {
       k.y = FLOOR; k.vy = 0; k.ground = true; landed('land');
       if (k.bossFly) { k.bossFly = false; }
     }
@@ -479,8 +553,9 @@ function updateBoss(dt) {
     if (Math.random() < 0.5 * dt) S.particles.push({ x: b.x + rand(20, 300), y: FLOOR - rand(60, 160), vx: rand(-1, 1), vy: rand(-2, -0.5), r: rand(6, 14), color: 'rgba(80,80,90,0.6)', life: 1.4, g: -0.02 });
     if (b.t > 200) {
       S.boss = null; S.phase = 'play'; S.mode = 'outro'; S.outroDist = 0; SAVE.done.city = true; SAVE.cityResume = null; saveProgress(); Audio.play('win');
-      if (allBossesDone()) { goToWorld('tiefsee.html', 'final=1'); return; }
-      flash(tx('Noch offen für Level 3:') + ' ' + openBosses().join(' · '), 220);
+      // always on to the harbor (when everything is done, the final screen comes after the splash)
+      if (allBossesDone()) flash(tx('Alle Bosse besiegt! Ab zum Hafen – spring ins Wasser!'), 220);
+      else flash(tx('Noch offen für Level 3:') + ' ' + openBosses().join(' · '), 220);
     }
     return;
   }
@@ -543,9 +618,12 @@ function update(dt) {
     return;
   }
   if (S.phase === 'pipe') { updateParticles(dt); return; }
+  if (S.harbor) for (const b of S.harbor.boats) if (b.rock > 0) b.rock = Math.max(0, b.rock - 0.012 * dt);
+  if (S.ahoiT > 0) S.ahoiT -= dt;
   if (S.phase === 'dive') {
     const k = S.kai; S.diveT += dt; k.vy += 0.5 * dt; k.y += k.vy * dt; k.x += 1.2 * dt;
-    if (k.y > FLOOR + 40 && !S.splashed) { S.splashed = true; Audio.play('pop'); for (let i = 0; i < 30; i++) S.particles.push({ x: k.x, y: FLOOR, vx: rand(-4, 4), vy: rand(-8, -2), r: rand(2, 5), color: '#7fd6ef', life: 1.4, g: 0.35 }); }
+    if (S.finalAfter) { S.finalAfter -= dt; if (S.finalAfter <= 0) { S.finalAfter = 0; goToWorld('tiefsee.html', 'final=1'); } }
+    if (k.y > WATER_Y + 20 && !S.splashed) { S.splashed = true; Audio.play('pop'); for (let i = 0; i < 30; i++) S.particles.push({ x: k.x, y: FLOOR, vx: rand(-4, 4), vy: rand(-8, -2), r: rand(2, 5), color: '#7fd6ef', life: 1.4, g: 0.35 }); }
     updateParticles(dt);
     return;
   }
@@ -569,12 +647,15 @@ function update(dt) {
       else if (!S.boss && !(S.party && !S.partyDone)) { S.nextSpawn -= move; if (S.nextSpawn <= 0) spawn(); }
     } else {
       updateOutro(move);
-      S.nextSpawn -= move; if (S.nextSpawn <= 0) spawn();
-      // the harbor: with the harpoon Kai dives in, without it he has to go to the sky first
+      if (!S.harbor) { S.nextSpawn -= move; if (S.nextSpawn <= 0) spawn(); }      // nothing in the way on the pier
+      else if (S.kai.x - 14 > S.harbor.x + S.harbor.w) {
+        // past the end of the pier there is only water
+        S.overWater = true; const k = S.kai;
+        if (k.ground && !k.platform) { k.ground = false; k.vy = Math.max(k.vy, 0); }
+      }
+      // the harbor gate without the harpoon: Kai has to go up to the sky first
       for (const o of S.objects) if (o.type === 'pier') {
-        if (SAVE.done.sea) continue;
         if (!SAVE.items.harpoon && !S.pierWarned && o.x < W - 150) { S.pierWarned = true; flash(tx('Du brauchst zuerst die Harpune aus dem OXXO im Himmel!'), 150); Audio.play('denied'); }
-        if (SAVE.items.harpoon && o.x <= 330 && S.phase === 'play' && kaiGrounded()) startDive();
       }
     }
   }
@@ -611,7 +692,7 @@ function update(dt) {
     }
   }
   if (S.party && S.party.x + S.party.w < -80) S.party = null;
-  S.objects = S.objects.filter(o => o.x + (o.w || 20) > -80 && !(o.done && (o.type === 'coin' || o.type === 'tacoItem')));
+  S.objects = S.objects.filter(o => (o.type === 'boardwalk' || o.x + (o.w || 20) > -80) && !(o.done && (o.type === 'coin' || o.type === 'tacoItem')));
   updateProjectiles(dt);
   updateParticles(dt);
 }

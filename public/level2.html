@@ -247,6 +247,11 @@ const TR = {
   'JA': ['YES', 'SÍ'], 'NEIN': ['NO', 'NO'],
   // ---------- on-screen buttons · exit · main menu ----------
   'NEIN – ZUM MENÜ': ['NO – MAIN MENU', 'NO – AL MENÚ'],
+  'SEGEL-BOING! +20': ['SAIL BOING! +20', '¡BOING EN LA VELA! +20'], '{n}× SEGEL-BOING! +20': ['{n}× SAIL BOING! +20', '¡{n}× BOING EN LA VELA! +20'],
+  'Ahoi, Kapitän Kai!': ['Ahoy, Captain Kai!', '¡Ahoy, capitán Kai!'],
+  'HAFEN-SPRUNG! +10': ['HARBOR JUMP! +10', '¡SALTO DEL MUELLE! +10'], 'Ab in die Tiefsee!': ['Into the deep sea!', '¡Al mar profundo!'],
+  'Alle Bosse besiegt!': ['All bosses beaten!', '¡Todos los jefes vencidos!'],
+  'Alle Bosse besiegt! Ab zum Hafen – spring ins Wasser!': ['All bosses beaten! On to the harbor – jump into the water!', '¡Todos los jefes vencidos! Al puerto – ¡salta al agua!'],
   'Alle 3 Leben sind weg. Nochmal versuchen?': ['All 3 lives are gone. Try again?', 'Se acabaron las 3 vidas. ¿Intentar de nuevo?'],
   'SPRUNG': ['JUMP', 'SALTO'], 'SCHUSS': ['SHOOT', 'DISPARO'], 'SCHLAG': ['HIT', 'GOLPE'],
   'MENÜ': ['MENU', 'MENÚ'], 'SPIELEN': ['PLAY', 'JUGAR'],
@@ -1153,7 +1158,7 @@ EVENTS.sort((a, b) => a.at - b.at);
 // spawn them that much earlier, so the timeline icon and the object arrive at the same time
 const LEAD = (W + 60) - 250;
 for (const ev of EVENTS) ev.spawnAt = Math.max(0, ev.at - LEAD);
-const wingsActive = () => !SAVE.done.heaven;
+const wingsActive = () => true;     // the angel-wing ramps always stay – also when the sky is already done (play it again)
 // green tubes: jump on top → with the harpoon Kai slides down into the deep sea
 const PIPE_EVERY = 4000;
 for (let a = Math.round(4200 * SCALE); a < LEVEL_LENGTH - 1200; a += PIPE_EVERY) {
@@ -1171,7 +1176,7 @@ const START_MODE = !REPLAY && (FROM_SKY || FROM_SEA || CONT) && SAVE.done.city ?
 const RESUME = !REPLAY && (FROM_SKY || FROM_SEA || CONT) && !SAVE.done.city && SAVE.cityResume ? SAVE.cityResume : null;
 function newState(mode = START_MODE) {
   return {
-    mode, outroIdx: 0, pierWarned: false,
+    mode, outroIdx: 0, pierWarned: false, outroDist: 0, wingSpawned: false, pierSpawned: false, harbor: null, overWater: false, finalAfter: 0, splashed: false, sailBoings: 0, ahoiT: 0,
     phase: 'start', t: 0, scroll: 0, speed: SPEED, dist: 0, eventIdx: 0,
     kai: { x: 250, y: FLOOR, vy: 0, vx: 0, ground: true, platform: null, grind: false, flip: 0, flipping: false, pushT: 0, hitTimer: 0, grindT: 0, combo: 0, bossFly: false },
     hearts: SAVE.hearts, coins: SAVE.coins, heartFlash: 0, lostBy: '',
@@ -1196,14 +1201,79 @@ function beginWorld() {
 }
 function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; writeSave(); }
 // ---- after the garbage truck: on to the harbor; wing ramps lead up into the sky ----
-const OUTRO = { pier: 700, firstWing: 1500, wingEvery: 1300 };
+// first one angel-wing ramp (the way up to the sky always stays open), then the HARBOR:
+// the street turns into water, Kai rides over a long wooden pier, at its end a ramp → jump (+10) → splash → deep sea
+const OUTRO = { wing: 600, harbor: 1800, wingEvery: 1300, pierLen: 1700 };
+const WATER_Y = FLOOR + 20;                 // the water line lies BELOW the street / pier
+const SAIL_Y = WATER_Y - 72;                // where Kai bounces off a sail (trampoline)
+function clearAhead() { S.objects = S.objects.filter(o => !(o.x > W - 60 && o.type !== 'coin')); }
 function updateOutro(move) {
   if (S.mode === 'main') return;
   S.outroDist = (S.outroDist || 0) + move;
   const d = S.outroDist;
-  if (!S.pierSpawned && d >= OUTRO.pier) { S.pierSpawned = true; addObject('pier', W + 40); S.nextSpawn = Math.max(S.nextSpawn, 500); }
-  const needWing = (!SAVE.items.harpoon || SAVE.done.sea) && wingsActive();
-  if (needWing && d >= OUTRO.firstWing + S.outroIdx * OUTRO.wingEvery) { S.outroIdx++; const o = addObject('ramp', W + 60); o.wings = true; S.nextSpawn = Math.max(S.nextSpawn, 420); }
+  if (!S.wingSpawned && d >= OUTRO.wing && wingsActive()) {
+    S.wingSpawned = true; clearAhead();
+    const o = addObject('ramp', W + 60); o.wings = true; addCoinArc(W - 160, FLOOR - 40, 4, 0, 34); S.nextSpawn = Math.max(S.nextSpawn, 560);
+  }
+  if (!S.pierSpawned && d >= OUTRO.harbor) {
+    S.pierSpawned = true;
+    if (SAVE.items.harpoon) startHarbor();
+    else { clearAhead(); addObject('pier', W + 40); S.nextSpawn = Math.max(S.nextSpawn, 500); }    // closed gate: no harpoon yet
+  }
+  // without the harpoon: more wing ramps up to the sky (the OXXO up there sells the harpoon)
+  if (S.pierSpawned && !S.harbor && !SAVE.items.harpoon && d >= OUTRO.harbor + 900 + S.outroIdx * OUTRO.wingEvery) {
+    S.outroIdx++; const o = addObject('ramp', W + 60); o.wings = true; S.nextSpawn = Math.max(S.nextSpawn, 420);
+  }
+}
+function startHarbor() {
+  clearAhead();
+  const x = W + 40, len = OUTRO.pierLen;
+  // sailboats in the open water after the pier – about one ramp jump / one sail bounce apart
+  S.harbor = addObject('boardwalk', x, { w: len, boats: [270, 600, 930].map((d, i) => ({ d: len + d, i: i + 1, hits: 0, rock: 0 })) });
+  const r = addObject('ramp', x + len - 96); r.pierRamp = true;           // the ramp sits right at the end of the pier
+  for (let i = 0; i < 3; i++) addCoinArc(x + 260 + i * 440, FLOOR - 40, 5, 0, 34);
+  addCoinArc(x + len + 10, FLOOR - 150, 5, 50, 42);                     // coins over the water: only reachable with the ramp jump
+  addCoinArc(x + len + 330, FLOOR - 230, 5, 40, 44);                    // high up: only reachable with a sail bounce
+  addCoinArc(x + len + 660, FLOOR - 230, 5, 40, 44);
+}
+// SEGEL-TRAMPOLIN: landing on a sail throws Kai up high – BOING! + "Ahoi, Kapitän Kai!"
+function sailHit(prevY, y) {
+  const k = S.kai;
+  for (const b of S.harbor.boats) {
+    const bx = S.harbor.x + b.d;
+    if (k.x > bx - 58 && k.x < bx + 62 && prevY <= SAIL_Y && y >= SAIL_Y) return b;
+  }
+  return null;
+}
+function sayAhoi() {
+  // the phone / browser speaks it (built-in voice); the text is shown anyway
+  try {
+    if (!Audio.sfxOn || !window.speechSynthesis) return;
+    const l = SAVE.lang || 'de';
+    const u = new SpeechSynthesisUtterance({ de: 'Ahoi, Kapitän Kai!', en: 'Ahoy, Captain Kai!', es: '¡Ahoy, capitán Kai!' }[l] || 'Ahoi, Kapitän Kai!');
+    u.lang = { de: 'de-DE', en: 'en-US', es: 'es-MX' }[l] || 'de-DE'; u.rate = 1.05; u.pitch = 1.3; u.volume = 1;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch (e) {}
+}
+function sailBoing(b) {
+  const k = S.kai;
+  k.y = SAIL_Y; k.vy = -16.5; k.rampJump = true; k.ground = false; k.platform = null;
+  b.hits++; b.rock = 1; S.coins += 20; S.sailBoings = (S.sailBoings || 0) + 1;
+  Audio.play('boing'); Audio.play('coin');
+  for (let i = 0; i < 16; i++) S.particles.push({ x: k.x + rand(-30, 30), y: SAIL_Y + rand(-10, 10), vx: rand(-3, 3), vy: rand(-4, 1), r: rand(2, 4), color: i % 2 ? '#ffffff' : '#ffd23a', life: 1, g: 0.15 });
+  flash(S.sailBoings > 1 ? tx('{n}× SEGEL-BOING! +20', { n: S.sailBoings }) : tx('SEGEL-BOING! +20'), 70);
+  S.ahoiT = 130; sayAhoi();
+}
+// into the water at the end of the pier
+function splashIntoWater() {
+  const k = S.kai;
+  S.phase = 'dive'; S.diveT = 0; S.splashed = true; k.ground = false; k.platform = null;
+  Audio.grindLoop(false); Audio.play('pop'); Audio.play('air');
+  for (let i = 0; i < 44; i++) S.particles.push({ x: k.x + rand(-24, 24), y: WATER_Y, vx: rand(-5, 5), vy: rand(-11, -3), r: rand(2, 6), color: i % 3 ? '#7fd6ef' : '#ffffff', life: 1.5, g: 0.35 });
+  saveProgress();
+  if (allBossesDone()) { S.finalAfter = 55; flash(tx('Alle Bosse besiegt!'), 90); return; }      // everything done: the big final screen
+  flash(tx('Ab in die Tiefsee!'), 90);
+  goToWorld('tiefsee.html', 'from=stadt&splash=1');             // the camera follows Kai under water
 }
 function startAscend() {
   const k = S.kai;
@@ -1216,7 +1286,7 @@ function startAscend() {
 }
 function enterPipe(o) {
   const k = S.kai;
-  if (SAVE.done.sea) return;                       // the deep sea is already done
+  // the tube always stays open – also when the deep sea is already done (play it again)
   if (!SAVE.items.harpoon) {
     // no harpoon yet: the tube stays closed
     if (!o.warned) { o.warned = true; Audio.play('denied'); flash(tx('Du brauchst zuerst die Harpune aus dem OXXO im Himmel!'), 150); }
@@ -1324,6 +1394,7 @@ const DEF = {
   dog:      { w: 46, h: 30, solid: true },
   police:   { w: 150, h: 54, solid: true },
   pier:     { w: 360, h: 0 },
+  boardwalk: { w: 1700, h: 0 },        // the long harbor pier over the water (instead of the street)
   pipe:     { w: 84, h: 82, solid: true, platform: true, topX1: -6, topX2: 90 },   // big green tube – the way down to the deep sea
   party:    { w: 700, h: 0 },
 };
@@ -1432,6 +1503,12 @@ function launchFromRamp(o, boost) {
   const k = S.kai;
   o.riding = false; o.done = true;
   if (o.wings) { startAscend(); return; }
+  if (o.pierRamp) {
+    // big jump off the end of the pier into the water: +10 coins
+    jump(RAMP_V * 1.08); k.rampJump = true; S.coins += 10;
+    Audio.play('ramp'); Audio.play('coin'); flash(tx('HAFEN-SPRUNG! +10'), 90);
+    return;
+  }
   jump(RAMP_V * boost); k.rampJump = true;
   Audio.play('ramp'); flash(tx('BIG AIR!'), 50);
   if (o.bossRamp && S.boss) aimAtTruck();
@@ -1493,7 +1570,9 @@ function updateKai(dt) {
       }
       if (!k.platform && S.boss) bossRoofCheck(prevY);
     }
-    if (!k.platform && k.y >= FLOOR) {
+    if (S.overWater && S.phase === 'play' && k.vy > 0) { const b = sailHit(prevY, k.y); if (b) sailBoing(b); }
+    if (S.overWater && !k.platform && k.y >= WATER_Y + 4 && S.phase === 'play') { splashIntoWater(); return; }
+    if (!k.platform && k.y >= FLOOR && !S.overWater) {
       k.y = FLOOR; k.vy = 0; k.ground = true; landed('land');
       if (k.bossFly) { k.bossFly = false; }
     }
@@ -1603,8 +1682,9 @@ function updateBoss(dt) {
     if (Math.random() < 0.5 * dt) S.particles.push({ x: b.x + rand(20, 300), y: FLOOR - rand(60, 160), vx: rand(-1, 1), vy: rand(-2, -0.5), r: rand(6, 14), color: 'rgba(80,80,90,0.6)', life: 1.4, g: -0.02 });
     if (b.t > 200) {
       S.boss = null; S.phase = 'play'; S.mode = 'outro'; S.outroDist = 0; SAVE.done.city = true; SAVE.cityResume = null; saveProgress(); Audio.play('win');
-      if (allBossesDone()) { goToWorld('tiefsee.html', 'final=1'); return; }
-      flash(tx('Noch offen für Level 3:') + ' ' + openBosses().join(' · '), 220);
+      // always on to the harbor (when everything is done, the final screen comes after the splash)
+      if (allBossesDone()) flash(tx('Alle Bosse besiegt! Ab zum Hafen – spring ins Wasser!'), 220);
+      else flash(tx('Noch offen für Level 3:') + ' ' + openBosses().join(' · '), 220);
     }
     return;
   }
@@ -1667,9 +1747,12 @@ function update(dt) {
     return;
   }
   if (S.phase === 'pipe') { updateParticles(dt); return; }
+  if (S.harbor) for (const b of S.harbor.boats) if (b.rock > 0) b.rock = Math.max(0, b.rock - 0.012 * dt);
+  if (S.ahoiT > 0) S.ahoiT -= dt;
   if (S.phase === 'dive') {
     const k = S.kai; S.diveT += dt; k.vy += 0.5 * dt; k.y += k.vy * dt; k.x += 1.2 * dt;
-    if (k.y > FLOOR + 40 && !S.splashed) { S.splashed = true; Audio.play('pop'); for (let i = 0; i < 30; i++) S.particles.push({ x: k.x, y: FLOOR, vx: rand(-4, 4), vy: rand(-8, -2), r: rand(2, 5), color: '#7fd6ef', life: 1.4, g: 0.35 }); }
+    if (S.finalAfter) { S.finalAfter -= dt; if (S.finalAfter <= 0) { S.finalAfter = 0; goToWorld('tiefsee.html', 'final=1'); } }
+    if (k.y > WATER_Y + 20 && !S.splashed) { S.splashed = true; Audio.play('pop'); for (let i = 0; i < 30; i++) S.particles.push({ x: k.x, y: FLOOR, vx: rand(-4, 4), vy: rand(-8, -2), r: rand(2, 5), color: '#7fd6ef', life: 1.4, g: 0.35 }); }
     updateParticles(dt);
     return;
   }
@@ -1693,12 +1776,15 @@ function update(dt) {
       else if (!S.boss && !(S.party && !S.partyDone)) { S.nextSpawn -= move; if (S.nextSpawn <= 0) spawn(); }
     } else {
       updateOutro(move);
-      S.nextSpawn -= move; if (S.nextSpawn <= 0) spawn();
-      // the harbor: with the harpoon Kai dives in, without it he has to go to the sky first
+      if (!S.harbor) { S.nextSpawn -= move; if (S.nextSpawn <= 0) spawn(); }      // nothing in the way on the pier
+      else if (S.kai.x - 14 > S.harbor.x + S.harbor.w) {
+        // past the end of the pier there is only water
+        S.overWater = true; const k = S.kai;
+        if (k.ground && !k.platform) { k.ground = false; k.vy = Math.max(k.vy, 0); }
+      }
+      // the harbor gate without the harpoon: Kai has to go up to the sky first
       for (const o of S.objects) if (o.type === 'pier') {
-        if (SAVE.done.sea) continue;
         if (!SAVE.items.harpoon && !S.pierWarned && o.x < W - 150) { S.pierWarned = true; flash(tx('Du brauchst zuerst die Harpune aus dem OXXO im Himmel!'), 150); Audio.play('denied'); }
-        if (SAVE.items.harpoon && o.x <= 330 && S.phase === 'play' && kaiGrounded()) startDive();
       }
     }
   }
@@ -1735,7 +1821,7 @@ function update(dt) {
     }
   }
   if (S.party && S.party.x + S.party.w < -80) S.party = null;
-  S.objects = S.objects.filter(o => o.x + (o.w || 20) > -80 && !(o.done && (o.type === 'coin' || o.type === 'tacoItem')));
+  S.objects = S.objects.filter(o => (o.type === 'boardwalk' || o.x + (o.w || 20) > -80) && !(o.done && (o.type === 'coin' || o.type === 'tacoItem')));
   updateProjectiles(dt);
   updateParticles(dt);
 }
@@ -2223,6 +2309,86 @@ function drawStreet() {
 }
 
 // ---------- obstacles ----------
+// ---------------- HARBOR: the pier at street level, the water lower (WATER_Y), sailboats on the water ----------------
+function drawSailboat(bx, i, b) {
+  // b.rock: the boat rocks hard after a sail bounce and calms down again
+  const rock = b ? b.rock : 0, bob = Math.sin(S.t * 0.05 + i * 1.7) * 2;
+  const hull = ['#c8402e', '#ffffff', '#1e4fa3', '#f2b233'][i % 4];
+  ctx.save(); ctx.translate(bx, WATER_Y + 4 + bob);
+  ctx.rotate(Math.sin(S.t * 0.04 + i) * 0.03 + rock * Math.sin(S.t * 0.35) * 0.28);
+  ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+  // mast + sails (the big sail is the trampoline – it bulges when Kai bounces)
+  const bulge = rock * Math.max(0, Math.sin(S.t * 0.5)) * 14;
+  ctx.fillStyle = '#6b4a2e'; ctx.fillRect(-2, -122, 5, 112); ctx.strokeRect(-2, -122, 5, 112);
+  ctx.fillStyle = '#fbf7ee'; ctx.beginPath(); ctx.moveTo(4, -116); ctx.quadraticCurveTo(46 - bulge, -64 + bulge, 52, -20); ctx.lineTo(4, -20); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-4, -100); ctx.quadraticCurveTo(-32, -60, -38, -24); ctx.lineTo(-4, -24); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(20,32,46,0.25)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(8, -90); ctx.lineTo(30, -52); ctx.moveTo(8, -60); ctx.lineTo(40, -36); ctx.stroke();
+  ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+  ctx.fillStyle = ['#e8463c', '#34c759', '#ffd23a', '#36c6f4'][i % 4]; ctx.beginPath(); ctx.moveTo(3, -122); ctx.lineTo(22, -116); ctx.lineTo(3, -110); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // hull (lower part under water)
+  ctx.fillStyle = hull; ctx.beginPath(); ctx.moveTo(-60, -16); ctx.lineTo(64, -16); ctx.lineTo(48, 8); ctx.lineTo(-48, 8); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = hull === '#ffffff' ? '#1e4fa3' : '#ffffff'; ctx.fillRect(-52, -10, 108, 4);
+  ctx.restore();
+}
+function drawWater(x0) {
+  // quay wall at the back (the houses stand on the quay), the water lies lower in front of it
+  ctx.fillStyle = '#9a9488'; ctx.fillRect(x0, FLOOR - 8, W + 40 - x0, WATER_Y - FLOOR + 10);
+  ctx.strokeStyle = 'rgba(40,40,40,0.3)'; ctx.lineWidth = 1.5;
+  for (let r = 0; r < 2; r++) { const yy = FLOOR - 8 + r * 14; ctx.beginPath(); ctx.moveTo(x0, yy + 14); ctx.lineTo(W + 40, yy + 14); ctx.stroke();
+    for (let bx = (r ? 20 : 0) - ((S.scroll % 40) + 40) % 40; bx < W + 40; bx += 40) { if (bx < x0) continue; ctx.beginPath(); ctx.moveTo(bx, yy); ctx.lineTo(bx, yy + 14); ctx.stroke(); } }
+  ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0, FLOOR - 8); ctx.lineTo(W + 40, FLOOR - 8); ctx.stroke();
+  // water
+  const g = ctx.createLinearGradient(0, WATER_Y, 0, H + 40); g.addColorStop(0, '#4fb7e0'); g.addColorStop(1, '#16648f');
+  ctx.fillStyle = g; ctx.fillRect(x0, WATER_Y, W + 40 - x0, H - WATER_Y + 80);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let wx = x0; wx <= W + 40; wx += 12) ctx.lineTo(wx, WATER_Y + Math.sin(wx * 0.06 + S.t * 0.12) * 1.6);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  for (let i = 0; i < 18; i++) { const wx = ((i * 83 - S.scroll * 0.6) % (W + 120) + W + 120) % (W + 120) - 40, wy = WATER_Y + 9 + (i % 2) * 7; if (wx < x0) continue; ctx.beginPath(); ctx.moveTo(wx, wy); ctx.quadraticCurveTo(wx + 9, wy - 3, wx + 18, wy); ctx.stroke(); }
+}
+function drawHarbor(o) {
+  const x = o.x, end = x + o.w, x0 = Math.max(-20, x), top = FLOOR - 8;
+  if (x0 < W + 20) drawWater(x0);
+  // end of the street: stone edge going down into the water
+  if (x > -30 && x < W + 30) { ctx.fillStyle = '#8a8478'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.fillRect(x - 14, top, 14, H - top + 10); ctx.strokeRect(x - 14, top, 14, H - top + 10); }
+  // the pier: planks at street level, posts down into the water
+  if (end > -20 && x < W + 20) {
+    const p1 = x0, p2 = Math.min(W + 20, end);
+    ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+    for (let px = x + 24; px < end; px += 72) { if (px < -20 || px > W + 20) continue; ctx.fillStyle = '#6b4a2e'; ctx.fillRect(px, top + 12, 10, H - top); ctx.strokeRect(px, top + 12, 10, H - top); }
+    if (end < W + 20) { ctx.fillStyle = '#6b4a2e'; ctx.fillRect(end - 12, top + 4, 12, H - top); ctx.strokeRect(end - 12, top + 4, 12, H - top); }
+    // shadow under the planks
+    ctx.fillStyle = 'rgba(10,30,50,0.25)'; ctx.fillRect(p1, top + 12, p2 - p1, 6);
+    ctx.fillStyle = '#b07a42'; ctx.fillRect(p1, top, p2 - p1, 12); ctx.strokeRect(p1, top, p2 - p1, 12);
+    ctx.strokeStyle = 'rgba(70,40,15,0.55)'; ctx.lineWidth = 1.5;
+    for (let px = x + 28; px < end; px += 28) { if (px < p1 || px > p2) continue; ctx.beginPath(); ctx.moveTo(px, top + 1); ctx.lineTo(px, top + 11); ctx.stroke(); }
+    // bollards with a rope
+    ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+    for (let px = x + 140; px < end - 160; px += 560) { if (px < -20 || px > W + 20) continue; ctx.fillStyle = '#2f3a46'; ctx.beginPath(); ctx.roundRect(px, top - 16, 14, 16, [5, 5, 0, 0]); ctx.fill(); ctx.stroke(); }
+  }
+  // sailboats on the water after the pier
+  for (const b of o.boats || []) { const bx = x + b.d; if (bx > -90 && bx < W + 90) drawSailboat(bx, b.i, b); }
+  // sign HAFEN at the start
+  if (x > -140 && x < W + 40) {
+    ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+    ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x + 30, FLOOR - 110, 6, 102); ctx.strokeRect(x + 30, FLOOR - 110, 6, 102);
+    ctx.fillStyle = '#f4efe6'; ctx.beginPath(); ctx.roundRect(x - 10, FLOOR - 134, 90, 28, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#1e4fa3'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText(tx('HAFEN'), x + 35, FLOOR - 115);
+  }
+}
+// "AHOI, KAPITÄN KAI!" speech bubble above Kai after a sail bounce
+function drawAhoi() {
+  if (!(S.ahoiT > 0)) return;
+  const k = S.kai, a = Math.min(1, S.ahoiT / 20), txt = tx('Ahoi, Kapitän Kai!');
+  ctx.save(); ctx.globalAlpha = a; ctx.font = 'bold 20px Arial';
+  const w = ctx.measureText(txt).width + 28, bx = clamp(k.x - 20, 10, W - w - 10), by = clamp(k.y - 150, -DY + 70, H - 60);
+  ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(bx, by, w, 40, 14); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + 26, by + 39); ctx.lineTo(bx + 18, by + 56); ctx.lineTo(bx + 42, by + 39); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(bx + 24, by + 34, 20, 6);
+  ctx.fillStyle = '#1e4fa3'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, bx + w / 2, by + 21);
+  ctx.restore();
+}
 function drawObject(o) {
   const x = o.x, f = FLOOR;
   ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
@@ -2245,21 +2411,17 @@ function drawObject(o) {
       if (SAVE.items.harpoon) { const b = Math.sin(S.t * 0.15) * 3; ctx.fillStyle = '#ffd23a'; ctx.beginPath(); ctx.moveTo(x + w / 2 - 9, top - 30 + b); ctx.lineTo(x + w / 2 + 9, top - 30 + b); ctx.lineTo(x + w / 2, top - 16 + b); ctx.closePath(); ctx.fill(); ctx.stroke(); }
       break;
     }
+    case 'boardwalk': { drawHarbor(o); break; }
     case 'pier': {
-      // lake strip + wooden pier going into the water, sign HAFEN
-      ctx.fillStyle = '#5fb8d8'; ctx.fillRect(x - 40, FLOOR - 70, o.w + 120, 62);
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
-      for (let i = 0; i < 8; i++) { const wx = x - 30 + i * 52 + Math.sin(S.t * 0.05 + i) * 6; ctx.beginPath(); ctx.moveTo(wx, FLOOR - 50 + (i % 3) * 12); ctx.lineTo(wx + 22, FLOOR - 50 + (i % 3) * 12); ctx.stroke(); }
+      // harbor entrance without the harpoon: sign HAFEN + closed barrier (the street goes on)
       ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
-      ctx.fillStyle = '#9b6632'; ctx.fillRect(x, FLOOR - 26, o.w, 12); ctx.strokeRect(x, FLOOR - 26, o.w, 12);
-      for (let px = x + 10; px < x + o.w; px += 48) { ctx.fillStyle = '#6b4a2e'; ctx.fillRect(px, FLOOR - 14, 8, 22); ctx.strokeRect(px, FLOOR - 14, 8, 22); }
       // sign
       ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x + 30, FLOOR - 110, 6, 86); ctx.strokeRect(x + 30, FLOOR - 110, 6, 86);
       ctx.fillStyle = '#f4efe6'; ctx.beginPath(); ctx.roundRect(x - 10, FLOOR - 134, 90, 28, 6); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#1e4fa3'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText(tx('HAFEN'), x + 35, FLOOR - 115);
       // closed gate if Kai has no harpoon
       if (!SAVE.items.harpoon) {
-        ctx.fillStyle = '#d8352c'; ctx.fillRect(x + 90, FLOOR - 60, 8, 36); ctx.strokeRect(x + 90, FLOOR - 60, 8, 36);
+        ctx.fillStyle = '#d8352c'; ctx.fillRect(x + 90, FLOOR - 60, 8, 52); ctx.strokeRect(x + 90, FLOOR - 60, 8, 52);
         ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 98, FLOOR - 56, 90, 10); ctx.strokeRect(x + 98, FLOOR - 56, 90, 10);
         ctx.fillStyle = '#d8352c'; for (let i = 0; i < 4; i++) ctx.fillRect(x + 104 + i * 22, FLOOR - 56, 10, 10);
         drawWorldIcon('harpoon', x + 210, FLOOR - 56, false);
@@ -2395,7 +2557,7 @@ function drawObject(o) {
         }
         ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
       }
-      ctx.fillStyle = o.wings ? '#fff3c0' : o.bossRamp ? '#ffb02e' : '#4f8fd6';
+      ctx.fillStyle = o.wings ? '#fff3c0' : o.bossRamp ? '#ffb02e' : o.pierRamp ? '#c58a4a' : '#4f8fd6';
       ctx.beginPath(); ctx.moveTo(x, f); ctx.quadraticCurveTo(x + o.w * 0.7, f - 4, x + o.w, f - o.h); ctx.lineTo(x + o.w, f); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#9aa6b1'; ctx.fillRect(x + o.w - 3, f - o.h, 6, o.h); ctx.strokeRect(x + o.w - 3, f - o.h, 6, o.h);
       if (o.bossRamp && !o.done) {
@@ -2717,6 +2879,7 @@ function draw() {
   ctx.restore();
   if (S.noHud) return;
   ctx.save(); ctx.translate(0, -DY); drawHUD(); ctx.restore();
+  drawAhoi();
   drawPinataUI();
   ctx.save(); ctx.translate(0, -DY / 2); drawScreens(); ctx.restore();   // menus centred on the tall screen
 }
@@ -5873,7 +6036,7 @@ function beginTransition(file, query) {
   if (!PAUSE.on) Audio.pauseBg(false);
   if (kind === 'cut') { activate(next); Audio.setTheme(THEME[toKey]); return; }
   const k = from.S.kai;
-  TRANS = { kind, from, to: next, t: 0, T: kind === 'up' ? 140 : kind === 'down' ? 130 : kind === 'pipe' ? 170 : 150, x0: k.x, y0: k.y, splashed: false };
+  TRANS = { kind, splash: /splash=1/.test(query || ''), from, to: next, t: 0, T: kind === 'up' ? 140 : kind === 'down' ? 130 : kind === 'pipe' ? 170 : 150, x0: k.x, y0: k.y, splashed: false };
   from.S.hideKai = true; from.S.noHud = true; next.S.hideKai = true; next.S.noHud = true;
   next.S.phase = 'transit';
 }
@@ -5923,6 +6086,10 @@ function transKai(tr, p) {
     y = p < 0.12 ? lerp(tr.y0, tr.y0 + 70, easeIn(p / 0.12)) : lerp(tr.y0 + 70, 210, ease((p - 0.12) / 0.88));
     o.wings = undefined; o.diver = p > 0.75; o.armsUp = p > 0.08 && p < 0.8; o.crouch = 5;
     return { x: p < 0.78 ? tr.x0 : lerp(tr.x0, 250, ease((p - 0.78) / 0.22)), y, o };
+  } else if (tr.splash) {
+    // came off the harbor pier: already in the water – straight down to where the sea game starts
+    y = lerp(tr.y0, 210, ease(p));
+    o.wings = undefined; o.diver = p > 0.25; o.armsUp = p < 0.3; o.tilt = p < 0.4 ? 0.35 : 0;
   } else {
     // dive: hop off the pier, splash, sink to where the sea game starts (y 210)
     y = p < 0.22 ? lerp(tr.y0, tr.y0 - 70, easeOut(p / 0.22)) : lerp(tr.y0 - 70, 210, ease((p - 0.22) / 0.78));

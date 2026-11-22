@@ -121,6 +121,86 @@ function drawStreet() {
 }
 
 // ---------- obstacles ----------
+// ---------------- HARBOR: the pier at street level, the water lower (WATER_Y), sailboats on the water ----------------
+function drawSailboat(bx, i, b) {
+  // b.rock: the boat rocks hard after a sail bounce and calms down again
+  const rock = b ? b.rock : 0, bob = Math.sin(S.t * 0.05 + i * 1.7) * 2;
+  const hull = ['#c8402e', '#ffffff', '#1e4fa3', '#f2b233'][i % 4];
+  ctx.save(); ctx.translate(bx, WATER_Y + 4 + bob);
+  ctx.rotate(Math.sin(S.t * 0.04 + i) * 0.03 + rock * Math.sin(S.t * 0.35) * 0.28);
+  ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+  // mast + sails (the big sail is the trampoline – it bulges when Kai bounces)
+  const bulge = rock * Math.max(0, Math.sin(S.t * 0.5)) * 14;
+  ctx.fillStyle = '#6b4a2e'; ctx.fillRect(-2, -122, 5, 112); ctx.strokeRect(-2, -122, 5, 112);
+  ctx.fillStyle = '#fbf7ee'; ctx.beginPath(); ctx.moveTo(4, -116); ctx.quadraticCurveTo(46 - bulge, -64 + bulge, 52, -20); ctx.lineTo(4, -20); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-4, -100); ctx.quadraticCurveTo(-32, -60, -38, -24); ctx.lineTo(-4, -24); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(20,32,46,0.25)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(8, -90); ctx.lineTo(30, -52); ctx.moveTo(8, -60); ctx.lineTo(40, -36); ctx.stroke();
+  ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+  ctx.fillStyle = ['#e8463c', '#34c759', '#ffd23a', '#36c6f4'][i % 4]; ctx.beginPath(); ctx.moveTo(3, -122); ctx.lineTo(22, -116); ctx.lineTo(3, -110); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // hull (lower part under water)
+  ctx.fillStyle = hull; ctx.beginPath(); ctx.moveTo(-60, -16); ctx.lineTo(64, -16); ctx.lineTo(48, 8); ctx.lineTo(-48, 8); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = hull === '#ffffff' ? '#1e4fa3' : '#ffffff'; ctx.fillRect(-52, -10, 108, 4);
+  ctx.restore();
+}
+function drawWater(x0) {
+  // quay wall at the back (the houses stand on the quay), the water lies lower in front of it
+  ctx.fillStyle = '#9a9488'; ctx.fillRect(x0, FLOOR - 8, W + 40 - x0, WATER_Y - FLOOR + 10);
+  ctx.strokeStyle = 'rgba(40,40,40,0.3)'; ctx.lineWidth = 1.5;
+  for (let r = 0; r < 2; r++) { const yy = FLOOR - 8 + r * 14; ctx.beginPath(); ctx.moveTo(x0, yy + 14); ctx.lineTo(W + 40, yy + 14); ctx.stroke();
+    for (let bx = (r ? 20 : 0) - ((S.scroll % 40) + 40) % 40; bx < W + 40; bx += 40) { if (bx < x0) continue; ctx.beginPath(); ctx.moveTo(bx, yy); ctx.lineTo(bx, yy + 14); ctx.stroke(); } }
+  ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0, FLOOR - 8); ctx.lineTo(W + 40, FLOOR - 8); ctx.stroke();
+  // water
+  const g = ctx.createLinearGradient(0, WATER_Y, 0, H + 40); g.addColorStop(0, '#4fb7e0'); g.addColorStop(1, '#16648f');
+  ctx.fillStyle = g; ctx.fillRect(x0, WATER_Y, W + 40 - x0, H - WATER_Y + 80);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let wx = x0; wx <= W + 40; wx += 12) ctx.lineTo(wx, WATER_Y + Math.sin(wx * 0.06 + S.t * 0.12) * 1.6);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  for (let i = 0; i < 18; i++) { const wx = ((i * 83 - S.scroll * 0.6) % (W + 120) + W + 120) % (W + 120) - 40, wy = WATER_Y + 9 + (i % 2) * 7; if (wx < x0) continue; ctx.beginPath(); ctx.moveTo(wx, wy); ctx.quadraticCurveTo(wx + 9, wy - 3, wx + 18, wy); ctx.stroke(); }
+}
+function drawHarbor(o) {
+  const x = o.x, end = x + o.w, x0 = Math.max(-20, x), top = FLOOR - 8;
+  if (x0 < W + 20) drawWater(x0);
+  // end of the street: stone edge going down into the water
+  if (x > -30 && x < W + 30) { ctx.fillStyle = '#8a8478'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.fillRect(x - 14, top, 14, H - top + 10); ctx.strokeRect(x - 14, top, 14, H - top + 10); }
+  // the pier: planks at street level, posts down into the water
+  if (end > -20 && x < W + 20) {
+    const p1 = x0, p2 = Math.min(W + 20, end);
+    ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+    for (let px = x + 24; px < end; px += 72) { if (px < -20 || px > W + 20) continue; ctx.fillStyle = '#6b4a2e'; ctx.fillRect(px, top + 12, 10, H - top); ctx.strokeRect(px, top + 12, 10, H - top); }
+    if (end < W + 20) { ctx.fillStyle = '#6b4a2e'; ctx.fillRect(end - 12, top + 4, 12, H - top); ctx.strokeRect(end - 12, top + 4, 12, H - top); }
+    // shadow under the planks
+    ctx.fillStyle = 'rgba(10,30,50,0.25)'; ctx.fillRect(p1, top + 12, p2 - p1, 6);
+    ctx.fillStyle = '#b07a42'; ctx.fillRect(p1, top, p2 - p1, 12); ctx.strokeRect(p1, top, p2 - p1, 12);
+    ctx.strokeStyle = 'rgba(70,40,15,0.55)'; ctx.lineWidth = 1.5;
+    for (let px = x + 28; px < end; px += 28) { if (px < p1 || px > p2) continue; ctx.beginPath(); ctx.moveTo(px, top + 1); ctx.lineTo(px, top + 11); ctx.stroke(); }
+    // bollards with a rope
+    ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+    for (let px = x + 140; px < end - 160; px += 560) { if (px < -20 || px > W + 20) continue; ctx.fillStyle = '#2f3a46'; ctx.beginPath(); ctx.roundRect(px, top - 16, 14, 16, [5, 5, 0, 0]); ctx.fill(); ctx.stroke(); }
+  }
+  // sailboats on the water after the pier
+  for (const b of o.boats || []) { const bx = x + b.d; if (bx > -90 && bx < W + 90) drawSailboat(bx, b.i, b); }
+  // sign HAFEN at the start
+  if (x > -140 && x < W + 40) {
+    ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+    ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x + 30, FLOOR - 110, 6, 102); ctx.strokeRect(x + 30, FLOOR - 110, 6, 102);
+    ctx.fillStyle = '#f4efe6'; ctx.beginPath(); ctx.roundRect(x - 10, FLOOR - 134, 90, 28, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#1e4fa3'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText(tx('HAFEN'), x + 35, FLOOR - 115);
+  }
+}
+// "AHOI, KAPITÄN KAI!" speech bubble above Kai after a sail bounce
+function drawAhoi() {
+  if (!(S.ahoiT > 0)) return;
+  const k = S.kai, a = Math.min(1, S.ahoiT / 20), txt = tx('Ahoi, Kapitän Kai!');
+  ctx.save(); ctx.globalAlpha = a; ctx.font = 'bold 20px Arial';
+  const w = ctx.measureText(txt).width + 28, bx = clamp(k.x - 20, 10, W - w - 10), by = clamp(k.y - 150, -DY + 70, H - 60);
+  ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(bx, by, w, 40, 14); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + 26, by + 39); ctx.lineTo(bx + 18, by + 56); ctx.lineTo(bx + 42, by + 39); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(bx + 24, by + 34, 20, 6);
+  ctx.fillStyle = '#1e4fa3'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, bx + w / 2, by + 21);
+  ctx.restore();
+}
 function drawObject(o) {
   const x = o.x, f = FLOOR;
   ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
@@ -143,21 +223,17 @@ function drawObject(o) {
       if (SAVE.items.harpoon) { const b = Math.sin(S.t * 0.15) * 3; ctx.fillStyle = '#ffd23a'; ctx.beginPath(); ctx.moveTo(x + w / 2 - 9, top - 30 + b); ctx.lineTo(x + w / 2 + 9, top - 30 + b); ctx.lineTo(x + w / 2, top - 16 + b); ctx.closePath(); ctx.fill(); ctx.stroke(); }
       break;
     }
+    case 'boardwalk': { drawHarbor(o); break; }
     case 'pier': {
-      // lake strip + wooden pier going into the water, sign HAFEN
-      ctx.fillStyle = '#5fb8d8'; ctx.fillRect(x - 40, FLOOR - 70, o.w + 120, 62);
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
-      for (let i = 0; i < 8; i++) { const wx = x - 30 + i * 52 + Math.sin(S.t * 0.05 + i) * 6; ctx.beginPath(); ctx.moveTo(wx, FLOOR - 50 + (i % 3) * 12); ctx.lineTo(wx + 22, FLOOR - 50 + (i % 3) * 12); ctx.stroke(); }
+      // harbor entrance without the harpoon: sign HAFEN + closed barrier (the street goes on)
       ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
-      ctx.fillStyle = '#9b6632'; ctx.fillRect(x, FLOOR - 26, o.w, 12); ctx.strokeRect(x, FLOOR - 26, o.w, 12);
-      for (let px = x + 10; px < x + o.w; px += 48) { ctx.fillStyle = '#6b4a2e'; ctx.fillRect(px, FLOOR - 14, 8, 22); ctx.strokeRect(px, FLOOR - 14, 8, 22); }
       // sign
       ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x + 30, FLOOR - 110, 6, 86); ctx.strokeRect(x + 30, FLOOR - 110, 6, 86);
       ctx.fillStyle = '#f4efe6'; ctx.beginPath(); ctx.roundRect(x - 10, FLOOR - 134, 90, 28, 6); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#1e4fa3'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText(tx('HAFEN'), x + 35, FLOOR - 115);
       // closed gate if Kai has no harpoon
       if (!SAVE.items.harpoon) {
-        ctx.fillStyle = '#d8352c'; ctx.fillRect(x + 90, FLOOR - 60, 8, 36); ctx.strokeRect(x + 90, FLOOR - 60, 8, 36);
+        ctx.fillStyle = '#d8352c'; ctx.fillRect(x + 90, FLOOR - 60, 8, 52); ctx.strokeRect(x + 90, FLOOR - 60, 8, 52);
         ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 98, FLOOR - 56, 90, 10); ctx.strokeRect(x + 98, FLOOR - 56, 90, 10);
         ctx.fillStyle = '#d8352c'; for (let i = 0; i < 4; i++) ctx.fillRect(x + 104 + i * 22, FLOOR - 56, 10, 10);
         drawWorldIcon('harpoon', x + 210, FLOOR - 56, false);
@@ -293,7 +369,7 @@ function drawObject(o) {
         }
         ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
       }
-      ctx.fillStyle = o.wings ? '#fff3c0' : o.bossRamp ? '#ffb02e' : '#4f8fd6';
+      ctx.fillStyle = o.wings ? '#fff3c0' : o.bossRamp ? '#ffb02e' : o.pierRamp ? '#c58a4a' : '#4f8fd6';
       ctx.beginPath(); ctx.moveTo(x, f); ctx.quadraticCurveTo(x + o.w * 0.7, f - 4, x + o.w, f - o.h); ctx.lineTo(x + o.w, f); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#9aa6b1'; ctx.fillRect(x + o.w - 3, f - o.h, 6, o.h); ctx.strokeRect(x + o.w - 3, f - o.h, 6, o.h);
       if (o.bossRamp && !o.done) {
@@ -615,6 +691,7 @@ function draw() {
   ctx.restore();
   if (S.noHud) return;
   ctx.save(); ctx.translate(0, -DY); drawHUD(); ctx.restore();
+  drawAhoi();
   drawPinataUI();
   ctx.save(); ctx.translate(0, -DY / 2); drawScreens(); ctx.restore();   // menus centred on the tall screen
 }

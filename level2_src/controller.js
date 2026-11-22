@@ -35,7 +35,7 @@ function beginTransition(file, query) {
   if (!PAUSE.on) Audio.pauseBg(false);
   if (kind === 'cut') { activate(next); Audio.setTheme(THEME[toKey]); return; }
   const k = from.S.kai;
-  TRANS = { kind, from, to: next, t: 0, T: kind === 'up' ? 140 : kind === 'down' ? 130 : kind === 'pipe' ? 170 : 150, x0: k.x, y0: k.y, splashed: false };
+  TRANS = { kind, splash: /splash=1/.test(query || ''), from, to: next, t: 0, T: kind === 'up' ? 140 : kind === 'down' ? 130 : kind === 'pipe' ? 170 : 150, x0: k.x, y0: k.y, splashed: false };
   from.S.hideKai = true; from.S.noHud = true; next.S.hideKai = true; next.S.noHud = true;
   next.S.phase = 'transit';
 }
@@ -85,6 +85,10 @@ function transKai(tr, p) {
     y = p < 0.12 ? lerp(tr.y0, tr.y0 + 70, easeIn(p / 0.12)) : lerp(tr.y0 + 70, 210, ease((p - 0.12) / 0.88));
     o.wings = undefined; o.diver = p > 0.75; o.armsUp = p > 0.08 && p < 0.8; o.crouch = 5;
     return { x: p < 0.78 ? tr.x0 : lerp(tr.x0, 250, ease((p - 0.78) / 0.22)), y, o };
+  } else if (tr.splash) {
+    // came off the harbor pier: already in the water – straight down to where the sea game starts
+    y = lerp(tr.y0, 210, ease(p));
+    o.wings = undefined; o.diver = p > 0.25; o.armsUp = p < 0.3; o.tilt = p < 0.4 ? 0.35 : 0;
   } else {
     // dive: hop off the pier, splash, sink to where the sea game starts (y 210)
     y = p < 0.22 ? lerp(tr.y0, tr.y0 - 70, easeOut(p / 0.22)) : lerp(tr.y0 - 70, 210, ease((p - 0.22) / 0.78));

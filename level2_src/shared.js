@@ -210,6 +210,11 @@ const TR = {
   'JA': ['YES', 'SÍ'], 'NEIN': ['NO', 'NO'],
   // ---------- on-screen buttons · exit · main menu ----------
   'NEIN – ZUM MENÜ': ['NO – MAIN MENU', 'NO – AL MENÚ'],
+  'SEGEL-BOING! +20': ['SAIL BOING! +20', '¡BOING EN LA VELA! +20'], '{n}× SEGEL-BOING! +20': ['{n}× SAIL BOING! +20', '¡{n}× BOING EN LA VELA! +20'],
+  'Ahoi, Kapitän Kai!': ['Ahoy, Captain Kai!', '¡Ahoy, capitán Kai!'],
+  'HAFEN-SPRUNG! +10': ['HARBOR JUMP! +10', '¡SALTO DEL MUELLE! +10'], 'Ab in die Tiefsee!': ['Into the deep sea!', '¡Al mar profundo!'],
+  'Alle Bosse besiegt!': ['All bosses beaten!', '¡Todos los jefes vencidos!'],
+  'Alle Bosse besiegt! Ab zum Hafen – spring ins Wasser!': ['All bosses beaten! On to the harbor – jump into the water!', '¡Todos los jefes vencidos! Al puerto – ¡salta al agua!'],
   'Alle 3 Leben sind weg. Nochmal versuchen?': ['All 3 lives are gone. Try again?', 'Se acabaron las 3 vidas. ¿Intentar de nuevo?'],
   'SPRUNG': ['JUMP', 'SALTO'], 'SCHUSS': ['SHOOT', 'DISPARO'], 'SCHLAG': ['HIT', 'GOLPE'],
   'MENÜ': ['MENU', 'MENÚ'], 'SPIELEN': ['PLAY', 'JUGAR'],
