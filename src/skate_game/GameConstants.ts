@@ -9,6 +9,15 @@ export const gameAssetUrl = (path: string) =>
 export const KAI_IMAGE_URL = gameAssetUrl('kai/kai_intro.png');
 export const GAME_LOGO_URL = gameAssetUrl('game/invert_the_game_transpartent_small.png');
 
+// Portraits in the character carousel (start menu). Kai keeps his own picture.
+export const CHARACTER_IMAGE_URLS: Record<string, string> = {
+    male_cap: KAI_IMAGE_URL,
+    female_long: gameAssetUrl('characters/bali.svg'),     // Bali – regular, long blond hair, jeans, pink tee
+    female_short: gameAssetUrl('characters/racer.svg'),   // Rayssa – brown hair, shorts, Brazilian colours
+    male_short: gameAssetUrl('characters/dubs.svg'),      // Dubs – bald
+    alien: gameAssetUrl('characters/alien.svg'),          // Gnarls – Area 51
+};
+
 export const GRAVITY = 0.6;
 export const JUMP_FORCE = -18;
 export const BASE_FLOOR_Y = 250;

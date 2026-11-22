@@ -183,6 +183,24 @@ function drawPinataShape(type, x, y, s, rot, cracks = []) {
       ctx.lineTo(-12, 16); ctx.lineTo(-12, 34); ctx.lineTo(-22, 34); ctx.lineTo(-24, 10);
       ctx.quadraticCurveTo(-40, 8, -58, 6); ctx.closePath();
     };
+    // back spikes: sitting exactly ON the back line (tail → back), pointing away from the body.
+    // Drawn before the body, so their base disappears into the back.
+    const q = (a, c, b, t) => ({ x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * c.x + t * t * b.x, y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * c.y + t * t * b.y });
+    const qd = (a, c, b, t) => ({ x: 2 * (1 - t) * (c.x - a.x) + 2 * t * (b.x - c.x), y: 2 * (1 - t) * (c.y - a.y) + 2 * t * (b.y - c.y) });
+    const SEG = [[{ x: -58, y: 6 }, { x: -40, y: -10 }, { x: -18, y: -12 }], [{ x: -18, y: -12 }, { x: 0, y: -30 }, { x: 18, y: -24 }]];
+    ctx.fillStyle = '#ff8a3a'; ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+    for (const u of [0.45, 0.72, 1.0, 1.25, 1.5, 1.75]) {
+      const sg = SEG[u < 1 ? 0 : 1], t = u < 1 ? u : u - 1;
+      const pt = q(sg[0], sg[1], sg[2], t), d = qd(sg[0], sg[1], sg[2], t), L = Math.hypot(d.x, d.y) || 1;
+      const dx = d.x / L, dy = d.y / L; let nx = dy, ny = -dx; if (ny > 0) { nx = -nx; ny = -ny; }
+      const h = u > 0.9 && u < 1.6 ? 11 : 8, w = 5;
+      ctx.beginPath();
+      ctx.moveTo(pt.x - dx * w - nx * 3, pt.y - dy * w - ny * 3);
+      ctx.lineTo(pt.x + nx * h, pt.y + ny * h);
+      ctx.lineTo(pt.x + dx * w - nx * 3, pt.y + dy * w - ny * 3);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
     fringeFill(body, ['#3f9b4f', '#58b865', '#3f9b4f', '#58b865', '#3f9b4f', '#58b865', '#3f9b4f'], -62, -54, 126, 90);
     body(); ctx.stroke();
     // teeth, eye, arm, spikes
@@ -190,8 +208,6 @@ function drawPinataShape(type, x, y, s, rot, cracks = []) {
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(46, -42, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = OUT; ctx.beginPath(); ctx.arc(47, -42, 2, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = OUT; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(26, -10); ctx.lineTo(34, -4); ctx.lineTo(36, 2); ctx.stroke();
-    ctx.fillStyle = '#ff8a3a'; ctx.lineWidth = 2;
-    for (let i = 0; i < 5; i++) { const sx = -34 + i * 11, sy = -14 - Math.sin((i + 1) / 6 * Math.PI) * 12; ctx.beginPath(); ctx.moveTo(sx - 4, sy + 3); ctx.lineTo(sx, sy - 6); ctx.lineTo(sx + 4, sy + 3); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   } else if (type === 'rocket') {
     const body = () => {
       ctx.beginPath(); ctx.moveTo(0, -60); ctx.quadraticCurveTo(22, -40, 20, 0); ctx.lineTo(20, 30); ctx.lineTo(-20, 30); ctx.lineTo(-20, 0); ctx.quadraticCurveTo(-22, -40, 0, -60); ctx.closePath();

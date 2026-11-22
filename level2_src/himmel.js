@@ -220,7 +220,8 @@ SHOP_CARD.x0 = (W - (SHOP_CARD.cols * SHOP_CARD.w + (SHOP_CARD.cols - 1) * SHOP_
 function shopCardRect(i) { const c = i % SHOP_CARD.cols, r = Math.floor(i / SHOP_CARD.cols); return { x: SHOP_CARD.x0 + c * (SHOP_CARD.w + SHOP_CARD.gap), y: SHOP_CARD.y0 + r * (SHOP_CARD.h + SHOP_CARD.gap), w: SHOP_CARD.w, h: SHOP_CARD.h }; }
 function shopOwned(it) {
   if (it.id === 'harpoon') return SAVE.items.harpoon;
-  if (it.id === 'turbo') return S.boughtTurbo && !S.turboUsed;   // can be bought again at every OXXO if (it.id === 'star') return !!SAVE.items.star;
+  if (it.id === 'turbo') return S.boughtTurbo && !S.turboUsed;   // can be bought again at every OXXO
+  if (it.id === 'star') return !!SAVE.items.star;                  // bought once = stays bought
   if (it.kind === 'cloth') return !!SAVE.owned[it.id];
   return false;
 }
@@ -510,6 +511,16 @@ function update(dt) {
         a.life = 0; o.done = true;
         if (o.type === 'devil') { burst(o.x, o.y, '#ff5a3a', 20, 5); Audio.play('devilHit'); coinGot(3, o.x, o.y); flash(tx('TREFFER! +3'), 40); }
         else { burst(o.x, o.y, '#9aa6b1', 16, 4); Audio.play('pop'); }
+      }
+    }
+    // arrows also shoot down the pitchforks the devils throw (shaft or prongs)
+    if (a.life > 0) for (const s of S.shots) {
+      if (s.dead) continue;
+      const tipX = s.x + Math.cos(s.rot) * 16, tipY = s.y + Math.sin(s.rot) * 16;
+      if (Math.hypot(a.x - s.x, a.y - s.y) < 18 || Math.hypot(a.x - tipX, a.y - tipY) < 14) {
+        s.dead = true; a.life = 0;
+        burst(s.x, s.y, '#ffd23a', 12, 4); burst(s.x, s.y, '#c8352c', 8, 3); Audio.play('clank'); coinGot(1, s.x, s.y);
+        break;
       }
     }
   }

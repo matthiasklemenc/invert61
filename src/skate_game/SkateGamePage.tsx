@@ -211,6 +211,15 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     useEffect(() => {
         if (levelComplete) { try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ } }
     }, [levelComplete]);
+    // ↺ START OVER: delete Level 1 points, the Level 2 unlock and the Level 2 save, then start Level 1 fresh
+    const startOver = () => {
+        try {
+            localStorage.removeItem(LEVEL1_DONE_KEY);
+            localStorage.removeItem('invert61-level2');
+        } catch { /* ignore */ }
+        wrapperRef.current?.requestFullscreen?.().catch(() => {});
+        playAgainFromLevelOne();
+    };
     const startLevel2 = () => {
         try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ }
         window.location.href = `${import.meta.env.BASE_URL}level2.html`;
@@ -386,6 +395,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 <GameMenu
                     level2Unlocked={level2Unlocked}
                     onLevel2={startLevel2}
+                    onStartOver={startOver}
                     highScore={highScore}
                     userName={userName}
                     setUserName={setUserName}
