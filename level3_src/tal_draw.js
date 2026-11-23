@@ -270,6 +270,38 @@ function drawKai() {
 
 // ---------------- dinosaurs (all drawn facing RIGHT, mirrored for left) ----------------
 function drawDino(d) {
+  if (d.dead) {
+    // tips over onto its back (legs up), lies there a moment and fades away
+    if (d.deadT > 150) return;
+    const u = clamp(d.deadT / 22, 0, 1), c = { trike: 50, stego: 62, raptor: 34, brachio: 60 }[d.type], lift = Math.sin(u * Math.PI) * 36;
+    ctx.save();
+    ctx.globalAlpha = d.deadT > 110 ? Math.max(0, 1 - (d.deadT - 110) / 40) : 1;
+    ctx.translate(d.x, FLOOR - c - lift); ctx.rotate(-d.dir * Math.PI * u); ctx.translate(-d.x, -(FLOOR - c));
+    drawDinoBody(d, true);
+    ctx.restore(); ctx.globalAlpha = 1;
+    return;
+  }
+  if (d.stun > 0) {
+    // dizzy: squashed flat, blinking, stars around the head
+    ctx.save();
+    if (Math.floor(d.stun / 5) % 2 === 0) ctx.globalAlpha = 0.6;
+    ctx.translate(d.x, FLOOR); ctx.scale(1.08, 0.8); ctx.translate(-d.x, -FLOOR);
+    drawDinoBody(d, true);
+    ctx.restore(); ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ffd23a'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) { const a = S.t * 0.12 + i * 2.1; drawStar(d.x + Math.cos(a) * 30, FLOOR - d.h * 0.8 - 14 + Math.sin(a) * 7, 7); }
+    return;
+  }
+  drawDinoBody(d, false);
+}
+function drawDinoBody(d, still) {
+  if (still) {
+    if (d.type === 'trike') drawTrike(d.x, 1, d.dir, d.t, false);
+    if (d.type === 'stego') drawStego(d.x, d.dir, d.t);
+    if (d.type === 'raptor') drawRaptor(d.x, d.dir, d.t, 0);
+    if (d.type === 'brachio') drawBrachio(d.x, d.dir, d.t);
+    return;
+  }
   if (d.type === 'trike') drawTrike(d.x, 1, d.dir, d.t, d.state === 'charge');
   if (d.type === 'stego') drawStego(d.x, d.dir, d.t);
   if (d.type === 'raptor') drawRaptor(d.x, d.dir, d.t, d.hop);

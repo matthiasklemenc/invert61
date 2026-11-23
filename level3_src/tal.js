@@ -56,8 +56,33 @@ window.__S = S; window.__T = () => TEST; window.__V = () => [VH, DY, SAVE];
 function resetDinos() {
   S.dinos = DINO_PLAN.map((d, i) => {
     const base = { trike: { w: 150, h: 78, sp: 1.1 }, stego: { w: 176, h: 96, sp: 0.7 }, raptor: { w: 74, h: 60, sp: 2.6 }, brachio: { w: 230, h: 120, sp: 0.55 } }[d.type];
-    return Object.assign({ x: (d.x1 + d.x2) / 2 + (i % 2 ? 60 : -60), dir: i % 2 ? 1 : -1, vx: 0, state: 'walk', t: rand(0, 100), hop: 0 }, d, base);
+    const o = Object.assign({ x: (d.x1 + d.x2) / 2 + (i % 2 ? 60 : -60), dir: i % 2 ? 1 : -1, vx: 0, state: 'walk', t: rand(0, 100), hop: 0,
+      hp: d.type === 'raptor' ? 1 : 2, stun: 0, dead: false, deadT: 0 }, d, base);
+    rockBlock(o);
+    return o;
   });
+}
+// boulders are walls for the dinos too (like the Goombas in Super Mario): they bump into them and turn around
+function rockBlock(d) {
+  const hw = d.w / 2 - 10;
+  for (const r of ROCKS) {
+    if (d.x + hw > r.x && d.x - hw < r.x + r.w) {
+      if (d.x < r.x + r.w / 2) { d.x = r.x - hw; d.dir = -1; } else { d.x = r.x + r.w + hw; d.dir = 1; }
+      if (d.state === 'charge') d.state = 'walk';
+      return true;
+    }
+  }
+  return false;
+}
+// Kai lands on a dino from above: raptors are gone after 1 hit, the big ones after 2
+function stomp(d) {
+  const k = S.kai, top = dinoBox(d).y1;
+  d.hp--; d.state = 'walk';
+  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
+  burst(k.x, top, '#ffd23a', 10, 3.5);
+  S.shake = Math.max(S.shake, 3);
+  if (d.hp <= 0) { d.dead = true; d.deadT = 0; d.stun = 0; Audio.play('stomp'); burst(d.x, top + 10, '#fbf3df', 12, 4); }
+  else { d.stun = 75; Audio.play('boing'); }
 }
 function buildObjects() {
   const o = [];
@@ -275,7 +300,13 @@ function platformsNear(x) {
 function updateDinos(dt) {
   const k = S.kai, kb = kaiBox();
   for (const d of S.dinos) {
+    if (d.dead) { d.deadT += dt; continue; }
     if (Math.abs(d.x - k.x) > 1500) continue;     // far away: asleep
+    if (d.stun > 0) {                              // dizzy after the first hit: stands still
+      d.stun -= dt; d.vx = 0;
+      collideDino(d, kb);
+      continue;
+    }
     d.t += dt;
     let sp = d.sp;
     if (d.type === 'trike') {
@@ -289,8 +320,16 @@ function updateDinos(dt) {
     d.x += d.vx * dt;
     if (d.x < d.x1) { d.x = d.x1; d.dir = 1; d.state = 'walk'; }
     if (d.x > d.x2) { d.x = d.x2; d.dir = -1; d.state = 'walk'; }
-    if (d.type !== 'brachio' && overlap(kb, dinoBox(d))) hurt(d.x);   // the brachiosaurus is friendly
+    rockBlock(d);
+    collideDino(d, kb);
   }
+}
+function collideDino(d, kb) {
+  if (d.type === 'brachio') return;                // the brachiosaurus is friendly
+  const db = dinoBox(d), k = S.kai;
+  if (!overlap(kb, db)) return;
+  if (k.vy > 0 && (k.prevY ?? k.y) <= db.y1 + 18) stomp(d);   // coming down from above = jump on it
+  else hurt(d.x);
 }
 
 // ---------------- volcanoes: fireballs come from the back in an arc ----------------
