@@ -216,9 +216,21 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         try {
             localStorage.removeItem(LEVEL1_DONE_KEY);
             localStorage.removeItem('invert61-level2');
+            localStorage.removeItem('invert61-level3');
         } catch { /* ignore */ }
         wrapperRef.current?.requestFullscreen?.().catch(() => {});
         playAgainFromLevelOne();
+    };
+    // ---- Level 3 (Dinoland): open when Level 2 is finished (all 3 Level 2 bosses beaten) ----
+    const level3Unlocked = (() => {
+        try {
+            const l2 = JSON.parse(localStorage.getItem('invert61-level2') || '{}');
+            const d = l2.done || {};
+            return !!(l2.level3Unlocked || (d.city && d.heaven && d.sea));
+        } catch { return false; }
+    })();
+    const startLevel3 = () => {
+        window.location.href = `${import.meta.env.BASE_URL}level3.html`;
     };
     const startLevel2 = () => {
         try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ }
@@ -395,6 +407,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 <GameMenu
                     level2Unlocked={level2Unlocked}
                     onLevel2={startLevel2}
+                    level3Unlocked={level3Unlocked}
+                    onLevel3={startLevel3}
                     onStartOver={startOver}
                     highScore={highScore}
                     userName={userName}

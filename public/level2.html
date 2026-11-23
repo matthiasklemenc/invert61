@@ -473,7 +473,7 @@ const TR = {
   'Ich spiele langsamer…': ['I\'ll play slower…', 'Toco más despacio…'], 'Ich helfe dir ein bisschen…': ['I\'ll help you a little…', 'Te ayudo un poquito…'],
   // ---------- level end ----------
   'LEVEL 2 GESCHAFFT!': ['LEVEL 2 COMPLETE!', '¡NIVEL 2 COMPLETADO!'], 'LEVEL 3 FREIGESCHALTET': ['LEVEL 3 UNLOCKED', 'NIVEL 3 DESBLOQUEADO'],
-  'LEVEL 3: UNDER CONSTRUCTION': ['LEVEL 3: UNDER CONSTRUCTION', 'NIVEL 3: EN CONSTRUCCIÓN'],
+  'LEVEL 3: UNDER CONSTRUCTION': ['LEVEL 3: UNDER CONSTRUCTION', 'NIVEL 3: EN CONSTRUCCIÓN'], 'LEVEL 3: DINOLAND': ['LEVEL 3: DINOLAND', 'NIVEL 3: DINOLANDIA'],
   'Perlen {p} × 5 + Seesterne {s} = {c} Münzen': ['Pearls {p} × 5 + starfish {s} = {c} coins', 'Perlas {p} × 5 + estrellas {s} = {c} monedas'],
   'Münzen gesamt: {c}   ·   Herzen: {h}': ['Total coins: {c}   ·   Hearts: {h}', 'Monedas totales: {c}   ·   Corazones: {h}'],
   'Piñata': ['Piñata', 'Piñata'], 'Wal-Memory': ['Whale memory', 'Memorama'], 'Elfmeter': ['Penalties', 'Penales'], 'Harfe': ['Harp', 'Arpa'],
@@ -4300,7 +4300,7 @@ const BTN = {
   again: { x: W / 2 - 100, y: 228, w: 200, h: 40 },
   goYes: { x: W / 2 - 215, y: 228, w: 210, h: 40 }, goNo: { x: W / 2 + 5, y: 228, w: 210, h: 40 },
   // final screen: play a world again without losing anything
-  newGame: { x: W / 2 - 100, y: 194, w: 200, h: 36 },
+  newGame: { x: W / 2 - 210, y: 190, w: 200, h: 38 }, level3: { x: W / 2 + 10, y: 190, w: 200, h: 38 },
   replay: [['stadt', 'STADT NOCHMAL'], ['himmel', 'HIMMEL NOCHMAL'], ['tiefsee', 'TIEFSEE NOCHMAL']].map(([world, label], i) => ({ world, label, x: W / 2 - 290 + i * 200, y: 254, w: 180, h: 32 })),
   // the little games directly: piñata (city), penalty (sky), whale memory (sea)
   minis: [['stadt', 'pinata', 'Piñata'], ['himmel', 'football', 'Elfmeter'], ['tiefsee', 'memory', 'Wal-Memory']].map(([world, game, label], i) => ({ world, game, label, x: W / 2 - 290 + i * 200, y: 292, w: 180, h: 32 })),
@@ -4341,6 +4341,7 @@ listen(canvas, 'pointerdown', e => {
     for (const b of BTN.replay) if (inRect(mp, b)) { goToWorld(b.world + '.html', 'from=replay'); return; }
     for (const b of BTN.minis) if (inRect(mp, b)) { goToWorld(b.world + '.html', 'from=replay&mini=' + b.game); return; }
     if (inRect(mp, BTN.newGame)) resetGame();
+    if (inRect(mp, BTN.level3)) { Audio.play('tink'); location.href = 'level3.html'; }   // on to Level 3: Dinoland
     return;
   }
   if (S.phase === 'gameover') { if (inRect(mp, BTN.goYes)) resetGame(); else if (inRect(mp, BTN.goNo)) { resetGame(); toMainMenu(); } return; }
@@ -6073,10 +6074,10 @@ function drawScreens() {
     ctx.fillText(SAVE.trophy ? '100 %' : miniCount() + ' / 4', W / 2 + 324, 34); ctx.textAlign = 'center';
     ctx.font = 'bold 12px Arial'; ctx.fillStyle = SAVE.trophy ? '#ffd23a' : 'rgba(255,255,255,0.65)';
     ctx.fillText(SAVE.trophy ? tx('100 %-POKAL! Alle Minispiele geschafft · +50 Münzen · Goldene Kappe') : tx('Minispiele {n}/4 – alle 4 = 100 %-Pokal', { n: miniCount() }), W / 2, 136);
-    ctx.fillStyle = '#7fe0ff'; ctx.font = 'bold 19px Arial'; ctx.fillText(tx('LEVEL 3 FREIGESCHALTET'), W / 2, 156);
-    ctx.fillStyle = '#ffb02e'; ctx.font = 'bold 13px Arial'; ctx.fillText(tx('LEVEL 3: UNDER CONSTRUCTION'), W / 2, 176);
+    ctx.fillStyle = '#7fe0ff'; ctx.font = 'bold 19px Arial'; ctx.fillText(tx('LEVEL 3 FREIGESCHALTET'), W / 2, 164);
     ctx.restore();
     button(BTN.newGame, tx('NEUES SPIEL'), '#34c759', '#1f8f3c');
+    button(BTN.level3, '▶ ' + tx('LEVEL 3: DINOLAND'), '#ff9a2a', '#d0601a');
     // play one world or one little game again – everything stays (items, coins, finished worlds)
     ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = 'bold 12px Arial'; ctx.fillText(tx('Oder eine Welt nochmal spielen (du verlierst nichts):'), W / 2, 242);

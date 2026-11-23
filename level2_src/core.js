@@ -74,7 +74,7 @@ const BTN = {
   again: { x: W / 2 - 100, y: 228, w: 200, h: 40 },
   goYes: { x: W / 2 - 215, y: 228, w: 210, h: 40 }, goNo: { x: W / 2 + 5, y: 228, w: 210, h: 40 },
   // final screen: play a world again without losing anything
-  newGame: { x: W / 2 - 100, y: 194, w: 200, h: 36 },
+  newGame: { x: W / 2 - 210, y: 190, w: 200, h: 38 }, level3: { x: W / 2 + 10, y: 190, w: 200, h: 38 },
   replay: [['stadt', 'STADT NOCHMAL'], ['himmel', 'HIMMEL NOCHMAL'], ['tiefsee', 'TIEFSEE NOCHMAL']].map(([world, label], i) => ({ world, label, x: W / 2 - 290 + i * 200, y: 254, w: 180, h: 32 })),
   // the little games directly: piñata (city), penalty (sky), whale memory (sea)
   minis: [['stadt', 'pinata', 'Piñata'], ['himmel', 'football', 'Elfmeter'], ['tiefsee', 'memory', 'Wal-Memory']].map(([world, game, label], i) => ({ world, game, label, x: W / 2 - 290 + i * 200, y: 292, w: 180, h: 32 })),
@@ -115,6 +115,7 @@ canvas.addEventListener('pointerdown', e => {
     for (const b of BTN.replay) if (inRect(mp, b)) { goToWorld(b.world + '.html', 'from=replay'); return; }
     for (const b of BTN.minis) if (inRect(mp, b)) { goToWorld(b.world + '.html', 'from=replay&mini=' + b.game); return; }
     if (inRect(mp, BTN.newGame)) resetGame();
+    if (inRect(mp, BTN.level3)) { Audio.play('tink'); location.href = 'level3.html'; }   // on to Level 3: Dinoland
     return;
   }
   if (S.phase === 'gameover') { if (inRect(mp, BTN.goYes)) resetGame(); else if (inRect(mp, BTN.goNo)) { resetGame(); toMainMenu(); } return; }

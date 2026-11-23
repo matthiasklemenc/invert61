@@ -15,6 +15,8 @@ interface GameMenuProps {
     onExit: () => void;
     level2Unlocked?: boolean;
     onLevel2?: () => void;
+    level3Unlocked?: boolean;
+    onLevel3?: () => void;
     onStartOver?: () => void;
 }
 
@@ -28,6 +30,8 @@ const GameMenu: React.FC<GameMenuProps> = ({
     onExit,
     level2Unlocked,
     onLevel2,
+    level3Unlocked,
+    onLevel3,
     onStartOver
 }) => {
     const [confirmStartOver, setConfirmStartOver] = useState(false);
@@ -98,6 +102,14 @@ const GameMenu: React.FC<GameMenuProps> = ({
                     >
                         ▶ LEVEL 2
                     </button>
+                    {level3Unlocked && onLevel3 && (
+                        <button
+                            onClick={onLevel3}
+                            className="bg-orange-500 hover:bg-orange-400 text-black font-black py-3 px-8 rounded-xl shadow-lg tracking-wider"
+                        >
+                            ▶ LEVEL 3
+                        </button>
+                    )}
                     {onStartOver && (
                         <button
                             onClick={() => setConfirmStartOver(true)}
@@ -113,7 +125,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setConfirmStartOver(false)}>
                     <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="text-white font-black text-xl mb-2">Start over?</div>
-                        <div className="text-gray-400 text-sm mb-5">Level 1 points, Level 2 and the whole saved game will be deleted. You start again at Level 1.</div>
+                        <div className="text-gray-400 text-sm mb-5">Level 1 points, Level 2, Level 3 and the whole saved game will be deleted. You start again at Level 1.</div>
                         <div className="flex justify-center gap-3">
                             <button
                                 onClick={() => { setConfirmStartOver(false); onStartOver(); }}

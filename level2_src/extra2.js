@@ -469,10 +469,10 @@ function drawScreens() {
     ctx.fillText(SAVE.trophy ? '100 %' : miniCount() + ' / 4', W / 2 + 324, 34); ctx.textAlign = 'center';
     ctx.font = 'bold 12px Arial'; ctx.fillStyle = SAVE.trophy ? '#ffd23a' : 'rgba(255,255,255,0.65)';
     ctx.fillText(SAVE.trophy ? tx('100 %-POKAL! Alle Minispiele geschafft · +50 Münzen · Goldene Kappe') : tx('Minispiele {n}/4 – alle 4 = 100 %-Pokal', { n: miniCount() }), W / 2, 136);
-    ctx.fillStyle = '#7fe0ff'; ctx.font = 'bold 19px Arial'; ctx.fillText(tx('LEVEL 3 FREIGESCHALTET'), W / 2, 156);
-    ctx.fillStyle = '#ffb02e'; ctx.font = 'bold 13px Arial'; ctx.fillText(tx('LEVEL 3: UNDER CONSTRUCTION'), W / 2, 176);
+    ctx.fillStyle = '#7fe0ff'; ctx.font = 'bold 19px Arial'; ctx.fillText(tx('LEVEL 3 FREIGESCHALTET'), W / 2, 164);
     ctx.restore();
     button(BTN.newGame, tx('NEUES SPIEL'), '#34c759', '#1f8f3c');
+    button(BTN.level3, '▶ ' + tx('LEVEL 3: DINOLAND'), '#ff9a2a', '#d0601a');
     // play one world or one little game again – everything stays (items, coins, finished worlds)
     ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = 'bold 12px Arial'; ctx.fillText(tx('Oder eine Welt nochmal spielen (du verlierst nichts):'), W / 2, 242);

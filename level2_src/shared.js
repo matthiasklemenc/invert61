@@ -436,7 +436,7 @@ const TR = {
   'Ich spiele langsamer…': ['I\'ll play slower…', 'Toco más despacio…'], 'Ich helfe dir ein bisschen…': ['I\'ll help you a little…', 'Te ayudo un poquito…'],
   // ---------- level end ----------
   'LEVEL 2 GESCHAFFT!': ['LEVEL 2 COMPLETE!', '¡NIVEL 2 COMPLETADO!'], 'LEVEL 3 FREIGESCHALTET': ['LEVEL 3 UNLOCKED', 'NIVEL 3 DESBLOQUEADO'],
-  'LEVEL 3: UNDER CONSTRUCTION': ['LEVEL 3: UNDER CONSTRUCTION', 'NIVEL 3: EN CONSTRUCCIÓN'],
+  'LEVEL 3: UNDER CONSTRUCTION': ['LEVEL 3: UNDER CONSTRUCTION', 'NIVEL 3: EN CONSTRUCCIÓN'], 'LEVEL 3: DINOLAND': ['LEVEL 3: DINOLAND', 'NIVEL 3: DINOLANDIA'],
   'Perlen {p} × 5 + Seesterne {s} = {c} Münzen': ['Pearls {p} × 5 + starfish {s} = {c} coins', 'Perlas {p} × 5 + estrellas {s} = {c} monedas'],
   'Münzen gesamt: {c}   ·   Herzen: {h}': ['Total coins: {c}   ·   Hearts: {h}', 'Monedas totales: {c}   ·   Corazones: {h}'],
   'Piñata': ['Piñata', 'Piñata'], 'Wal-Memory': ['Whale memory', 'Memorama'], 'Elfmeter': ['Penalties', 'Penales'], 'Harfe': ['Harp', 'Arpa'],
