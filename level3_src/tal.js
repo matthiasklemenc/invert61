@@ -223,8 +223,14 @@ function update(dt) {
   const k = S.kai;
   if (S.boss) S.cam += (BOSS_X - S.cam) * Math.min(1, 0.08 * dt);
   else {
-    const target = clamp(k.x - W * (k.face > 0 ? 0.36 : 0.64), 0, BOSS_X);
-    S.cam += (target - S.cam) * Math.min(1, 0.09 * dt);
+    // like Super Mario: Kai moves freely inside a middle zone of the screen, the camera only follows
+    // when he pushes against its edge – turning around never makes the whole screen slide
+    const L = W * 0.32, R = W * 0.5, sx = k.x - S.cam;
+    let target = S.cam;
+    if (sx > R) target = k.x - R; else if (sx < L) target = k.x - L;
+    target = clamp(target, 0, BOSS_X);
+    if (Math.abs(target - S.cam) > 40) S.cam += (target - S.cam) * Math.min(1, 0.12 * dt);   // after a jump back (tar, checkpoint)
+    else S.cam = target;
   }
 }
 function updateKai(dt) {
@@ -232,7 +238,7 @@ function updateKai(dt) {
   if (k.inv > 0) k.inv -= dt;
   if (k.hurtT > 0) k.hurtT -= dt;
   if (k.landT > 0) k.landT -= dt;
-  k.faceAnim += (k.face - k.faceAnim) * Math.min(1, 0.35 * dt);
+  k.faceAnim += (k.face - k.faceAnim) * Math.min(1, 0.7 * dt);   // quick turn, no long squeeze
   // speed: rolls towards the chosen direction, brakes when stopped
   const target = k.dir * SPEED * (S.phase === 'boss' ? 1.05 : 1);
   if (k.hurtT <= 0) {
@@ -355,7 +361,7 @@ function updateVolcanoes(dt) {
     if (!f.done && f.t >= f.T) {
       f.done = true;
       burst(f.tx, FLOOR - 6, '#ff7a1a', 22, 5); burst(f.tx, FLOOR - 6, '#ffd23a', 10, 3); S.shake = Math.max(S.shake, 5);
-      Audio.play('explosion');
+      Audio.play('lavahit');
       if (Math.abs(k.x - f.tx) < 52 && k.y > FLOOR - 70) hurt(f.tx);
     }
   }

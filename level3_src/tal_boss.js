@@ -32,11 +32,14 @@ function updateBoss(dt) {
       break;
     case 'roar':
       b.face = toward;
-      if (b.t > 55) { b.state = 'stomp'; b.t = 0; b.stomps = 0; }
+      if (b.t > 55) { b.state = 'stomp'; b.t = 0; b.stomps = 0; b.gap = 38; }
       break;
     case 'stomp':
-      if (b.t > 38) {
+      if (b.t > (b.gap || 38)) {
         b.t = 0; b.stomps++;
+        // the pause before the next stomp varies: sometimes as short as before (38 – never shorter, or the waves
+        // can't be jumped), sometimes clearly longer
+        b.gap = Math.random() < 0.45 ? 38 : rand(58, 95);
         // shock waves run to both sides along the ground
         for (const d of [-1, 1]) S.waves.push({ x: b.x + d * 100, vx: d * (6.2 + (3 - b.hp) * 0.6), life: 220 });
         Audio.play('stomp'); S.shake = 10; burst(b.x + 70, FLOOR - 4, '#a9744a', 14, 4); burst(b.x - 70, FLOOR - 4, '#a9744a', 14, 4);
