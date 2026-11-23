@@ -261,6 +261,18 @@ const QUERY = new URLSearchParams(location.search);
 const LANGS = ['de', 'en', 'es'];
 const TR = {
   // ---------- LEVEL 3 · FELSENHÖHE ----------
+  'Halte ▶ gedrückt – los geht\'s!': ['Hold ▶ – let\'s go!', '¡Mantén ▶ – vamos!'],
+  'Halte den Pfeil nach rechts – los geht\'s!': ['Hold the right arrow – let\'s go!', '¡Mantén la flecha derecha – vamos!'],
+  '◀ ▶ links gedrückt halten = fahren · loslassen = stehen bleiben': ['Hold ◀ ▶ on the left = ride · let go = stop', 'Mantén ◀ ▶ a la izquierda = rodar · suelta = parar'],
+  'Pfeil ← / → gedrückt halten = fahren · loslassen = stehen bleiben': ['Hold arrow ← / → = ride · let go = stop', 'Mantén flecha ← / → = rodar · suelta = parar'],
+  'SPRUNG rechts = springen – lange halten = höher': ['JUMP on the right = jump – hold = higher', 'SALTO a la derecha = saltar – mantén = más alto'],
+  '◀ ▶ links gedrückt halten = fahren · SPRUNG rechts = springen': ['Hold ◀ ▶ on the left = ride · JUMP on the right = jump', 'Mantén ◀ ▶ a la izquierda = rodar · SALTO a la derecha = saltar'],
+  'Pfeil ← / → halten = fahren · Leertaste / Klick = springen': ['Hold arrow ← / → = ride · Space / click = jump', 'Mantén flecha ← / → = rodar · Espacio / clic = saltar'],
+  'ZURÜCK INS DINO-TAL?': ['BACK TO DINO VALLEY?', '¿VOLVER AL VALLE DINO?'],
+  'An der Liane kannst du hinunter ins Tal klettern.': ['You can climb down the liana into the valley.', 'Puedes bajar por la liana al valle.'],
+  'Später kommst du an der Liane im Tal wieder herauf.': ['Later you can climb back up the liana in the valley.', 'Luego puedes volver a subir por la liana del valle.'],
+  'JA, HINUNTER': ['YES, CLIMB DOWN', 'SÍ, BAJAR'], 'NEIN, HIERBLEIBEN': ['NO, STAY HERE', 'NO, QUEDARME'],
+  'Weiter nach links = hinunterklettern': ['Keep riding left = climb down', 'Sigue a la izquierda = bajar'],
   'DIE FELSENHÖHE': ['THE ROCKY HEIGHTS', 'LAS ALTURAS ROCOSAS'], 'FELSENHÖHE': ['ROCKY HEIGHTS', 'ALTURAS ROCOSAS'], 'Felsenhöhe': ['Rocky Heights', 'Alturas Rocosas'],
   'DINO-TAL': ['DINO VALLEY', 'VALLE DINO'], 'Lavahöhlen': ['Lava Caves', 'Cuevas de Lava'],
   'Abgestürzt!': ['You fell!', '¡Te caíste!'],

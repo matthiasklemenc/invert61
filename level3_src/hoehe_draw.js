@@ -150,7 +150,7 @@ function drawLianaDown() {
   drawSign(x + 46, FLOOR - 64, '▼ ' + tx('DINO-TAL'), '#9fe07a');
   if (Math.abs(S.kai.x - x) < 50 && S.phase === 'play') {
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 4; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
-    const t = isTouchDev() ? tx('Nach unten wischen = hinunterklettern') : tx('Pfeil ↓ = hinunterklettern');
+    const t = tx('Weiter nach links = hinunterklettern');
     ctx.strokeText(t, x + 120, FLOOR - 150); ctx.fillText(t, x + 120, FLOOR - 150);
   }
   ctx.restore();
@@ -343,12 +343,7 @@ function drawKai() {
   ctx.restore();
 }
 // the slingshot in Kai's hand (in Kai's own coordinates, facing right)
-function drawSling(x, y, u) {
-  ctx.save(); ctx.translate(x, y); ctx.strokeStyle = '#7a4f2c'; ctx.lineWidth = 4; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, 2); ctx.lineTo(-6, -10); ctx.moveTo(0, 2); ctx.lineTo(7, -10); ctx.stroke();
-  ctx.strokeStyle = '#d8352c'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-6, -10); ctx.lineTo(-6 - u * 12, -4); ctx.lineTo(7, -10); ctx.stroke();
-  ctx.restore();
-}
+function drawSling(x, y, u) { drawSlingIcon(x, y, 0.62); }
 
 // ---------------- the pterosaur ride (screen space) ----------------
 function drawRideScene() {
@@ -465,7 +460,7 @@ function drawScreens() {
   const touch = CTRL.touch;
   if (S.phase === 'start') {
     panel(tx('DIE FELSENHÖHE'), [
-      touch ? tx('Wischen = fahren / bremsen · Sprung-Taste = springen') : tx('Pfeile = fahren / bremsen · Leertaste / Klick = springen'),
+      touch ? tx('◀ ▶ links gedrückt halten = fahren · SPRUNG rechts = springen') : tx('Pfeil ← / → halten = fahren · Leertaste / Klick = springen'),
       touch ? tx('Neu: die STEINSCHLEUDER – Schuss-Taste rechts unten') : tx('Neu: die STEINSCHLEUDER – X oder rechte Maustaste'),
       tx('Bröckelnde Felsen fallen weg! Achte auf Steinschlag und Flugsaurier.'),
       tx('Im OXXO im Baumhaus gibt es das Magma-Board für die Lavahöhlen.'),
@@ -473,7 +468,10 @@ function drawScreens() {
     ], '#9fe07a');
     button(BTN.start, '▶  ' + tx('LOS GEHT\'S'), '#34c759', '#1f8f3c');
   }
-  if (S.phase === 'ask') {
+  if (S.phase === 'ask' && S.ask === 'down') {
+    panel(tx('ZURÜCK INS DINO-TAL?'), [tx('An der Liane kannst du hinunter ins Tal klettern.'), tx('Später kommst du an der Liane im Tal wieder herauf.')], '#9fe07a');
+    button(BTN.yes, '▼ ' + tx('JA, HINUNTER'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, HIERBLEIBEN'), '#8a96a8', '#5d6878');
+  } else if (S.phase === 'ask') {
     const o = S.ask === 'oxxo';
     panel(o ? tx('OXXO IM BAUMHAUS') : tx('FLUGSAURIER-RITT'), o
       ? [tx('Das OXXO im Baumhaus! Willst du reingehen?'), tx('Hier gibt es das Magma-Board, die Super-Schleuder, Herzen und Kleider.')]
@@ -543,7 +541,7 @@ function drawShopIcon(it, x, y) {
     ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-18, 0); ctx.lineTo(-6, -2); ctx.lineTo(4, 2); ctx.lineTo(18, -1); ctx.stroke();
     ctx.fillStyle = '#ffd23a'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; for (const wx of [-16, 16]) { ctx.beginPath(); ctx.arc(wx, 8, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   } else if (it.id === 'sling2') {
-    drawSling(0, 2, 1); ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center'; ctx.fillText('×2', 14, 14);
+    drawSlingIcon(-4, 0, 0.95); ctx.fillStyle = '#ffd23a'; ctx.strokeStyle = OUT; ctx.lineWidth = 3; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.strokeText('×2', 18, 16); ctx.fillText('×2', 18, 16);
   } else if (it.id === 'heart') drawHeart(0, 0, 16, true);
   else {
     const col = { capRed: '#d8352c', capGreen: '#2f8a5f', capBali: '#f48fb8', capGold: '#e8b923', beanie: '#7a3fb8', backpack: '#e0702b', teeRed: '#c8352c', teeYellow: '#e0a81e', shoesRed: '#d8352c', shorts: '#4a78b8', skirt: '#d94f7c' }[it.id] || '#888';

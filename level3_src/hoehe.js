@@ -7,7 +7,7 @@
 //  In the middle: the OXXO in a tree house (Magma-Board for the lava caves!) and the
 //  Flugsaurier-Ritt mini game. End boss: the giant Flugsaurier-Mama.
 // =====================================================================
-const SPEED = 5.4, ACC = 0.2, BRAKE = 0.34, GRAV = 0.62, JUMP_V = -12.6, JUMP_CUT = -5.2;
+const SPEED = 5.4, ACC = 0.24, BRAKE = 0.8, GRAV = 0.62, JUMP_V = -12.6, JUMP_CUT = -5.2;
 const BOSS_X = 9400, MAP_END = BOSS_X + W;      // the boss arena is exactly one screen wide
 
 // ---------------- the map ----------------
@@ -92,9 +92,11 @@ function steerDir(d) {
 function steerBrake() {
   const k = S.kai; if (!playing()) return;
   k.dir = 0; Audio.play('swish');
-  // at the liana on the left edge: swipe down = climb back down into the valley
+  // at the liana on the left edge: ↓ = climb back down into the valley
   if (S.phase === 'play' && k.ground && Math.abs(k.x - LIANA_DOWN) < 50) climbDown();
 }
+// arrow let go: Kai stops (a short roll-out of a few pixels, no sliding like on ice)
+function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
 function steerJump(down) {
   const k = S.kai;
   if (!playing()) return;
@@ -123,7 +125,7 @@ const CTL = {
   active: playing,
   showJump: playing,
   canShoot: () => playing() && !!SAVE.items.slingshot, shoot, auto: true, icon: 'sling',
-  dir: steerDir, brake: steerBrake, jump: steerJump,
+  dir: steerDir, brake: steerBrake, jump: steerJump, stop: steerStop,
 };
 
 // keyboard: ← → ride, ↓ brake (at the liana: climb down), Space / ↑ jump, X shoot
@@ -133,9 +135,7 @@ window.addEventListener('keydown', e => {
   if (!playing()) { gameKey(e); return; }
   if (e.code === 'KeyX') { shoot(); return; }
   if (e.repeat) return;
-  if (e.code === 'ArrowRight' || e.code === 'KeyD') steerDir(1);
-  else if (e.code === 'ArrowLeft' || e.code === 'KeyA') steerDir(-1);
-  else if (e.code === 'ArrowDown' || e.code === 'KeyS') steerBrake();
+  if (e.code === 'ArrowDown' || e.code === 'KeyS') steerBrake();
   else if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); steerJump(true); }
 });
 window.addEventListener('keyup', e => {
@@ -437,6 +437,11 @@ function updateParticles(dt) {
 // ---------------- the OXXO and the pterosaur ride: ask on the way ----------------
 function updateSites() {
   const k = S.kai;
+  // riding left against the liana at the cliff edge: ask whether Kai wants to climb down
+  if (k.x > 260) S.asked.down = false;
+  if (!S.asked.down && k.x < LIANA_DOWN + 10 && k.dir < 0 && k.ground && !k.platform) {
+    S.asked.down = true; S.ask = 'down'; S.phase = 'ask'; k.vx = 0; k.dir = 0; Audio.play('chime'); return;
+  }
   for (const [id, x] of Object.entries(SITES)) {
     const gate = x + 120;
     if (Math.abs(k.x - gate) > 400) S.asked[id] = false;
@@ -471,7 +476,7 @@ canvas.addEventListener('pointerdown', e => {
   if (inRect(hp, BTN.sfx)) { Audio.toggleSfx(); return; }
   if (S.phase === 'start') { beginWorld(); return; }
   if (S.phase === 'ask') {
-    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; if (id === 'oxxo') openShop(); else startRide(); }
+    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; if (id === 'oxxo') openShop(); else if (id === 'down') { S.phase = 'play'; climbDown(); } else startRide(); }
     else if (inRect(p, BTN.no)) { S.ask = null; S.phase = 'play'; Audio.play('tink'); }
     return;
   }

@@ -564,8 +564,8 @@ function drawScreens() {
   const touch = CTRL.touch;
   if (S.phase === 'start') {
     panel(tx('DAS DINO-TAL'), [
-      touch ? tx('Wisch nach rechts oder links = losrollen · Wisch nach unten = bremsen') : tx('Pfeil → / ← = losrollen · Pfeil ↓ = bremsen'),
-      touch ? tx('Sprung-Taste (oder nach oben wischen) = springen – lange halten = höher') : tx('Leertaste / Klick = springen – lange halten = höher'),
+      touch ? tx('◀ ▶ links gedrückt halten = fahren · loslassen = stehen bleiben') : tx('Pfeil ← / → gedrückt halten = fahren · loslassen = stehen bleiben'),
+      touch ? tx('SPRUNG rechts = springen – lange halten = höher') : tx('Leertaste / Klick = springen – lange halten = höher'),
       tx('Dinos nicht berühren! Feuerbälle: auf den Schatten achten. Teer meiden!'),
       tx('Am Ende wartet der T-REX.'),
     ], '#ffb25a');

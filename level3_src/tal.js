@@ -1,13 +1,13 @@
 // =====================================================================
 //  LEVEL 3 · WORLD 1 – DAS DINO-TAL
 //  Free movement like Super Mario: the board keeps rolling in the chosen direction,
-//  swipe ← / → turns, swipe ↓ brakes, jump button / swipe ↑ / Space jumps.
+//  hold ◀ / ▶ (or the arrow keys) = ride, let go = stop, jump button / Space jumps.
 //  The valley is a fixed map (not random): Kai rides through it, the camera follows.
 //  Dinos walk back and forth (do not touch!), volcanoes in the back throw fireballs
 //  that come closer in an arc (a shadow shows where they land), tar pits swallow you.
 //  Mini games: Dino-Rodeo and Fossilien ausgraben. End boss: the T-Rex.
 // =====================================================================
-const SPEED = 5.4, ACC = 0.2, BRAKE = 0.34, GRAV = 0.62, JUMP_V = -12.6, JUMP_CUT = -5.2;
+const SPEED = 5.4, ACC = 0.24, BRAKE = 0.8, GRAV = 0.62, JUMP_V = -12.6, JUMP_CUT = -5.2;
 const BOSS_X = 12600, ARENA_W = W, MAP_END = BOSS_X + ARENA_W;   // the boss arena is exactly one screen wide
 
 // ---------------- the map ----------------
@@ -123,6 +123,8 @@ function steerDir(d) {
   if (d !== k.face) { k.face = d; Audio.play('flip'); }
 }
 function steerBrake() { const k = S.kai; if (!playing()) return; k.dir = 0; Audio.play('swish'); }
+// arrow let go: Kai stops (a short roll-out of a few pixels, no sliding like on ice)
+function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
 function steerJump(down) {
   const k = S.kai;
   if (!playing()) return;
@@ -140,7 +142,7 @@ const CTL = {
   active: playing,
   showJump: playing,
   canShoot: () => false, shoot: () => {}, auto: false, icon: 'arrow',
-  dir: steerDir, brake: steerBrake, jump: steerJump,
+  dir: steerDir, brake: steerBrake, jump: steerJump, stop: steerStop,
 };
 
 // keyboard: ← → ride, ↓ brake, Space / ↑ jump
@@ -149,9 +151,7 @@ window.addEventListener('keydown', e => {
   if (S.phase === 'start' && (e.code === 'Space' || e.code === 'Enter')) { beginWorld(); return; }
   if (!playing()) { gameKey(e); return; }
   if (e.repeat) return;
-  if (e.code === 'ArrowRight' || e.code === 'KeyD') steerDir(1);
-  else if (e.code === 'ArrowLeft' || e.code === 'KeyA') steerDir(-1);
-  else if (e.code === 'ArrowDown' || e.code === 'KeyS') steerBrake();
+  if (e.code === 'ArrowDown' || e.code === 'KeyS') steerBrake();
   else if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); steerJump(true); }
 });
 window.addEventListener('keyup', e => {
@@ -169,7 +169,7 @@ function beginWorld() {
   if (fromH) { useCheckpoint('tal'); writeSave(); Audio.init(); Audio.setTheme('dino'); flash('Zurück im Dino-Tal!', 110); return; }
   if (!cont) setCheckpoint('tal');
   writeSave(); Audio.init(); Audio.setTheme('dino');
-  flash(isTouchDev() ? 'Wisch nach rechts – los geht\'s!' : 'Pfeil nach rechts – los geht\'s!', 150);
+  flash(isTouchDev() ? 'Halte ▶ gedrückt – los geht\'s!' : 'Halte den Pfeil nach rechts – los geht\'s!', 150);
 }
 const isTouchDev = () => CTRL.touch;
 function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; writeSave(); }
