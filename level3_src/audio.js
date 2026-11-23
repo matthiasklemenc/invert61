@@ -125,6 +125,15 @@ const Audio = (() => {
       o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.8);
       for (let i = 0; i < 6; i++) bubble(t + 0.25 + i * 0.07, 200 + Math.random() * 300, 0.08);
     },
+    lavahit() {   // a fireball lands: like the explosion, but much softer and shorter
+      const t = ac.currentTime;
+      const n = noise(t, 0.6, 0.32, 1400, 'lowpass', sfxGain);
+      n.f.frequency.setValueAtTime(1800, t); n.f.frequency.exponentialRampToValueAtTime(140, t + 0.55);
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.frequency.setValueAtTime(80, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.4);
+      g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+      o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.5);
+    },
     air() { const t = ac.currentTime; bubble(t, 260, 0.25); bubble(t + 0.08, 380, 0.2); bubble(t + 0.16, 520, 0.18); },
     star() { const t = ac.currentTime; tone(1046, t, 0.25, 'triangle', 0.25, sfxGain); tone(1568, t + 0.07, 0.35, 'triangle', 0.22, sfxGain); },
     pearl() { const t = ac.currentTime; [1568, 2093, 2637, 3136].forEach((f, i) => tone(f, t + i * 0.045, 0.3, 'sine', 0.16, sfxGain)); },
