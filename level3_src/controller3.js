@@ -9,9 +9,9 @@
 // During a move both worlds are drawn at the same time; Kai is drawn by the controller.
 // ======================================================================
 let CUR = null, TRANS = null;
-// LEVEL 3 – DINOLAND. For now: the dino valley (Felsenhöhe and Lavahöhlen follow).
-const FACTORY = { tal: makeTal };
-const THEME = { tal: 'dino' };
+// LEVEL 3 – DINOLAND: the dino valley and the Felsenhöhe above it (the Lavahöhlen follow).
+const FACTORY = { tal: makeTal, hoehe: makeHoehe };
+const THEME = { tal: 'dino', hoehe: 'hoehe' };
 const worldKey = file => (file || 'tal').replace('.html', '');
 function makeWorld(file, query) { const key = worldKey(file); const w = FACTORY[key](new URLSearchParams(query || '')); w.key = key; w.fromFinal = /from=replay/.test(query || ''); return w; }
 function activate(w) {
@@ -27,8 +27,8 @@ const lerp = (a, b, u) => a + (b - a) * u;
 function beginTransition(file, query) {
   if (TRANS) return;
   const from = CUR, toKey = worldKey(file);
-  const kind = from.key === 'stadt' && toKey === 'himmel' ? 'up'
-    : from.key === 'himmel' && toKey === 'stadt' ? 'down'
+  const kind = (from.key === 'stadt' && toKey === 'himmel') || (from.key === 'tal' && toKey === 'hoehe') ? 'up'
+    : (from.key === 'himmel' && toKey === 'stadt') || (from.key === 'hoehe' && toKey === 'tal') ? 'down'
     : /final=1/.test(query) ? 'cut'
     : from.key === 'stadt' && toKey === 'tiefsee' ? (/pipe=1/.test(query) ? 'pipe' : 'dive')
     : from.key === 'tiefsee' && toKey === 'stadt' && /from=tiefsee/.test(query) ? 'surface' : 'cut';
@@ -36,7 +36,10 @@ function beginTransition(file, query) {
   if (!PAUSE.on) Audio.pauseBg(false);
   if (kind === 'cut') { activate(next); Audio.setTheme(THEME[toKey]); return; }
   const k = from.S.kai;
-  TRANS = { kind, splash: /splash=1/.test(query || ''), from, to: next, t: 0, T: kind === 'up' ? 140 : kind === 'down' ? 130 : kind === 'pipe' ? 170 : 150, x0: k.x, y0: k.y, splashed: false };
+  // Kai's start / end point ON THE SCREEN (the dino worlds scroll, so the camera is taken off)
+  const x1 = next.S.kai && next.S.cam != null ? next.S.kai.x - next.S.cam : 250;
+  TRANS = { kind, splash: /splash=1/.test(query || ''), from, to: next, t: 0, T: kind === 'up' ? 140 : kind === 'down' ? 130 : kind === 'pipe' ? 170 : 150, x0: k.x - (from.S.cam || 0), x1, y0: k.y, splashed: false,
+    climb: from.key === 'tal' || from.key === 'hoehe' };
   from.S.hideKai = true; from.S.noHud = true; next.S.hideKai = true; next.S.noHud = true;
   next.S.phase = 'transit';
 }
@@ -48,7 +51,7 @@ function updateTransition(dt) {
   tr.from.update(dt);
   const ns = tr.to.S; ns.t = (ns.t || 0) + dt; ns.scroll = (ns.scroll || 0) + (tr.kind === 'up' ? 2.5 : 3) * dt;
   if ((tr.kind === 'dive' && p > 0.3 || tr.kind === 'surface' && p > 0.5) && !tr.splashed) { tr.splashed = true; Audio.play('pop'); Audio.play('air'); }
-  if (tr.kind === 'up' && p > 0.55 && !tr.themed) { tr.themed = true; Audio.setTheme('sky'); }
+  if (tr.kind === 'up' && p > 0.55 && !tr.themed) { tr.themed = true; Audio.setTheme(THEME[tr.to.key] || 'sky'); }
   if (tr.kind !== 'up' && p > 0.55 && !tr.themed) { tr.themed = true; Audio.setTheme(THEME[tr.to.key]); }
   if (p >= 1) {
     const w = tr.to; TRANS = null;
@@ -67,8 +70,15 @@ function transOffsets(tr, p) {
 }
 // where Kai is on the screen during the move
 function transKai(tr, p) {
-  const x = lerp(tr.x0, 250, ease(Math.min(1, p * 1.4)));
+  const x = lerp(tr.x0, tr.x1 ?? 250, ease(Math.min(1, p * 1.4)));
   let y, o = { wings: tr.from.S.t * 0.45, armsUp: false, tilt: 0, crouch: 3, diver: false };
+  if (tr.climb) {
+    // Dinoland: climbing up the liana to the Felsenhöhe / down again into the valley – no wings
+    o.wings = undefined; o.armsUp = p < 0.85; o.crouch = p > 0.9 ? 6 : 4;
+    if (tr.kind === 'up') y = p < 0.45 ? lerp(tr.y0, 40, ease(p / 0.45)) : lerp(40, FLOOR, ease((p - 0.45) / 0.55));
+    else y = p < 0.5 ? lerp(tr.y0, 150, ease(p / 0.5)) : lerp(150, FLOOR, easeIn((p - 0.5) / 0.5));
+    return { x, y, o };
+  }
   if (tr.kind === 'up') {
     // hoisted up: fast rise, then he settles where the sky game starts (y 200)
     y = p < 0.35 ? lerp(tr.y0, 70, easeOut(p / 0.35)) : lerp(70, 200, ease((p - 0.35) / 0.65));
@@ -129,7 +139,7 @@ function drawSeam(tr, y) {
 // the open space above each world (the screen is taller than the world): matching sky / water colour
 function drawBand(w) {
   if (DY <= 0) return;
-  const S2 = w.S, cols = w.key === 'tal' ? ['#f2a65a', '#f7c47e'] : w.key === 'stadt' ? ['#479fdc', '#5fb8ec'] : w.key === 'tiefsee' ? ['#47bde3', '#1a8fbf']
+  const S2 = w.S, cols = w.key === 'tal' ? ['#f2a65a', '#f7c47e'] : w.key === 'hoehe' ? ['#4fa8e6', '#5fb3ea'] : w.key === 'stadt' ? ['#479fdc', '#5fb8ec'] : w.key === 'tiefsee' ? ['#47bde3', '#1a8fbf']
     : S2.phase === 'foot' ? ['#7cc9f4', '#7cc9f4'] : ['#55b3ec', '#6cc3f2'];
   const g = ctx.createLinearGradient(0, 0, 0, DY + 1); g.addColorStop(0, cols[0]); g.addColorStop(1, cols[1]);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, DY + 1);
@@ -181,7 +191,7 @@ function drawTransition() {
 // Progress is saved automatically (browser storage on this device).
 // With a saved game the page opens with WEITERSPIELEN (big) and "Komplett neu anfangen" (small, asks first).
 const MENU = { open: false, btns: {} }, CONFIRM = { open: false, btns: {} };
-const hasProgress = () => !!(SAVE.started || SAVE.done.tal || SAVE.done.hoehe || SAVE.done.lava || SAVE.items.magmaBoard);
+const hasProgress = () => !!(SAVE.started || SAVE.done.tal || SAVE.done.hoehe || SAVE.done.lava || SAVE.items.magmaBoard || SAVE.seenHoehe);
 function askNewGame() { CONFIRM.open = true; Audio.play('warn'); }
 function doNewGame() {
   const keep = { char: SAVE.char, outfit: SAVE.outfit, outfitKai: SAVE.outfitKai, outfitBali: SAVE.outfitBali, owned: SAVE.owned, importedL2: true };
@@ -323,6 +333,10 @@ function ctlButton(c, pressed, label, icon) {
   const x = c.x, y = c.y - 8;
   if (icon === 'jump') {
     ctx.beginPath(); ctx.moveTo(x, y - 20); ctx.lineTo(x + 17, y); ctx.lineTo(x + 7, y); ctx.lineTo(x + 7, y + 14); ctx.lineTo(x - 7, y + 14); ctx.lineTo(x - 7, y); ctx.lineTo(x - 17, y); ctx.closePath(); ctx.fill();
+  } else if (icon === 'sling') {
+    ctx.strokeStyle = '#7a4f2c'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x, y + 18); ctx.lineTo(x, y + 2); ctx.lineTo(x - 11, y - 16); ctx.moveTo(x, y + 2); ctx.lineTo(x + 11, y - 16); ctx.stroke();
+    ctx.strokeStyle = '#d8352c'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x - 11, y - 16); ctx.lineTo(x, y - 8); ctx.lineTo(x + 11, y - 16); ctx.stroke();
+    ctx.fillStyle = '#8f8a84'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y - 8, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   } else if (icon === 'stick') {
     ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x - 16, y + 14); ctx.lineTo(x + 14, y - 16); ctx.stroke();
     ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + 14, y - 16, 9, -0.2, 1.4); ctx.stroke();

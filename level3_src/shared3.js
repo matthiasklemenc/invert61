@@ -5,7 +5,7 @@
 const SAVE_KEY = 'invert61-level3';
 const SAVE_DEFAULT = {
   lang: 'de', hearts: 5, lives: 3, coins: 0, pearls: 0, starfish: 0,
-  items: { magmaBoard: false, slingshot: false },
+  items: { magmaBoard: false, slingshot: false, sling2: false },
   weapon: {},
   outfit: { char: 'kai', tee: '#1f3c6e', cap: '#1e4fa3', beanie: false, backpack: false, shoes: '#1b1b22', halo: false },
   // two playable characters, each with her / his own clothes. SAVE.outfit is always the one being played.
@@ -79,7 +79,12 @@ function restartWorldSave() { restoreCheckpoint(); SAVE.lives = LIVES_MAX; write
 // INVENTORY (top left): weapons + outfit Kai owns, opened as a drop-down. The game pauses while it is open.
 // ======================================================================
 const INV = { open: false, btn: null, panel: null, chips: [] };
-const INV_WEAPONS = [];   // Level 3: the slingshot (rocks) and water bombs (lava caves) come with the next worlds
+// Level 3 weapons: the slingshot on the Felsenhöhe (water bombs for the lava caves come later)
+const INV_WEAPONS = [
+  { id: 'sling', name: 'Steinschleuder', where: 'Felsenhöhe', world: 'hoehe', owned: () => !!SAVE.items.slingshot, worn: () => !(SAVE.items.sling2 && SAVE.weapon.hoehe !== 'sling'), pick: () => { SAVE.weapon.hoehe = 'sling'; } },
+  { id: 'sling2', name: 'Super-Schleuder', where: 'Felsenhöhe', world: 'hoehe', owned: () => !!SAVE.items.sling2, worn: () => !!SAVE.items.sling2 && SAVE.weapon.hoehe !== 'sling', pick: () => { SAVE.weapon.hoehe = 'sling2'; } },
+  { id: 'magma', name: 'Magma-Board', where: 'Lavahöhlen', world: 'lava', owned: () => !!SAVE.items.magmaBoard, worn: () => true, pick: () => {} },
+];
 const OUTFIT_GROUPS = [
   { label: 'Kopf', opts: [
     { id: 'capBlue', who: 'kai', name: 'Blaue Kappe', sw: '#1e4fa3', owned: () => true, worn: o => !o.beanie && (o.cap || '#1e4fa3') === '#1e4fa3', apply: o => { o.cap = '#1e4fa3'; o.beanie = false; } },
@@ -117,7 +122,7 @@ const INV_CHARS = [
   { id: 'bali', name: 'Bali', worn: () => SAVE.char === 'bali' },
 ];
 const optOwned = it => it.owned ? it.owned() : !!SAVE.owned[it.id];
-function invCount() { return INV_WEAPONS.filter(w => w.owned() && w.id !== 'arrow').length + OUTFIT_GROUPS.reduce((n, g) => n + g.opts.filter(o => forChar(o) && !o.owned && optOwned(o)).length, 0); }
+function invCount() { return INV_WEAPONS.filter(w => w.owned() && w.id !== 'sling').length + OUTFIT_GROUPS.reduce((n, g) => n + g.opts.filter(o => forChar(o) && !o.owned && optOwned(o)).length, 0); }
 function drawInvButton(x, y) {
   const b = { x, y, w: 92, h: 26 }; INV.btn = b;
   ctx.save(); ctx.fillStyle = INV.open ? 'rgba(255,210,58,0.95)' : 'rgba(10,20,40,0.6)'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill();
@@ -134,7 +139,9 @@ function drawInvButton(x, y) {
 }
 function drawInvSwatch(id, sw, cx, cy) {
   ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = OUT; ctx.lineWidth = 1.3; ctx.fillStyle = sw;
-  if (id === 'arrow') { ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(7, 0); ctx.stroke(); ctx.fillStyle = '#fff6b0'; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(3, -4); ctx.lineTo(3, 4); ctx.closePath(); ctx.fill(); }
+  if (id === 'sling' || id === 'sling2') { ctx.strokeStyle = '#7a4f2c'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, 1); ctx.lineTo(-5, -7); ctx.moveTo(0, 1); ctx.lineTo(5, -7); ctx.stroke(); ctx.strokeStyle = '#d8352c'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-5, -7); ctx.lineTo(0, -3); ctx.lineTo(5, -7); ctx.stroke(); if (id === 'sling2') { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 8px Arial'; ctx.fillText('2', 5, 6); } }
+  else if (id === 'magma') { ctx.rotate(-0.3); ctx.fillStyle = '#3a2a26'; ctx.beginPath(); ctx.roundRect(-10, -3, 20, 6, 3); ctx.fill(); ctx.stroke(); ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(7, 0); ctx.stroke(); }
+  else if (id === 'arrow') { ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(7, 0); ctx.stroke(); ctx.fillStyle = '#fff6b0'; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(3, -4); ctx.lineTo(3, 4); ctx.closePath(); ctx.fill(); }
   else if (id === 'starSea') { ctx.strokeStyle = '#c9d3dc'; ctx.lineWidth = 2; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 3, Math.sin(a) * 3); ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9); ctx.stroke(); } }
   else if (id === 'star') { ctx.fillStyle = '#ffd23a'; ctx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 3.5 : 8, a = i * Math.PI / 5 - Math.PI / 2; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else if (id === 'harpoon') { ctx.strokeStyle = '#c9d3dc'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(6, 0); ctx.stroke(); ctx.fillStyle = '#c9d3dc'; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(4, -4); ctx.lineTo(4, 4); ctx.closePath(); ctx.fill(); }
@@ -194,7 +201,7 @@ function drawInventoryPanel() {
       let fs = 11; ctx.font = `bold ${fs}px Arial`; const nm = c.figure ? c.it.name : tx(c.it.name);   // the names Kai / Bali are never swapped
       while (ctx.measureText(nm).width > chipW - 40 && fs > 8) { fs--; ctx.font = `bold ${fs}px Arial`; }
       ctx.fillText(nm, cx + 32, y + (c.weapon ? 11 : chipH / 2));
-      if (c.weapon) { ctx.font = '9px Arial'; ctx.fillStyle = on ? '#eafff0' : 'rgba(255,255,255,0.6)'; ctx.fillText(here ? tx(c.it.where) : tx(c.it.world === 'himmel' ? 'nur im Himmel' : 'nur in der Tiefsee'), cx + 32, y + 22); }
+      if (c.weapon) { ctx.font = '9px Arial'; ctx.fillStyle = on ? '#eafff0' : 'rgba(255,255,255,0.6)'; ctx.fillText(here ? tx(c.it.where) : tx(c.it.world === 'hoehe' ? 'nur auf der Felsenhöhe' : 'für die Lavahöhlen'), cx + 32, y + 22); }
       if (on) { ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'right'; ctx.fillText('✓', cx + chipW - 8, y + chipH / 2 + 1); }
       ctx.globalAlpha = 1;
     });
@@ -253,6 +260,49 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  // ---------- LEVEL 3 · FELSENHÖHE ----------
+  'DIE FELSENHÖHE': ['THE ROCKY HEIGHTS', 'LAS ALTURAS ROCOSAS'], 'FELSENHÖHE': ['ROCKY HEIGHTS', 'ALTURAS ROCOSAS'], 'Felsenhöhe': ['Rocky Heights', 'Alturas Rocosas'],
+  'DINO-TAL': ['DINO VALLEY', 'VALLE DINO'], 'Lavahöhlen': ['Lava Caves', 'Cuevas de Lava'],
+  'Abgestürzt!': ['You fell!', '¡Te caíste!'],
+  'Du hast eine STEINSCHLEUDER! Schuss-Taste rechts unten.': ['You got a SLINGSHOT! Shoot button at the bottom right.', '¡Tienes una RESORTERA! Botón de disparo abajo a la derecha.'],
+  'Du hast eine STEINSCHLEUDER! Schießen: X oder rechte Maustaste.': ['You got a SLINGSHOT! Shoot: X or right mouse button.', '¡Tienes una RESORTERA! Disparar: X o botón derecho del ratón.'],
+  'Wischen = fahren / bremsen · Sprung-Taste = springen': ['Swipe = ride / brake · Jump button = jump', 'Desliza = rodar / frenar · Botón de salto = saltar'],
+  'Pfeile = fahren / bremsen · Leertaste / Klick = springen': ['Arrows = ride / brake · Space / click = jump', 'Flechas = rodar / frenar · Espacio / clic = saltar'],
+  'Neu: die STEINSCHLEUDER – Schuss-Taste rechts unten': ['New: the SLINGSHOT – shoot button at the bottom right', 'Nuevo: la RESORTERA – botón de disparo abajo a la derecha'],
+  'Neu: die STEINSCHLEUDER – X oder rechte Maustaste': ['New: the SLINGSHOT – X or right mouse button', 'Nuevo: la RESORTERA – X o botón derecho del ratón'],
+  'Bröckelnde Felsen fallen weg! Achte auf Steinschlag und Flugsaurier.': ['Crumbling rocks fall away! Watch out for falling stones and pterosaurs.', '¡Las rocas que se desmoronan se caen! Cuidado con las piedras y los pterosaurios.'],
+  'Im OXXO im Baumhaus gibt es das Magma-Board für die Lavahöhlen.': ['The OXXO in the tree house sells the Magma Board for the lava caves.', 'En el OXXO de la casa del árbol está la Tabla de Magma para las cuevas de lava.'],
+  'Am Ende wartet die FLUGSAURIER-MAMA.': ['At the end the PTEROSAUR MOM is waiting.', 'Al final te espera la MAMÁ PTEROSAURIO.'],
+  'OXXO IM BAUMHAUS': ['OXXO IN THE TREE HOUSE', 'OXXO EN LA CASA DEL ÁRBOL'], 'BAUMHAUS': ['TREE HOUSE', 'CASA DEL ÁRBOL'],
+  'Das OXXO im Baumhaus! Willst du reingehen?': ['The OXXO in the tree house! Want to go in?', '¡El OXXO en la casa del árbol! ¿Quieres entrar?'],
+  'Hier gibt es das Magma-Board, die Super-Schleuder, Herzen und Kleider.': ['Here you get the Magma Board, the Super Slingshot, hearts and clothes.', 'Aquí hay Tabla de Magma, Súper Resortera, corazones y ropa.'],
+  'JA, REINGEHEN!': ['YES, GO IN!', '¡SÍ, ENTRAR!'], 'FERTIG': ['DONE', 'LISTO'], 'Gekauft ✓': ['Bought ✓', 'Comprado ✓'],
+  'Magma-Board': ['Magma Board', 'Tabla de Magma'], 'Pflicht für die Lavahöhlen!': ['A must for the lava caves!', '¡Obligatoria para las cuevas de lava!'],
+  'Super-Schleuder': ['Super Slingshot', 'Súper Resortera'], 'Schießt doppelt und schneller': ['Shoots double and faster', 'Dispara doble y más rápido'],
+  'Steinschleuder': ['Slingshot', 'Resortera'], 'nur auf der Felsenhöhe': ['only on the Rocky Heights', 'solo en las Alturas Rocosas'], 'für die Lavahöhlen': ['for the lava caves', 'para las cuevas de lava'],
+  'Ohne Magma-Board kommst du nicht in die Lavahöhlen!': ['Without the Magma Board you can\'t get into the lava caves!', '¡Sin la Tabla de Magma no entras a las cuevas de lava!'],
+  'FLUGSAURIER-RITT': ['PTEROSAUR RIDE', 'VUELO EN PTEROSAURIO'],
+  'Flieg 25 Sekunden auf einem Flugsaurier durch die Felsen!': ['Fly through the rocks on a pterosaur for 25 seconds!', '¡Vuela 25 segundos en un pterosaurio entre las rocas!'],
+  'Tippen / Leertaste = mit den Flügeln schlagen. 3 Zusammenstöße und du fällst runter.': ['Tap / Space = flap the wings. Bump 3 times and you fall off.', 'Toca / Espacio = aletear. 3 choques y te caes.'],
+  'Tippen = mit den Flügeln schlagen!': ['Tap = flap the wings!', '¡Toca = aletear!'], 'Leertaste / Klick = mit den Flügeln schlagen!': ['Space / click = flap the wings!', '¡Espacio / clic = aletear!'],
+  'Zusammenstöße: {n} / 3': ['Bumps: {n} / 3', 'Choques: {n} / 3'], 'Super geflogen!': ['Great flying!', '¡Gran vuelo!'],
+  'STEINSCHLAG': ['FALLING ROCKS', 'CAÍDA DE PIEDRAS'],
+  'Nach unten wischen = hinunterklettern': ['Swipe down = climb down', 'Desliza hacia abajo = bajar'], 'Pfeil ↓ = hinunterklettern': ['Arrow ↓ = climb down', 'Flecha ↓ = bajar'],
+  'MAMA': ['MOM', 'MAMÁ'], 'FLUGSAURIER-MAMA': ['PTEROSAUR MOM', 'MAMÁ PTEROSAURIO'], 'FLUGSAURIER-MAMA BESIEGT!': ['PTEROSAUR MOM DEFEATED!', '¡MAMÁ PTEROSAURIO VENCIDA!'],
+  'Die FLUGSAURIER-MAMA! Triff sie mit der Schleuder, wenn sie landet!': ['The PTEROSAUR MOM! Hit her with the slingshot when she lands!', '¡La MAMÁ PTEROSAURIO! ¡Dale con la resortera cuando aterrice!'],
+  'Sie ist gelandet – JETZT schießen!': ['She landed – SHOOT now!', '¡Aterrizó – DISPARA ahora!'],
+  'In der Luft prallt der Stein ab – warte, bis sie landet!': ['In the air the stone bounces off – wait until she lands!', 'En el aire la piedra rebota – ¡espera a que aterrice!'],
+  'Die Felsenhöhe ist geschafft! +30 Münzen': ['The Rocky Heights are done! +30 coins', '¡Alturas Rocosas superadas! +30 monedas'],
+  'Mit dem Magma-Board geht es durch die Röhre im Tal in die Lavahöhlen.': ['With the Magma Board you go through the pipe in the valley into the lava caves.', 'Con la Tabla de Magma bajas por el tubo del valle a las cuevas de lava.'],
+  'Hol dir noch das Magma-Board im OXXO – ohne kommst du nicht in die Lavahöhlen.': ['Still get the Magma Board at the OXXO – without it you can\'t enter the lava caves.', 'Consigue la Tabla de Magma en el OXXO – sin ella no entras a las cuevas de lava.'],
+  'ZURÜCK INS TAL': ['BACK TO THE VALLEY', 'VOLVER AL VALLE'], 'ZUR FELSENHÖHE': ['TO THE ROCKY HEIGHTS', 'A LAS ALTURAS ROCOSAS'],
+  'HINAUF ZUR FELSENHÖHE?': ['UP TO THE ROCKY HEIGHTS?', '¿SUBIR A LAS ALTURAS ROCOSAS?'],
+  'Kai hält sich an der Liane fest.': ['Kai is holding on to the liana.', 'Kai se agarra de la liana.'],
+  'Oben warten Flugsaurier, bröckelnde Felsen, das OXXO im Baumhaus und die Flugsaurier-Mama.': ['Up there: pterosaurs, crumbling rocks, the OXXO in the tree house and the Pterosaur Mom.', 'Arriba esperan pterosaurios, rocas que se desmoronan, el OXXO del árbol y la Mamá Pterosaurio.'],
+  'JA, HOCHKLETTERN!': ['YES, CLIMB UP!', '¡SÍ, SUBIR!'], 'NEIN, LOSLASSEN': ['NO, LET GO', 'NO, SOLTAR'],
+  'Die Lavahöhlen kommen bald – dafür brauchst du das Magma-Board.': ['The lava caves are coming soon – you need the Magma Board for them.', 'Las cuevas de lava llegan pronto – necesitas la Tabla de Magma.'],
+  'Weiter geht es an den Lianen hinauf zur Felsenhöhe!': ['Next: climb the lianas up to the Rocky Heights!', '¡Sigue: sube por las lianas a las Alturas Rocosas!'],
+  'Zurück im Dino-Tal!': ['Back in Dino Valley!', '¡De vuelta en el Valle Dino!'],
   // ---------- LEVEL 3 · DINOLAND ----------
   'INVERT – LEVEL 3': ['INVERT – LEVEL 3', 'INVERT – NIVEL 3'], 'DINOLAND': ['DINOLAND', 'DINOLANDIA'],
   'T-Rex im Dino-Tal besiegen': ['Beat the T-Rex in Dino Valley', 'Vence al T-Rex en el Valle Dino'],

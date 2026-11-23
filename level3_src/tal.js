@@ -42,6 +42,8 @@ const VOLCANOES = [700, 1500, 2350, 3300, 4300];   // in the volcano layer (move
 const VOLC_PAR = 0.35;
 const CHECKPOINTS = [3500, 7000, 10300];
 const SITES = { rodeo: 4400 - 0, fossil: 8100 };     // mini-game places (start of the corral / dig site)
+// lianas hanging from the cliffs above: jump up, grab one and climb to the Felsenhöhe
+const LIANAS = [2830, 8480], LIANA_BOTTOM = 120;
 
 const S = {
   phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0,
@@ -52,6 +54,8 @@ const S = {
   ask: null, asked: {}, boss: null, noHud: false, hideKai: false,
 };
 window.__S = S; window.__T = () => TEST; window.__V = () => [VH, DY, SAVE];
+// back down from the Felsenhöhe: Kai arrives at the foot of the liana
+if (QUERY.get('from') === 'hoehe') { S.kai.x = LIANAS[0]; S.kai.safeX = LIANAS[0]; S.cam = clamp(LIANAS[0] - W * 0.4, 0, BOSS_X); S.lianaCool = 60; }
 
 function resetDinos() {
   S.dinos = DINO_PLAN.map((d, i) => {
@@ -111,7 +115,13 @@ function dinoBox(d) {
 const brachioTop = d => FLOOR - 118;
 
 // ---------------- control (called by the controller) ----------------
-function steerDir(d) { const k = S.kai; if (!playing()) return; k.dir = d; if (d !== k.face) { k.face = d; Audio.play('flip'); } }
+function steerDir(d) {
+  const k = S.kai; if (!playing()) return;
+  k.dir = d;
+  // turning around: no sliding on like on ice – the old speed is gone at once, then he pushes off in the new direction
+  if (k.hurtT <= 0 && Math.sign(k.vx) === -d) k.vx = 0;
+  if (d !== k.face) { k.face = d; Audio.play('flip'); }
+}
 function steerBrake() { const k = S.kai; if (!playing()) return; k.dir = 0; Audio.play('swish'); }
 function steerJump(down) {
   const k = S.kai;
@@ -151,11 +161,12 @@ window.addEventListener('keyup', e => {
 
 // ---------------- start / checkpoints ----------------
 function beginWorld() {
-  const cont = QUERY.get('from') === 'continue' && SAVE.cpX;
+  const cont = QUERY.get('from') === 'continue' && SAVE.cpX, fromH = QUERY.get('from') === 'hoehe' && !S.begun;
   S.phase = 'play'; S.noHud = false; SAVE.started = true;
   S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
-  const k = S.kai; k.x = cont ? SAVE.cpX : 160; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.safeX = k.x;
-  S.cpX = k.x; S.cam = clamp(k.x - W * 0.38, 0, BOSS_X);
+  const k = S.kai; k.x = fromH ? LIANAS[0] : cont ? SAVE.cpX : 160; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.safeX = k.x;
+  S.cpX = fromH ? Math.max(SAVE.cpX || 160, 160) : k.x; S.cam = clamp(k.x - W * (fromH ? 0.4 : 0.38), 0, BOSS_X); S.begun = true;
+  if (fromH) { useCheckpoint('tal'); writeSave(); Audio.init(); Audio.setTheme('dino'); flash('Zurück im Dino-Tal!', 110); return; }
   if (!cont) setCheckpoint('tal');
   writeSave(); Audio.init(); Audio.setTheme('dino');
   flash(isTouchDev() ? 'Wisch nach rechts – los geht\'s!' : 'Pfeil nach rechts – los geht\'s!', 150);
@@ -211,8 +222,15 @@ function update(dt) {
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
   if (S.phase === 'rodeo' || S.phase === 'fossil') { updateGame(dt); return; }
+  if (S.phase === 'climb') {
+    // climbing up the liana: Kai pulls himself up and out of the picture, then the camera follows him up
+    S.climbT += dt; S.kai.y -= 2.6 * dt;
+    if (S.climbT > 46 && !S.leaving) { S.leaving = true; saveProgress(); goToWorld('hoehe.html', 'from=tal'); }
+    return;
+  }
   if (!playing()) { if (S.phase === 'won') updateBossDead(dt); return; }
   updateKai(dt);
+  updateLianas(dt);
   updateDinos(dt);
   updateVolcanoes(dt);
   updatePickups();
@@ -396,6 +414,23 @@ function updateParticles(dt) {
   S.waves = S.waves.filter(w => w.life > 0 && w.x > BOSS_X - 40 && w.x < MAP_END + 40);
 }
 
+// ---------------- lianas up to the Felsenhöhe ----------------
+function updateLianas(dt) {
+  const k = S.kai;
+  if (S.lianaCool > 0) { S.lianaCool -= dt; return; }
+  if (S.phase !== 'play' || k.ground) return;
+  for (const lx of LIANAS) {
+    // hands reach the end of the liana while jumping → Kai grabs it and hangs there
+    if (Math.abs(k.x - lx) < 32 && k.y - 112 < LIANA_BOTTOM) {
+      k.x = lx; k.y = LIANA_BOTTOM + 112; k.vx = 0; k.vy = 0; k.dir = 0;
+      S.ask = 'liana'; S.phase = 'ask'; Audio.play('swish');
+      return;
+    }
+  }
+}
+function climbUp() { S.phase = 'climb'; S.climbT = 0; Audio.play('swish'); }
+function letGo() { const k = S.kai; S.phase = 'play'; k.ground = false; k.platform = null; k.vy = 0; S.lianaCool = 70; Audio.play('tink'); }
+
 // ---------------- mini-game places: ask on the way ----------------
 function updateSites() {
   const k = S.kai;
@@ -414,7 +449,7 @@ const BTN = {
   start: { x: W / 2 - 110, y: 236, w: 220, h: 46 },
   yes: { x: W / 2 - 215, y: 228, w: 200, h: 44 }, no: { x: W / 2 + 15, y: 228, w: 200, h: 44 },
   goYes: { x: W / 2 - 215, y: 228, w: 210, h: 40 }, goNo: { x: W / 2 + 5, y: 228, w: 210, h: 40 },
-  menu: { x: W / 2 - 120, y: 236, w: 240, h: 44 },
+  menu: { x: W / 2 - 120, y: 236, w: 240, h: 44 }, up: { x: W / 2 - 250, y: 236, w: 240, h: 44 }, menu2: { x: W / 2 + 10, y: 236, w: 240, h: 44 },
   music: { x: W - 252, y: 10, w: 34, h: 30 }, sfx: { x: W - 212, y: 10, w: 34, h: 30 },
 };
 const inRect = (p, b) => b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
@@ -431,13 +466,13 @@ canvas.addEventListener('pointerdown', e => {
   if (inRect(hp, BTN.sfx)) { Audio.toggleSfx(); return; }
   if (S.phase === 'start') { beginWorld(); return; }
   if (S.phase === 'ask') {
-    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; startGame(id); }
-    else if (inRect(p, BTN.no)) { S.ask = null; S.phase = 'play'; Audio.play('tink'); }
+    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; if (id === 'liana') climbUp(); else startGame(id); }
+    else if (inRect(p, BTN.no)) { const id = S.ask; S.ask = null; if (id === 'liana') letGo(); else { S.phase = 'play'; Audio.play('tink'); } }
     return;
   }
   if (S.phase === 'rodeo' || S.phase === 'fossil') { gamePointer(p); return; }
   if (S.phase === 'gameover') { if (inRect(p, BTN.goYes)) resetGame(); else if (inRect(p, BTN.goNo)) { resetGame(); toMainMenu(); } return; }
-  if (S.phase === 'won') { if (inRect(p, BTN.menu)) toMainMenu(); return; }
+  if (S.phase === 'won') { if (inRect(p, BTN.up)) { saveProgress(); goToWorld('hoehe.html', 'from=tal'); } else if (inRect(p, BTN.menu2)) toMainMenu(); return; }
 });
 
 function enter() { beginWorld(); }
@@ -445,5 +480,6 @@ function enterFromMenu() { S.noHud = S.phase === 'start'; }   // the start panel
 const TEST = {
   setX(x) { const k = S.kai; k.x = x; k.safeX = x; S.cam = clamp(x - W * 0.36, 0, BOSS_X); },
   startBoss() { TEST.setX(BOSS_X + 300); },
+  liana(i = 0) { const k = S.kai; TEST.setX(LIANAS[i]); k.ground = false; k.y = LIANA_BOTTOM + 100; k.vy = -1; },
   startGame(id) { startGame(id); },
 };

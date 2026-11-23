@@ -5,6 +5,7 @@ D = os.path.dirname(os.path.abspath(__file__)) + '/'
 r = lambda f: open(D + f, encoding='utf-8').read()
 WORLDS = [
     ('makeTal', ['tal.js', 'tal_boss.js', 'tal_games.js', 'tal_draw.js']),
+    ('makeHoehe', ['hoehe.js', 'hoehe_boss.js', 'hoehe_games.js', 'hoehe_draw.js']),
 ]
 out = [r('head3.html'), r('shared3.js'), r('audio.js'), r('kai.js')]
 for name, files in WORLDS:

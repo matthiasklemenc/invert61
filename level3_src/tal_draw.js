@@ -16,6 +16,7 @@ function draw() {
   drawCheckpoints();
   for (const l of LEDGES) if (onScreen(l.x, l.w)) drawLedge(l);
   for (const r of ROCKS) if (onScreen(r.x, r.w)) drawBoulder(r);
+  drawLianas();
   drawFireShadows();
   for (const o of S.objects) if (!o.done && onScreen(o.x - 20, 40)) { if (o.type === 'coin') drawCoin(o); else drawFruitHeart(o); }
   for (const d of S.dinos) if (onScreen(d.x - 200, 400)) drawDino(d);
@@ -191,6 +192,21 @@ function drawSites() {
     ctx.fillStyle = '#9aa6b1'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 262, FLOOR - 22); ctx.lineTo(x + 276, FLOOR - 19); ctx.lineTo(x + 270, FLOOR - 4); ctx.lineTo(x + 258, FLOOR - 8); ctx.closePath(); ctx.fill(); ctx.stroke();
     drawSign(x + 120, FLOOR - 70, tx('FOSSILIEN'), '#e3c88f');
     ctx.restore();
+  }
+}
+function drawLianas() {
+  for (const lx of LIANAS) {
+    if (!onScreen(lx - 60, 140)) continue;
+    ctx.save(); ctx.lineCap = 'round';
+    const sway = Math.sin(S.t * 0.03 + lx) * 6;
+    ctx.strokeStyle = OUT; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(lx - 8, -DY - 10); ctx.quadraticCurveTo(lx + 14 + sway, (LIANA_BOTTOM - DY) / 2, lx + sway * 0.4, LIANA_BOTTOM); ctx.stroke();
+    ctx.strokeStyle = '#3f7d3a'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(lx - 8, -DY - 10); ctx.quadraticCurveTo(lx + 14 + sway, (LIANA_BOTTOM - DY) / 2, lx + sway * 0.4, LIANA_BOTTOM); ctx.stroke();
+    ctx.fillStyle = '#5db04a'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5;
+    for (let y = -DY + 20; y < LIANA_BOTTOM - 6; y += 34) { const u = (y + DY) / (LIANA_BOTTOM + DY), x = lx + (1 - u) * (1 - u) * -8 + 2 * (1 - u) * u * (14 + sway) + u * u * sway * 0.4; ctx.beginPath(); ctx.ellipse(x + ((y / 34) % 2 ? 9 : -9), y, 9, 4, (y / 34) % 2 ? 0.5 : -0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+    // a knot at the end to grab
+    ctx.fillStyle = '#3f7d3a'; ctx.beginPath(); ctx.arc(lx + sway * 0.4, LIANA_BOTTOM, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    drawSign(lx + 70, FLOOR - 64, '▲ ' + tx('FELSENHÖHE'), '#9fe07a');
   }
 }
 function drawSign(x, y, text, col) {
@@ -555,7 +571,10 @@ function drawScreens() {
     ], '#ffb25a');
     button(BTN.start, '▶  ' + tx('LOS GEHT\'S'), '#34c759', '#1f8f3c');
   }
-  if (S.phase === 'ask') {
+  if (S.phase === 'ask' && S.ask === 'liana') {
+    panel(tx('HINAUF ZUR FELSENHÖHE?'), [tx('Kai hält sich an der Liane fest.'), tx('Oben warten Flugsaurier, bröckelnde Felsen, das OXXO im Baumhaus und die Flugsaurier-Mama.')], '#9fe07a');
+    button(BTN.yes, '▲ ' + tx('JA, HOCHKLETTERN!'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, LOSLASSEN'), '#8a96a8', '#5d6878');
+  } else if (S.phase === 'ask') {
     const r = S.ask === 'rodeo';
     panel(r ? tx('DINO-RODEO') : tx('FOSSILIEN AUSGRABEN'), r
       ? [tx('Kannst du dich 15 Sekunden auf dem wilden Triceratops halten?'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')]
@@ -569,8 +588,8 @@ function drawScreens() {
     button(BTN.goYes, tx('NOCHMAL VERSUCHEN'), '#36c6f4', '#1677a8'); button(BTN.goNo, tx('NEIN – ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'won') {
-    panel(tx('T-REX BESIEGT!'), [tx('Das Dino-Tal ist geschafft! +30 Münzen'), tx('Bald geht es weiter: an den Lianen hinauf zur Felsenhöhe'), tx('und durch die Röhre hinunter in die Lavahöhlen.')], '#7dffa0');
-    button(BTN.menu, tx('ZUM MENÜ'), '#34c759', '#1f8f3c');
+    panel(tx('T-REX BESIEGT!'), [tx('Das Dino-Tal ist geschafft! +30 Münzen'), SAVE.done.hoehe ? tx('Die Lavahöhlen kommen bald – dafür brauchst du das Magma-Board.') : tx('Weiter geht es an den Lianen hinauf zur Felsenhöhe!')], '#7dffa0');
+    button(BTN.up, '▲ ' + tx('ZUR FELSENHÖHE'), '#34c759', '#1f8f3c'); button(BTN.menu2, tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
 }
 
