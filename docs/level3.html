@@ -42,7 +42,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const SAVE_KEY = 'invert61-level3';
 const SAVE_DEFAULT = {
   lang: 'de', hearts: 5, lives: 3, coins: 0, pearls: 0, starfish: 0,
-  items: { magmaBoard: false, slingshot: false, sling2: false },
+  items: { magmaBoard: false, slingshot: false, sling2: false, bombs: false },
   weapon: {},
   outfit: { char: 'kai', tee: '#1f3c6e', cap: '#1e4fa3', beanie: false, backpack: false, shoes: '#1b1b22', halo: false },
   // two playable characters, each with her / his own clothes. SAVE.outfit is always the one being played.
@@ -55,7 +55,7 @@ const SAVE_DEFAULT = {
   checkpoint: null,                            // snapshot at the start of the current world
   score: 0, best: 0,                           // points of this game / personal record on this device
   pts: {},                                     // what already gave its one-time points (mini games, bosses)
-  wtime: { tal: 0, hoehe: 0 },                 // seconds played in each world (for the time bonus)
+  wtime: { tal: 0, hoehe: 0, lava: 0 },        // frames played in each world (for the time bonus)
 };
 function loadSave() {
   try {
@@ -103,7 +103,7 @@ function spendCoins(n) { for (const c of new Set([SAVE.checkpoint, ...Object.val
 // ---------------- points ----------------
 // Points are for comparing (coins are money for the OXXO). Defeated dinos stay gone, mini games and bosses
 // give their big points only once per game – so nobody can farm millions. A boss can be fought again and again.
-const PTS = { coin: 10, raptor: 100, compy: 100, baby: 50, ptero: 200, trike: 300, stego: 300, mini: 1000, boss: 5000 };
+const PTS = { coin: 10, raptor: 100, compy: 100, salamander: 100, baby: 50, bat: 150, ptero: 200, trike: 300, stego: 300, mini: 1000, miniboss: 2000, boss: 5000 };
 // time bonus: starts at 10'000 and shrinks by 25 per second played in that world – never below 0 (no countdown!)
 const TIME_BONUS_MAX = 10000, TIME_BONUS_PER_S = 25;
 const timeBonus = sec => Math.max(0, Math.round((TIME_BONUS_MAX - sec * TIME_BONUS_PER_S) / 10) * 10);
@@ -140,6 +140,35 @@ function drawBossBar(name, frac) {
   ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(bx, 14, bw, 16, 8); ctx.stroke();
   ctx.restore();
 }
+// little symbols in the way bar at the top: where the lianas, pipes, mini games, shop and middle boss are
+function drawBarIcon(type, x, y) {
+  ctx.save(); ctx.translate(x, y); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const col = { liana: '#4caf50', pipe: '#ff7a2a', rodeo: '#ffb02e', fossil: '#e3c88f', oxxo: '#d8231f', ride: '#ff9ad0', lore: '#9aa0a8', anky: '#e2541c' }[type] || '#fff';
+  ctx.fillStyle = col; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = OUT; ctx.fillStyle = OUT; ctx.lineWidth = 1.8;
+  if (type === 'liana') { ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(0, -5); ctx.moveTo(-4, -1); ctx.lineTo(0, -5); ctx.lineTo(4, -1); ctx.stroke(); }
+  else if (type === 'pipe') { ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, 5); ctx.moveTo(-4, 1); ctx.lineTo(0, 5); ctx.lineTo(4, 1); ctx.stroke(); }
+  else if (type === 'rodeo') { ctx.beginPath(); ctx.arc(0, 0, 4.5, Math.PI * 0.15, Math.PI * 0.85, true); ctx.stroke(); }
+  else if (type === 'fossil') { ctx.beginPath(); ctx.moveTo(-4, 3); ctx.lineTo(4, -3); ctx.stroke(); for (const [bx, by] of [[-4, 3], [4, -3]]) { ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, Math.PI * 2); ctx.fill(); } }
+  else if (type === 'oxxo') { ctx.fillStyle = '#ffd23a'; ctx.fillRect(-6, -2, 12, 4); }
+  else if (type === 'ride') { ctx.beginPath(); ctx.moveTo(-6, -2); ctx.quadraticCurveTo(-3, 2, 0, -1); ctx.quadraticCurveTo(3, 2, 6, -2); ctx.stroke(); }
+  else if (type === 'lore') { ctx.fillRect(-5, -4, 10, 5); ctx.beginPath(); ctx.arc(-3, 3, 1.8, 0, Math.PI * 2); ctx.arc(3, 3, 1.8, 0, Math.PI * 2); ctx.fill(); }
+  else if (type === 'anky') { ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', 0, 1); }
+  ctx.restore();
+}
+// the way bar (top middle): progress to the boss, checkpoints, and the symbols of the places on the way
+function drawWayBar(kx, bossX, cps, cpX, icons, label, labelCol) {
+  ctx.save(); ctx.textBaseline = 'middle';
+  const bx = W / 2 - 170, bw = 340, u = clamp(kx / bossX, 0, 1);
+  ctx.fillStyle = 'rgba(20,30,50,0.55)'; ctx.beginPath(); ctx.roundRect(bx - 14, 4, bw + 90, 34, 12); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.roundRect(bx, 17, bw, 8, 4); ctx.fill();
+  ctx.fillStyle = '#7dd35a'; ctx.beginPath(); ctx.roundRect(bx, 17, bw * u, 8, 4); ctx.fill();
+  for (const c of cps) { ctx.fillStyle = cpX >= c ? '#34c759' : '#d8352c'; ctx.fillRect(bx + bw * c / bossX - 1, 13, 3, 16); }
+  for (const [type, x] of icons) drawBarIcon(type, bx + bw * clamp(x / bossX, 0, 1), 21);
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(bx + bw * u, 21, 5, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.font = 'bold 12px Arial'; ctx.fillStyle = labelCol; ctx.textAlign = 'left'; ctx.fillText(label, bx + bw + 10, 21);
+  ctx.restore();
+}
 // the end-of-world summary lines (boss beaten)
 function summaryLines(sm) {
   if (!sm) return [];
@@ -171,6 +200,7 @@ const INV_WEAPONS = [
   { id: 'sling', name: 'Steinschleuder', where: 'Felsenhöhe', world: 'hoehe', owned: () => !!SAVE.items.slingshot, worn: () => !(SAVE.items.sling2 && SAVE.weapon.hoehe !== 'sling'), pick: () => { SAVE.weapon.hoehe = 'sling'; } },
   { id: 'sling2', name: 'Super-Schleuder', where: 'Felsenhöhe', world: 'hoehe', owned: () => !!SAVE.items.sling2, worn: () => !!SAVE.items.sling2 && SAVE.weapon.hoehe !== 'sling', pick: () => { SAVE.weapon.hoehe = 'sling2'; } },
   { id: 'magma', name: 'Magma-Board', where: 'Lavahöhlen', world: 'lava', owned: () => !!SAVE.items.magmaBoard, worn: () => true, pick: () => {} },
+  { id: 'bombs', name: 'Wasserbomben', where: 'Lavahöhlen', world: 'lava', owned: () => !!SAVE.items.bombs, worn: () => true, pick: () => {} },
 ];
 const OUTFIT_GROUPS = [
   { label: 'Kopf', opts: [
@@ -227,6 +257,7 @@ function drawInvButton(x, y) {
 function drawInvSwatch(id, sw, cx, cy) {
   ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = OUT; ctx.lineWidth = 1.3; ctx.fillStyle = sw;
   if (id === 'sling' || id === 'sling2') { ctx.strokeStyle = '#7a4f2c'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, 1); ctx.lineTo(-5, -7); ctx.moveTo(0, 1); ctx.lineTo(5, -7); ctx.stroke(); ctx.strokeStyle = '#d8352c'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-5, -7); ctx.lineTo(0, -3); ctx.lineTo(5, -7); ctx.stroke(); if (id === 'sling2') { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 8px Arial'; ctx.fillText('2', 5, 6); } }
+  else if (id === 'bombs') { ctx.fillStyle = '#3aa0f0'; ctx.beginPath(); ctx.ellipse(0, -1, 6, 7, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(-2, -3, 1.6, 0, Math.PI * 2); ctx.fill(); }
   else if (id === 'magma') { ctx.rotate(-0.3); ctx.fillStyle = '#3a2a26'; ctx.beginPath(); ctx.roundRect(-10, -3, 20, 6, 3); ctx.fill(); ctx.stroke(); ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(7, 0); ctx.stroke(); }
   else if (id === 'arrow') { ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(7, 0); ctx.stroke(); ctx.fillStyle = '#fff6b0'; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(3, -4); ctx.lineTo(3, 4); ctx.closePath(); ctx.fill(); }
   else if (id === 'starSea') { ctx.strokeStyle = '#c9d3dc'; ctx.lineWidth = 2; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 3, Math.sin(a) * 3); ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9); ctx.stroke(); } }
@@ -288,7 +319,7 @@ function drawInventoryPanel() {
       let fs = 11; ctx.font = `bold ${fs}px Arial`; const nm = c.figure ? c.it.name : tx(c.it.name);   // the names Kai / Bali are never swapped
       while (ctx.measureText(nm).width > chipW - 40 && fs > 8) { fs--; ctx.font = `bold ${fs}px Arial`; }
       ctx.fillText(nm, cx + 32, y + (c.weapon ? 11 : chipH / 2));
-      if (c.weapon) { ctx.font = '9px Arial'; ctx.fillStyle = on ? '#eafff0' : 'rgba(255,255,255,0.6)'; ctx.fillText(here ? tx(c.it.where) : tx(c.it.world === 'hoehe' ? 'nur auf der Felsenhöhe' : 'für die Lavahöhlen'), cx + 32, y + 22); }
+      if (c.weapon) { ctx.font = '9px Arial'; ctx.fillStyle = on ? '#eafff0' : 'rgba(255,255,255,0.6)'; ctx.fillText(here ? tx(c.it.where) : tx(c.it.world === 'hoehe' ? 'nur auf der Felsenhöhe' : 'nur in den Lavahöhlen'), cx + 32, y + 22); }
       if (on) { ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'right'; ctx.fillText('✓', cx + chipW - 8, y + chipH / 2 + 1); }
       ctx.globalAlpha = 1;
     });
@@ -347,6 +378,38 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  // ---------- LEVEL 3 · LAVAHÖHLEN ----------
+  'DIE LAVAHÖHLEN': ['THE LAVA CAVES', 'LAS CUEVAS DE LAVA'], 'LAVAHÖHLEN': ['LAVA CAVES', 'CUEVAS DE LAVA'], 'VULKAN': ['VOLCANO', 'VOLCÁN'],
+  'Wasserbomben': ['Water bombs', 'Bombas de agua'], 'nur in den Lavahöhlen': ['only in the lava caves', 'solo en las cuevas de lava'], 'WURF': ['THROW', 'LANZAR'],
+  'Du hast WASSERBOMBEN! Wurf-Taste rechts unten.': ['You got WATER BOMBS! Throw button at the bottom right.', '¡Tienes BOMBAS DE AGUA! Botón de lanzar abajo a la derecha.'],
+  'Du hast WASSERBOMBEN! Werfen: X oder rechte Maustaste.': ['You got WATER BOMBS! Throw: X or right mouse button.', '¡Tienes BOMBAS DE AGUA! Lanzar: X o botón derecho del ratón.'],
+  'Neu: WASSERBOMBEN – Wurf-Taste rechts unten': ['New: WATER BOMBS – throw button at the bottom right', 'Nuevo: BOMBAS DE AGUA – botón de lanzar abajo a la derecha'],
+  'Neu: WASSERBOMBEN – X oder rechte Maustaste': ['New: WATER BOMBS – X or right mouse button', 'Nuevo: BOMBAS DE AGUA – X o botón derecho del ratón'],
+  'Das Magma-Board fährt kurz über Lava – aber nicht zu lange, sonst wird es zu heiß!': ['The Magma Board can ride over lava for a moment – not too long, or it gets too hot!', 'La Tabla de Magma rueda un momento sobre la lava – ¡no mucho, o se calienta demasiado!'],
+  'Eine Wasserbombe auf Lava macht für kurze Zeit einen Stein-Weg.': ['A water bomb on lava makes a stone path for a short time.', 'Una bomba de agua en la lava hace un camino de piedra por un rato.'],
+  'In der Mitte: der MAGMA-ANKYLOSAURUS. Am Ende: der RIESENVULKAN.': ['In the middle: the MAGMA ANKYLOSAURUS. At the end: the GIANT VOLCANO.', 'En medio: el ANQUILOSAURIO DE MAGMA. Al final: el VOLCÁN GIGANTE.'],
+  'Zu heiß! Nicht so lange auf der Lava fahren.': ['Too hot! Don\'t ride on the lava so long.', '¡Demasiado caliente! No ruedes tanto sobre la lava.'],
+  'Weiter nach links = zurück ins Tal': ['Keep riding left = back to the valley', 'Sigue a la izquierda = volver al valle'],
+  'Durch die Röhre kommst du wieder hinauf ins Tal.': ['Through the pipe you get back up into the valley.', 'Por el tubo vuelves a subir al valle.'], 'JA, HINAUF': ['YES, UP', 'SÍ, SUBIR'],
+  'LORE-FAHRT': ['MINE CART RIDE', 'VIAJE EN VAGONETA'],
+  'Rase 25 Sekunden mit der Lore durch die Mine!': ['Race through the mine in the cart for 25 seconds!', '¡Corre 25 segundos en la vagoneta por la mina!'],
+  'Tippen / Leertaste = springen: über Löcher und Steine, aber nicht in die Fledermäuse.': ['Tap / Space = jump: over holes and rocks, but not into the bats.', 'Toca / Espacio = saltar: sobre hoyos y piedras, pero no contra los murciélagos.'],
+  'Tippen = mit der Lore springen!': ['Tap = jump with the cart!', '¡Toca = saltar con la vagoneta!'], 'Leertaste / Klick = mit der Lore springen!': ['Space / click = jump with the cart!', '¡Espacio / clic = saltar con la vagoneta!'],
+  'Unfälle: {n} / 3': ['Crashes: {n} / 3', 'Choques: {n} / 3'], 'Super gefahren!': ['Great ride!', '¡Gran viaje!'], 'Zu viele Unfälle! Versuch es nochmal.': ['Too many crashes! Try again.', '¡Demasiados choques! Inténtalo otra vez.'],
+  'MAGMA-ANKYLOSAURUS': ['MAGMA ANKYLOSAURUS', 'ANQUILOSAURIO DE MAGMA'], 'RIESENVULKAN': ['GIANT VOLCANO', 'VOLCÁN GIGANTE'],
+  'Der MAGMA-ANKYLOSAURUS! Kühl ihn mit Wasserbomben ab und spring auf ihn drauf!': ['The MAGMA ANKYLOSAURUS! Cool him with water bombs and jump on him!', '¡El ANQUILOSAURIO DE MAGMA! ¡Enfríalo con bombas de agua y salta encima!'],
+  'Er glüht wieder!': ['He is glowing again!', '¡Vuelve a brillar!'], 'Abgekühlt! JETZT draufspringen!': ['Cooled down! Jump on him NOW!', '¡Enfriado! ¡Salta encima AHORA!'],
+  'MAGMA-ANKYLOSAURUS BESIEGT!': ['MAGMA ANKYLOSAURUS DEFEATED!', '¡ANQUILOSAURIO DE MAGMA VENCIDO!'],
+  'Der Weg ist frei! +{n} Punkte': ['The way is free! +{n} points', '¡El camino está libre! +{n} puntos'], 'Der Weg ist frei!': ['The way is free!', '¡El camino está libre!'],
+  'Der RIESENVULKAN! Wirf eine Wasserbombe in den glühenden Krater!': ['The GIANT VOLCANO! Throw a water bomb into the glowing crater!', '¡El VOLCÁN GIGANTE! ¡Lanza una bomba de agua al cráter brillante!'],
+  'VOLLTREFFER!': ['BULLSEYE!', '¡EN EL BLANCO!'], 'DER RIESENVULKAN IST AUS!': ['THE GIANT VOLCANO IS OUT!', '¡EL VOLCÁN GIGANTE SE APAGÓ!'],
+  'Die Lavahöhlen sind geschafft! +30 Münzen': ['The lava caves are done! +30 coins', '¡Cuevas de lava superadas! +30 monedas'],
+  'Alle drei Bosse besiegt – Level 3 ist geschafft!': ['All three bosses beaten – Level 3 is done!', '¡Los tres jefes vencidos – Nivel 3 superado!'], 'Noch offen:': ['Still to do:', 'Aún falta:'],
+  '100 % – POKAL! Alles geschafft!': ['100 % – TROPHY! Everything done!', '100 % – ¡TROFEO! ¡Todo superado!'],
+  'Du brauchst das Magma-Board aus dem OXXO auf der Felsenhöhe!': ['You need the Magma Board from the OXXO on the Rocky Heights!', '¡Necesitas la Tabla de Magma del OXXO en las Alturas Rocosas!'],
+  'HINUNTER IN DIE LAVAHÖHLEN?': ['DOWN INTO THE LAVA CAVES?', '¿BAJAR A LAS CUEVAS DE LAVA?'],
+  'Mit dem Magma-Board durch die Röhre nach unten.': ['Down through the pipe with the Magma Board.', 'Baja por el tubo con la Tabla de Magma.'],
+  'Unten warten Lava, Feuer-Salamander, der Magma-Ankylosaurus und der Riesenvulkan.': ['Down there: lava, fire salamanders, the Magma Ankylosaurus and the Giant Volcano.', 'Abajo esperan lava, salamandras de fuego, el Anquilosaurio de Magma y el Volcán Gigante.'],
   // ---------- LEVEL 3 · FELSENHÖHE ----------
   'PUNKTE': ['POINTS', 'PUNTOS'], 'Punkte': ['points', 'puntos'], 'NOCHMAL': ['AGAIN', 'OTRA VEZ'], 'NEUER REKORD!': ['NEW RECORD!', '¡NUEVO RÉCORD!'],
   'Punkte: {p}   ·   Rekord: {r}': ['Points: {p}   ·   Record: {r}', 'Puntos: {p}   ·   Récord: {r}'],
@@ -754,7 +817,8 @@ const Audio = (() => {
   const CHORDS_SKY = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]]; // Fmaj7 – Em7 – Dm7 – Cmaj7 (dreamy)
   const CHORDS_DINO = [[45, 48, 52], [43, 47, 50], [41, 45, 48], [40, 44, 47]];                 // Am – G – F – E (jungle adventure)
   const CHORDS_HOEHE = [[50, 54, 57], [48, 52, 55], [43, 47, 50], [45, 49, 52]];                // D – C – G – A (high up, heroic)
-  function stepDur() { return 60 / (boss ? 132 : fast ? BPM_FAST : theme === 'city' ? 116 : theme === 'dino' ? 108 : theme === 'hoehe' ? 112 : theme === 'sky' ? 100 : BPM_NORMAL) / 4; }
+  const CHORDS_LAVA = [[40, 43, 47], [36, 40, 43], [38, 42, 45], [35, 39, 42]];                 // Em – C – D – B (deep down, a bit dangerous)
+  function stepDur() { return 60 / (boss ? 132 : fast ? BPM_FAST : theme === 'city' ? 116 : theme === 'dino' ? 108 : theme === 'hoehe' ? 112 : theme === 'lava' ? 100 : theme === 'sky' ? 100 : BPM_NORMAL) / 4; }
   function schedule() {
     if (!ac) return;
     delay.delayTime.setTargetAtTime(stepDur() * 3, ac.currentTime, 0.05);
@@ -778,7 +842,7 @@ const Audio = (() => {
   }
   function playStep(s, t) {
     if (bgPaused) return;
-    const bar = Math.floor(s / 16) % 4, st = s % 16, ch = (boss ? CHORDS_BOSS : theme === 'city' ? CHORDS_CITY : theme === 'dino' ? CHORDS_DINO : theme === 'hoehe' ? CHORDS_HOEHE : theme === 'sky' ? CHORDS_SKY : CHORDS)[bar], sd = stepDur();
+    const bar = Math.floor(s / 16) % 4, st = s % 16, ch = (boss ? CHORDS_BOSS : theme === 'city' ? CHORDS_CITY : theme === 'dino' ? CHORDS_DINO : theme === 'hoehe' ? CHORDS_HOEHE : theme === 'lava' ? CHORDS_LAVA : theme === 'sky' ? CHORDS_SKY : CHORDS)[bar], sd = stepDur();
     const fast = intense() || theme === 'city';
     // jungle drums (toms) for the dino world
     if (theme === 'dino' && !boss && [0, 3, 6, 10, 12].includes(st)) {
@@ -793,6 +857,13 @@ const Audio = (() => {
       o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.5, t + 0.25);
       g.gain.setValueAtTime(0.24, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
       o.connect(g); g.connect(musicFilter); o.start(t); o.stop(t + 0.32);
+    }
+    // Lavahöhlen: deep rumbling drums
+    if (theme === 'lava' && !boss && [0, 6, 8, 14].includes(st)) {
+      const o = ac.createOscillator(), g = ac.createGain(), f0 = st === 8 ? 70 : 55;
+      o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.5, t + 0.3);
+      g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.connect(g); g.connect(musicFilter); o.start(t); o.stop(t + 0.38);
     }
     if (theme === 'hoehe' && !boss && st % 8 === 4) tone(mtof(ch[(bar + st / 4) % ch.length] + 24), t, sd * 6, 'sine', 0.03, musicFilter, 0.03);
     if (theme === 'sky' && st % 4 === 0 && !boss) tone(mtof(ch[(st / 4) % ch.length] + 24), t, sd * 5, 'sine', 0.035, musicFilter, 0.02);   // sparkling bells
@@ -822,11 +893,11 @@ const Audio = (() => {
   }
   function setTheme(t) {
     theme = t;
-    if (ac) musicFilter.frequency.setTargetAtTime(t === 'city' ? 5200 : t === 'dino' ? 3800 : t === 'hoehe' ? 4200 : t === 'sky' ? 4200 : 2200, ac.currentTime, 0.2);
+    if (ac) musicFilter.frequency.setTargetAtTime(t === 'city' ? 5200 : t === 'dino' ? 3800 : t === 'hoehe' ? 4200 : t === 'lava' ? 3000 : t === 'sky' ? 4200 : 2200, ac.currentTime, 0.2);
   }
   function setBoss(on) {
     boss = on;
-    if (ac) musicFilter.frequency.setTargetAtTime(on ? 4200 : (fast ? 6500 : theme === 'city' ? 5200 : theme === 'dino' ? 3800 : theme === 'hoehe' ? 4200 : 2200), ac.currentTime, 0.3);
+    if (ac) musicFilter.frequency.setTargetAtTime(on ? 4200 : (fast ? 6500 : theme === 'city' ? 5200 : theme === 'dino' ? 3800 : theme === 'hoehe' ? 4200 : theme === 'lava' ? 3000 : 2200), ac.currentTime, 0.3);
   }
   function setFast(on) {
     if (on === fast) return;
@@ -1486,6 +1557,11 @@ const CHECKPOINTS = [3500, 7000, 10300];
 const SITES = { rodeo: 4400 - 0, fossil: 8100 };     // mini-game places (start of the corral / dig site)
 // lianas hanging from the cliffs above: jump up, grab one and climb to the Felsenhöhe
 const LIANAS = [2830, 8480], LIANA_BOTTOM = 120;
+// two pipes down into the lava caves (only with the Magma-Board): stand on top of one
+const PIPES = [{ x: 5380, w: 84, h: 74, pipe: true }, { x: 9700, w: 84, h: 74, pipe: true }];
+const SOLIDS = ROCKS.concat(PIPES);                  // everything solid on the ground (Kai and the dinos bump into it)
+// where Kai comes back from the other worlds
+const ARRIVE = { hoehe: LIANAS[0], lava: PIPES[0].x + PIPES[0].w + 120 };
 
 const S = {
   phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0, score: SAVE.score || 0, pops: [], wtime: SAVE.wtime.tal || 0, combo: 0,
@@ -1497,7 +1573,8 @@ const S = {
 };
 window.__S = S; window.__T = () => TEST; window.__V = () => [VH, DY, SAVE];
 // back down from the Felsenhöhe: Kai arrives at the foot of the liana
-if (QUERY.get('from') === 'hoehe') { S.kai.x = LIANAS[0]; S.kai.safeX = LIANAS[0]; S.cam = clamp(LIANAS[0] - W * 0.4, 0, BOSS_X); S.lianaCool = 60; }
+const FROM = ARRIVE[QUERY.get('from')];
+if (FROM) { S.kai.x = FROM; S.kai.safeX = FROM; S.cam = clamp(FROM - W * 0.4, 0, BOSS_X); S.lianaCool = 60; }
 
 function resetDinos() {
   S.dinos = DINO_PLAN.map((d, i) => {
@@ -1511,7 +1588,7 @@ function resetDinos() {
 // boulders are walls for the dinos too (like the Goombas in Super Mario): they bump into them and turn around
 function rockBlock(d) {
   const hw = d.w / 2 - 10;
-  for (const r of ROCKS) {
+  for (const r of SOLIDS) {
     if (d.x + hw > r.x && d.x - hw < r.x + r.w) {
       if (d.x < r.x + r.w / 2) { d.x = r.x - hw; d.dir = -1; } else { d.x = r.x + r.w + hw; d.dir = 1; }
       if (d.state === 'charge') d.state = 'walk';
@@ -1603,12 +1680,12 @@ window.addEventListener('keyup', e => {
 
 // ---------------- start / checkpoints ----------------
 function beginWorld() {
-  const cont = QUERY.get('from') === 'continue' && SAVE.cpX, fromH = QUERY.get('from') === 'hoehe' && !S.begun;
+  const cont = QUERY.get('from') === 'continue' && SAVE.cpX, fromH = !!FROM && !S.begun;
   S.phase = 'play'; S.noHud = false; SAVE.started = true;
   S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
-  const k = S.kai; k.x = fromH ? LIANAS[0] : cont ? SAVE.cpX : 160; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.safeX = k.x;
+  const k = S.kai; k.x = fromH ? FROM : cont ? SAVE.cpX : 160; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.safeX = k.x;
   S.cpX = fromH ? Math.max(SAVE.cpX || 160, 160) : k.x; S.cam = clamp(k.x - W * (fromH ? 0.4 : 0.38), 0, BOSS_X); S.begun = true;
-  if (fromH) { useCheckpoint('tal'); writeSave(); Audio.init(); Audio.setTheme('dino'); flash('Zurück im Dino-Tal!', 110); return; }
+  if (fromH) { useCheckpoint('tal'); writeSave(); Audio.init(); Audio.setTheme('dino'); flash('Zurück im Dino-Tal!', 110); S.onPipe = true; return; }
   if (!cont) setCheckpoint('tal');
   writeSave(); Audio.init(); Audio.setTheme('dino');
   flash(isTouchDev() ? 'Halte ▶ gedrückt – los geht\'s!' : 'Halte den Pfeil nach rechts – los geht\'s!', 150);
@@ -1675,6 +1752,7 @@ function update(dt) {
   if (S.heartFlash > 0) S.heartFlash -= dt;
   if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
   if (playing()) S.wtime += dt;                       // time played in this world (frames)
+  S.saveT = (S.saveT || 0) + dt; if (S.saveT > 120 && playing()) { S.saveT = 0; saveProgress(); }   // keep the points safe every 2 s
   for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
@@ -1688,6 +1766,7 @@ function update(dt) {
   if (!playing()) { if (S.phase === 'won') updateBossDead(dt); return; }
   updateKai(dt);
   updateLianas(dt);
+  updatePipes();
   updateDinos(dt);
   updateVolcanoes(dt);
   updatePickups();
@@ -1724,7 +1803,7 @@ function updateKai(dt) {
   if (k.platform && k.platform.dino) k.x += k.platform.dino.vx * dt;
   let nx = k.x + k.vx * dt;
   // boulders block from the side
-  for (const r of ROCKS) {
+  for (const r of SOLIDS) {
     const top = FLOOR - r.h;
     if (k.y > top + 4 && nx + 20 > r.x && nx - 20 < r.x + r.w) {
       if (k.x <= r.x + r.w / 2) nx = r.x - 20; else nx = r.x + r.w + 20;
@@ -1773,7 +1852,7 @@ function landOn(pl, top) {
 function platformsNear(x) {
   const list = [];
   for (const l of LEDGES) if (x > l.x - 60 && x < l.x + l.w + 60) list.push({ x1: () => l.x, x2: () => l.x + l.w, top: () => l.y });
-  for (const r of ROCKS) if (x > r.x - 60 && x < r.x + r.w + 60) list.push({ x1: () => r.x, x2: () => r.x + r.w, top: () => FLOOR - r.h });
+  for (const r of SOLIDS) if (x > r.x - 60 && x < r.x + r.w + 60) list.push({ x1: () => r.x, x2: () => r.x + r.w, top: () => FLOOR - r.h, pipe: r.pipe ? r : null });
   for (const d of S.dinos) if (d.type === 'brachio' && Math.abs(x - d.x) < 160) list.push({ dino: d, x1: () => d.x - 80, x2: () => d.x + 80, top: () => brachioTop(d) });
   return list;
 }
@@ -1885,6 +1964,16 @@ function updateLianas(dt) {
     }
   }
 }
+// standing on top of a pipe: down into the lava caves (only with the Magma-Board)
+function updatePipes() {
+  const k = S.kai, on = k.ground && k.platform && k.platform.pipe;
+  if (!on) { S.onPipe = false; return; }
+  if (S.onPipe || S.phase !== 'play') return;
+  S.onPipe = true;
+  if (!SAVE.items.magmaBoard) { flash('Du brauchst das Magma-Board aus dem OXXO auf der Felsenhöhe!', 160); Audio.play('denied'); return; }
+  S.ask = 'pipe'; S.phase = 'ask'; k.vx = 0; k.dir = 0; Audio.play('chime');
+}
+function enterPipe() { saveProgress(); S.phase = 'leaving'; Audio.play('pipe'); goToWorld('lava.html', 'from=tal'); }
 function climbUp() { S.phase = 'climb'; S.climbT = 0; Audio.play('swish'); }
 function letGo() { const k = S.kai; S.phase = 'play'; k.ground = false; k.platform = null; k.vy = 0; S.lianaCool = 70; Audio.play('tink'); }
 
@@ -1892,9 +1981,12 @@ function letGo() { const k = S.kai; S.phase = 'play'; k.ground = false; k.platfo
 function updateSites() {
   const k = S.kai;
   for (const [id, x] of Object.entries(SITES)) {
-    const gate = x + 120;
-    if (Math.abs(k.x - gate) > 160) S.asked[id] = false;            // re-arm when Kai has ridden a bit away (so the game can be played again)
-    if (!S.asked[id] && Math.abs(k.x - gate) < 30 && k.ground) {
+    // the question comes when Kai passes the entrance – also in the air or on a log above it: then as soon as he lands
+    const gate = x + 120, d = Math.abs(k.x - gate);
+    S.near = S.near || {};
+    if (d > 300) { S.asked[id] = false; S.near[id] = false; }
+    if (d < 60) S.near[id] = true;
+    if (!S.asked[id] && S.near[id] && k.ground && d < 300) {
       S.asked[id] = true; S.ask = id; S.phase = 'ask';
       k.vx = 0; k.dir = 0; Audio.play('chime');
     }
@@ -1923,7 +2015,7 @@ canvas.addEventListener('pointerdown', e => {
   if (inRect(hp, BTN.sfx)) { Audio.toggleSfx(); return; }
   if (S.phase === 'start') { beginWorld(); return; }
   if (S.phase === 'ask') {
-    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; if (id === 'liana') climbUp(); else startGame(id); }
+    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; if (id === 'liana') climbUp(); else if (id === 'pipe') enterPipe(); else startGame(id); }
     else if (inRect(p, BTN.no)) { const id = S.ask; S.ask = null; if (id === 'liana') letGo(); else { S.phase = 'play'; Audio.play('tink'); } }
     return;
   }
@@ -1937,6 +2029,7 @@ function enterFromMenu() { S.noHud = S.phase === 'start'; }   // the start panel
 const TEST = {
   setX(x) { const k = S.kai; k.x = x; k.safeX = x; S.cam = clamp(x - W * 0.36, 0, BOSS_X); },
   startBoss() { TEST.setX(BOSS_X + 300); },
+  pipe(i = 0) { const k = S.kai, pp = PIPES[i]; TEST.setX(pp.x + pp.w / 2); k.y = FLOOR - pp.h - 60; k.ground = false; k.vy = 1; },
   liana(i = 0) { const k = S.kai; TEST.setX(LIANAS[i]); k.ground = false; k.y = LIANA_BOTTOM + 100; k.vy = -1; },
   startGame(id) { startGame(id); },
 };
@@ -2135,6 +2228,7 @@ function draw() {
   for (const l of LEDGES) if (onScreen(l.x, l.w)) drawLedge(l);
   for (const r of ROCKS) if (onScreen(r.x, r.w)) drawBoulder(r);
   drawLianas();
+  for (const pp of PIPES) if (onScreen(pp.x - 20, pp.w + 40)) drawPipe(pp);
   drawFireShadows();
   for (const o of S.objects) if (!o.done && onScreen(o.x - 20, 40)) { if (o.type === 'coin') drawCoin(o); else drawFruitHeart(o); }
   for (const d of S.dinos) if (onScreen(d.x - 200, 400)) drawDino(d);
@@ -2312,6 +2406,17 @@ function drawSites() {
     drawSign(x + 120, FLOOR - 70, tx('FOSSILIEN'), '#e3c88f');
     ctx.restore();
   }
+}
+// a stone pipe glowing orange inside: the way down into the lava caves
+function drawPipe(pp) {
+  const x = pp.x, top = FLOOR - pp.h;
+  ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+  const g = ctx.createLinearGradient(x, 0, x + pp.w, 0); g.addColorStop(0, '#6a5a58'); g.addColorStop(0.4, '#b8a69c'); g.addColorStop(1, '#4a3c3a');
+  ctx.fillStyle = g; ctx.fillRect(x + 6, top + 14, pp.w - 12, pp.h - 14); ctx.strokeRect(x + 6, top + 14, pp.w - 12, pp.h - 14);
+  ctx.fillStyle = '#9a8a84'; ctx.beginPath(); ctx.roundRect(x - 4, top, pp.w + 8, 18, 4); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = `rgba(255,${120 + Math.sin(S.t * 0.08) * 30},30,0.9)`; ctx.beginPath(); ctx.ellipse(x + pp.w / 2, top + 4, pp.w / 2 - 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  drawSign(x + pp.w + 50, FLOOR - 64, '▼ ' + tx('LAVAHÖHLEN'), '#ff9a2a');
 }
 function drawLianas() {
   for (const lx of LIANAS) {
@@ -2638,15 +2743,8 @@ function drawHUD() {
     icon(b.x + b.w / 2 - 1, b.y + b.h / 2, on);
   }
   drawProgressBox(12, 44);
-  // way to the T-Rex
-  if (S.phase === 'play') {
-    const bx = W / 2 - 160, bw = 320, u = clamp(S.kai.x / BOSS_X, 0, 1);
-    ctx.fillStyle = 'rgba(20,30,50,0.55)'; ctx.beginPath(); ctx.roundRect(bx - 10, 8, bw + 54, 26, 12); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.roundRect(bx, 17, bw, 8, 4); ctx.fill();
-    ctx.fillStyle = '#7dd35a'; ctx.beginPath(); ctx.roundRect(bx, 17, bw * u, 8, 4); ctx.fill();
-    for (const c of CHECKPOINTS) { ctx.fillStyle = S.cpX >= c ? '#34c759' : '#d8352c'; ctx.fillRect(bx + bw * c / BOSS_X - 1, 13, 3, 16); }
-    ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ffd23a'; ctx.textAlign = 'left'; ctx.fillText('T-REX', bx + bw + 6, 21);
-  }
+  // way to the T-Rex (with the places on the way)
+  if (S.phase === 'play') drawWayBar(S.kai.x, BOSS_X, CHECKPOINTS, S.cpX, [['liana', LIANAS[0]], ['rodeo', SITES.rodeo], ['pipe', PIPES[0].x], ['fossil', SITES.fossil], ['liana', LIANAS[1]], ['pipe', PIPES[1].x]], 'T-REX', '#ffd23a');
   if (S.boss && S.phase === 'boss') drawBossBar('T-REX', S.boss.bar ?? 1);
   drawScoreBox(S.score);
   if (S.msgTimer > 0) {
@@ -2686,7 +2784,10 @@ function drawScreens() {
     ], '#ffb25a');
     button(BTN.start, '▶  ' + tx('LOS GEHT\'S'), '#34c759', '#1f8f3c');
   }
-  if (S.phase === 'ask' && S.ask === 'liana') {
+  if (S.phase === 'ask' && S.ask === 'pipe') {
+    panel(tx('HINUNTER IN DIE LAVAHÖHLEN?'), [tx('Mit dem Magma-Board durch die Röhre nach unten.'), tx('Unten warten Lava, Feuer-Salamander, der Magma-Ankylosaurus und der Riesenvulkan.')], '#ff9a2a');
+    button(BTN.yes, '▼ ' + tx('JA, HINUNTER'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, HIERBLEIBEN'), '#8a96a8', '#5d6878');
+  } else if (S.phase === 'ask' && S.ask === 'liana') {
     panel(tx('HINAUF ZUR FELSENHÖHE?'), [tx('Kai hält sich an der Liane fest.'), tx('Oben warten Flugsaurier, bröckelnde Felsen, das OXXO im Baumhaus und die Flugsaurier-Mama.')], '#9fe07a');
     button(BTN.yes, '▲ ' + tx('JA, HOCHKLETTERN!'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, LOSLASSEN'), '#8a96a8', '#5d6878');
   } else if (S.phase === 'ask') {
@@ -3016,6 +3117,7 @@ function update(dt) {
   if (S.shopMsgT > 0) S.shopMsgT -= dt;
   if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
   if (playing()) S.wtime += dt;                       // time played in this world (frames)
+  S.saveT = (S.saveT || 0) + dt; if (S.saveT > 120 && playing()) { S.saveT = 0; saveProgress(); }   // keep the points safe every 2 s
   for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
@@ -3245,9 +3347,12 @@ function updateSites() {
     S.asked.down = true; S.ask = 'down'; S.phase = 'ask'; k.vx = 0; k.dir = 0; Audio.play('chime'); return;
   }
   for (const [id, x] of Object.entries(SITES)) {
-    const gate = x + 120;
-    if (Math.abs(k.x - gate) > 160) S.asked[id] = false;      // ride a bit away and back = asked again
-    if (!S.asked[id] && Math.abs(k.x - gate) < 30 && k.ground && !k.platform) {
+    // the question comes when Kai passes the entrance – also in the air or on a log above it: then as soon as he lands
+    const gate = x + 120, d = Math.abs(k.x - gate);
+    S.near = S.near || {};
+    if (d > 300) { S.asked[id] = false; S.near[id] = false; }
+    if (d < 60) S.near[id] = true;
+    if (!S.asked[id] && S.near[id] && k.ground && d < 300) {
       S.asked[id] = true; S.ask = id; S.phase = 'ask';
       k.vx = 0; k.dir = 0; Audio.play('chime');
     }
@@ -3988,15 +4093,7 @@ function drawHUD() {
     icon(b.x + b.w / 2 - 1, b.y + b.h / 2, on);
   }
   drawProgressBox(12, 44);
-  if (S.phase === 'play') {
-    const bx = W / 2 - 160, bw = 320, u = clamp(S.kai.x / BOSS_X, 0, 1);
-    ctx.fillStyle = 'rgba(20,30,50,0.55)'; ctx.beginPath(); ctx.roundRect(bx - 10, 8, bw + 54, 26, 12); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.roundRect(bx, 17, bw, 8, 4); ctx.fill();
-    ctx.fillStyle = '#7dd35a'; ctx.beginPath(); ctx.roundRect(bx, 17, bw * u, 8, 4); ctx.fill();
-    for (const c of CHECKPOINTS) { ctx.fillStyle = S.cpX >= c ? '#34c759' : '#d8352c'; ctx.fillRect(bx + bw * c / BOSS_X - 1, 13, 3, 16); }
-    ctx.fillStyle = '#ffd23a'; ctx.fillRect(bx + bw * SITES.oxxo / BOSS_X - 1, 13, 3, 16);
-    ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ff9ad0'; ctx.textAlign = 'left'; ctx.fillText(tx('MAMA'), bx + bw + 6, 21);
-  }
+  if (S.phase === 'play') drawWayBar(S.kai.x, BOSS_X, CHECKPOINTS, S.cpX, [['liana', 0], ['oxxo', SITES.oxxo], ['ride', SITES.ptero]], tx('MAMA'), '#ff9ad0');
   if (S.boss && S.phase === 'boss') drawBossBar(tx('FLUGSAURIER-MAMA'), S.boss.bar ?? 1);
   drawScoreBox(S.score);
   if (S.msgTimer > 0) {
@@ -4145,6 +4242,1267 @@ Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, event
 return ME;
 }
 
+// ==================== WORLD: makeLava ====================
+function makeLava(QUERY) {
+const ME = {};
+// =====================================================================
+//  LEVEL 3 · WORLD 3 – DIE LAVAHÖHLEN (the underworld below the dino valley)
+//  Reached through one of the two pipes in the valley – only with the Magma-Board.
+//  A glowing cave: rock floor with streams of lava in between. The Magma-Board can ride on lava,
+//  but only for a moment (it heats up – the bar above Kai), then it costs a heart.
+//  Dangers: lava bubbles that spit lava balls (blub = warning), stalactites that fall when Kai rides
+//  underneath (they shake first), lava falls that switch on and off, sinking rocks.
+//  Enemies: fire salamanders on the ground, glow bats in the air.
+//  Weapon: WATER BOMBS – thrown in an arc; they put out enemies and turn lava into stone for a while.
+//  Mini game: Lore-Fahrt. Middle boss: Magma-Ankylosaurus. End boss: the Riesenvulkan.
+// =====================================================================
+const SPEED = 5.4, ACC = 0.24, BRAKE = 0.8, GRAV = 0.62, JUMP_V = -12.6, JUMP_CUT = -5.2;
+const MID_X = 4800, BOSS_X = 9800, MAP_END = BOSS_X + W;
+const LAVA_Y = FLOOR + 14;                       // the lava surface lies a little lower than the rock floor
+const HEAT_MAX = 34;                             // frames the Magma-Board can ride on lava
+// rock floor – lava in between
+const GROUND = [[0, 900], [1100, 1700], [1950, 2600], [2850, 3900], [4150, 6450], [6700, 7300], [7600, 8200], [8450, 9000], [9250, MAP_END]];
+const PLATS = [
+  { x: 520, y: 212, w: 160, kind: 'rock' },
+  { x: 1320, y: 210, w: 150, kind: 'rock' }, { x: 1500, y: 150, w: 120, kind: 'rock' },
+  { x: 1745, y: 250, w: 100, kind: 'sink' }, { x: 1860, y: 236, w: 80, kind: 'sink' },
+  { x: 2200, y: 205, w: 170, kind: 'rock' },
+  { x: 2620, y: 250, w: 110, kind: 'move', ax: 120, ay: 0, sp: 0.02 },
+  { x: 3150, y: 210, w: 170, kind: 'rock' }, { x: 3380, y: 150, w: 110, kind: 'move', ax: 0, ay: 50, sp: 0.03 },
+  { x: 3950, y: 245, w: 90, kind: 'rock' }, { x: 4060, y: 225, w: 70, kind: 'sink' },
+  { x: 6450, y: 250, w: 100, kind: 'move', ax: 140, ay: 0, sp: 0.018 },
+  { x: 6900, y: 205, w: 160, kind: 'rock' },
+  { x: 7320, y: 250, w: 90, kind: 'sink' }, { x: 7460, y: 232, w: 90, kind: 'sink' },
+  { x: 7800, y: 210, w: 150, kind: 'rock' }, { x: 7990, y: 150, w: 110, kind: 'rock' },
+  { x: 8220, y: 248, w: 110, kind: 'move', ax: 110, ay: 0, sp: 0.022 },
+  { x: 8600, y: 205, w: 160, kind: 'rock' },
+  { x: 9030, y: 248, w: 90, kind: 'sink' }, { x: 9140, y: 230, w: 80, kind: 'rock' },
+];
+const SALA_PLAN = [[300, 880], [1150, 1680], [2000, 2580], [2900, 3880], [6750, 7280], [7650, 8180], [8480, 8980]];
+const BAT_PLAN = [[1100, 1700, 120], [2000, 2700, 100], [3300, 3900, 110], [6700, 7400, 100], [7600, 8300, 120], [8400, 9200, 90]];
+const STALACTITES = [760, 1420, 2320, 2480, 3600, 3760, 7050, 7900, 8700, 8850];
+const LAVAFALLS = [[2450, 0], [3500, 90], [7100, 40], [8780, 120]];        // x, phase offset
+const CHECKPOINTS = [2200, MID_X + W + 120, 7700];
+const SITES = { lore: 3000 };                       // the mine cart ride (gate = x + 120)
+const PIPE_UP = 70;                                 // the way back up into the valley (left edge)
+
+const S = {
+  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0, score: SAVE.score || 0, pops: [], wtime: SAVE.wtime.lava || 0, combo: 0,
+  kai: { x: 200, y: FLOOR, vx: 0, vy: 0, dir: 0, face: 1, faceAnim: 1, ground: true, platform: null, inv: 0, pushT: 0, landT: 0, safeX: 200, jumpHeld: false, hurtT: 0, shootT: 0, heat: 0, onLava: false },
+  plats: [], objects: [], salas: [], bats: [], stalac: [], blobs: [], bubbles: [], bombs: [], cools: [], rocks: [], waves: [], particles: [],
+  reload: 0, bubbleT: 80,
+  cpX: 200, msg: '', msgTimer: 0, heartFlash: 0, shake: 0,
+  ask: null, asked: {}, near: {}, anky: null, boss: null, fight: null, noHud: false, hideKai: false, game: null,
+};
+window.__S = S; window.__T = () => TEST; window.__V = () => [VH, DY, SAVE];
+
+function buildWorld() {
+  S.plats = PLATS.map(p => Object.assign({ x0: p.x, y0: p.y, ph: 0, state: 'idle', st: 0, vy: 0, dx: 0, dy: 0 }, p));
+  S.salas = SALA_PLAN.map(([a, b], i) => ({ x: (a + b) / 2, x1: a, x2: b, dir: i % 2 ? 1 : -1, t: rand(0, 100), dead: false, deadT: 0 }));
+  S.bats = BAT_PLAN.map(([a, b, y], i) => ({ x: (a + b) / 2, x1: a, x2: b, hy: y, y, dir: i % 2 ? 1 : -1, t: rand(0, 200), state: 'fly', st: 0, dead: false, deadT: 0, vy: 0, cool: rand(60, 160) }));
+  S.stalac = STALACTITES.map(x => ({ x, state: 'hang', t: 0, y: 0, vy: 0, back: 0 }));
+  const o = [];
+  const coin = (x, y) => o.push({ type: 'coin', x, y, r: 11, p: rand(0, 6) });
+  const arc = (x, y, n, gap = 34, lift = 30) => { for (let i = 0; i < n; i++) coin(x + i * gap, y - Math.sin(i / Math.max(1, n - 1) * Math.PI) * lift); };
+  for (const [a, b] of GROUND) for (let x = a + 140; x < Math.min(b, BOSS_X) - 160; x += 560) { if (x > MID_X - 40 && x < MID_X + W + 40) continue; arc(x, FLOOR - 40, 5); }
+  for (let i = 0; i < GROUND.length - 1; i++) { const a = GROUND[i][1], b = GROUND[i + 1][0]; arc(a - 20, FLOOR - 120, 6, (b - a + 40) / 5, 50); }
+  for (const p of PLATS) if (p.kind === 'rock') arc(p.x + 20, p.y - 34, Math.max(3, Math.floor(p.w / 45)), 38, 0);
+  for (const [x, y] of [[1560, 108], [3420, 60], [7050, 160], [8040, 108]]) o.push({ type: 'heart', x, y, r: 14, p: 0 });
+  S.objects = o;
+}
+buildWorld();
+if (QUERY.get('from') === 'tal') { S.kai.x = 200; S.cam = 0; }
+
+// ---------------- helpers ----------------
+// solid floor: rock, or lava that a water bomb has turned into stone
+const groundAt = x => GROUND.some(([a, b]) => x > a + 4 && x < b - 4) || S.cools.some(c => x > c.x1 && x < c.x2);
+const lavaAt = x => !groundAt(x);
+function burst(x, y, color, n, speed = 4) { for (let i = 0; i < n; i++) { const a = rand(0, Math.PI * 2), v = rand(1, speed); S.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 1, r: rand(2, 4.5), color, life: 1, g: 0.18 }); } }
+function flash(text, f = 80) { S.msg = tx(text); S.msgTimer = f; }
+const kaiBox = () => { const k = S.kai; return { x1: k.x - 26, x2: k.x + 26, y1: k.y - 108, y2: k.y - 4 }; };
+const overlap = (a, b) => a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1;
+const salaBox = c => ({ x1: c.x - 32, x2: c.x + 32, y1: FLOOR - 40, y2: FLOOR });
+const batBox = p => ({ x1: p.x - 28, x2: p.x + 28, y1: p.y - 16, y2: p.y + 16 });
+const playing = () => S.phase === 'play' || S.phase === 'boss';
+const isTouchDev = () => CTRL.touch;
+// the arena Kai is fighting in (camera locked, walls left and right)
+const arenaX = () => S.fight === 'anky' ? MID_X : S.fight === 'volcano' ? BOSS_X : null;
+
+// ---------------- control ----------------
+function steerDir(d) {
+  const k = S.kai; if (!playing()) return;
+  k.dir = d;
+  if (k.hurtT <= 0 && Math.sign(k.vx) === -d) k.vx = 0;
+  if (d !== k.face) { k.face = d; Audio.play('flip'); }
+}
+function steerBrake() { const k = S.kai; if (!playing()) return; k.dir = 0; if (S.phase === 'play' && k.ground && Math.abs(k.x - PIPE_UP) < 50) askUp(); }
+function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
+function steerJump(down) {
+  const k = S.kai;
+  if (!playing()) return;
+  if (down) {
+    k.jumpHeld = true;
+    if (k.ground || k.coyote > 0) { k.vy = JUMP_V; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false; Audio.play('jump'); }
+  } else {
+    k.jumpHeld = false;
+    if (k.vy < JUMP_CUT) k.vy = JUMP_CUT;
+  }
+}
+// WATER BOMB: thrown in an arc in the direction Kai looks
+function throwBomb() {
+  const k = S.kai;
+  if (!playing() || S.reload > 0) return;
+  S.reload = 22; k.shootT = 14;
+  S.bombs.push({ x: k.x + k.face * 24, y: k.y - 70, vx: k.face * 7.5 + k.vx * 0.5, vy: -7.2, rot: 0 });
+  Audio.play('throwit');
+}
+const CTL = {
+  steer: true, active: playing, showJump: playing,
+  canShoot: () => playing(), shoot: throwBomb, auto: true, icon: 'bomb',
+  dir: steerDir, brake: steerBrake, jump: steerJump, stop: steerStop,
+};
+window.addEventListener('keydown', e => {
+  if (CUR !== ME || TRANS || PAUSE.on || INV.open || MENU.open) return;
+  if (S.phase === 'start' && (e.code === 'Space' || e.code === 'Enter')) { beginWorld(); return; }
+  if (!playing()) { gameKey(e); return; }
+  if (e.code === 'KeyX') { throwBomb(); return; }
+  if (e.repeat) return;
+  if (e.code === 'ArrowDown' || e.code === 'KeyS') steerBrake();
+  else if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); steerJump(true); }
+});
+window.addEventListener('keyup', e => {
+  if (CUR !== ME) return;
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { steerJump(false); gameKeyUp(e); }
+});
+
+// ---------------- start / checkpoints / points ----------------
+function beginWorld() {
+  const cont = QUERY.get('from') === 'continue' && SAVE.cpL;
+  S.phase = 'play'; S.noHud = false; SAVE.started = true; SAVE.seenLava = true;
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
+  const k = S.kai;
+  if (QUERY.get('from') !== 'tal' || S.begun) k.x = cont ? SAVE.cpL : 200;
+  k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.platform = null; k.safeX = k.x;
+  S.cpX = k.x; S.cam = clamp(k.x - W * 0.32, 0, BOSS_X); S.begun = true;
+  if (QUERY.get('from') === 'tal' || !(SAVE.cps && SAVE.cps.lava)) setCheckpoint('lava'); else useCheckpoint('lava');
+  writeSave(); Audio.init(); Audio.setTheme('lava');
+  if (!SAVE.items.bombs) {
+    SAVE.items.bombs = true; writeSave();
+    flash(isTouchDev() ? 'Du hast WASSERBOMBEN! Wurf-Taste rechts unten.' : 'Du hast WASSERBOMBEN! Werfen: X oder rechte Maustaste.', 220);
+    Audio.play('chest');
+  } else flash('DIE LAVAHÖHLEN', 110);
+}
+function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.score = S.score; SAVE.wtime.lava = S.wtime; bumpBest(); writeSave(); }
+function addScore(n, x, y, big) { S.score += n; if (x != null) S.pops.push({ x, y, text: '+' + fmtNum(n), t: 0, big }); }
+function comboScore(base, x, y) { S.combo++; const m = Math.min(8, 2 ** (S.combo - 1)); addScore(base * m, x, y, m > 1); if (m > 1) S.pops.push({ x, y: y - 24, text: '×' + m, t: 0, col: '#ff9ad0' }); }
+function bossSummary(id) {
+  if (SAVE.pts['boss_' + id]) { S.summary = { repeat: true }; return; }
+  SAVE.pts['boss_' + id] = true;
+  const sec = S.wtime / 60, tb = timeBonus(sec);
+  S.score += PTS.boss + tb; SAVE.score = S.score; const rec = bumpBest();
+  S.summary = { boss: PTS.boss, time: tb, sec, record: rec };
+}
+function reachCheckpoint(x) {
+  if (x <= S.cpX) return;
+  S.cpX = x; SAVE.cpL = x; saveProgress(); setCheckpoint('lava');
+  flash('CHECKPOINT!', 70); Audio.play('chime');
+}
+
+// ---------------- getting hurt ----------------
+function loseHeart() {
+  S.hearts--; S.heartFlash = 30;
+  if (S.hearts <= 0) {
+    if (loseLife()) { S.hearts = LIFE_HEARTS; flash('Ein Leben weniger! Weiter geht\'s.', 120); Audio.play('warn'); }
+    else { S.hearts = 0; S.phase = 'gameover'; Audio.play('gameover'); Audio.setBoss(false); saveProgress(); return false; }
+  }
+  return true;
+}
+function hurt(srcX) {
+  const k = S.kai;
+  if (k.inv > 0 || !playing()) return false;
+  k.inv = 100; k.hurtT = 24; S.shake = 8;
+  k.vy = -6; k.vx = (k.x < srcX ? -1 : 1) * 5; k.ground = false; k.platform = null; k.onLava = false;
+  Audio.play('crash');
+  loseHeart(); saveProgress();
+  return true;
+}
+// stayed too long on the lava: the board gets too hot
+function burnOut() {
+  const k = S.kai;
+  burst(k.x, LAVA_Y - 6, '#ff7a1a', 20, 5); burst(k.x, LAVA_Y - 6, '#ffd23a', 10, 3); Audio.play('lavahit'); S.shake = 6;
+  if (!loseHeart()) return;
+  flash('Zu heiß! Nicht so lange auf der Lava fahren.', 90);
+  k.x = k.safeX; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.ground = true; k.platform = null; k.onLava = false; k.heat = 0; k.inv = 80;
+  saveProgress();
+}
+function resetGame() {
+  restartWorldSave();
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
+  buildWorld(); S.blobs = []; S.bombs = []; S.cools = []; S.rocks = []; S.waves = []; S.anky = null; S.boss = null; S.fight = null; Audio.setBoss(false);
+  const k = S.kai; k.x = SAVE.cpL || 200; k.y = FLOOR; k.vx = 0; k.vy = 0; k.dir = 0; k.face = 1; k.inv = 60; k.ground = true; k.platform = null; k.safeX = k.x; k.heat = 0;
+  S.cpX = k.x; S.cam = clamp(k.x - W * 0.32, 0, BOSS_X);
+  S.phase = 'play';
+}
+// up again into the valley (at the left edge)
+function askUp() { S.ask = 'up'; S.phase = 'ask'; S.kai.vx = 0; S.kai.dir = 0; Audio.play('chime'); }
+function leaveUp() { saveProgress(); S.phase = 'leaving'; goToWorld('tal.html', 'from=lava'); }
+
+// ---------------- update ----------------
+function update(dt) {
+  S.t += dt;
+  if (S.msgTimer > 0) S.msgTimer -= dt;
+  if (S.heartFlash > 0) S.heartFlash -= dt;
+  if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
+  if (playing()) S.wtime += dt;
+  S.saveT = (S.saveT || 0) + dt; if (S.saveT > 120 && playing()) { S.saveT = 0; saveProgress(); }
+  for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
+  updateParticles(dt);
+  for (const o of S.objects) o.p += 0.05 * dt;
+  if (S.phase === 'lore') { updateLore(dt); return; }
+  if (!playing()) { if (S.phase === 'won') updateBossDead(dt); return; }
+  if (S.reload > 0) S.reload -= dt;
+  for (const c of S.cools) c.t -= dt; S.cools = S.cools.filter(c => c.t > 0);
+  updatePlats(dt);
+  updateKai(dt);
+  updateSalas(dt);
+  updateBats(dt);
+  updateStalactites(dt);
+  updateLava(dt);
+  updateBombs(dt);
+  updatePickups();
+  updateSites();
+  updateFights(dt);
+  for (const x of CHECKPOINTS) if (S.kai.x > x && !S.fight) reachCheckpoint(x);
+  const k = S.kai, ax = arenaX();
+  if (ax != null) S.cam += (ax - S.cam) * Math.min(1, 0.08 * dt);
+  else {
+    const L = W * 0.32, R = W * 0.5, sx = k.x - S.cam;
+    let target = S.cam;
+    if (sx > R) target = k.x - R; else if (sx < L) target = k.x - L;
+    target = clamp(target, 0, BOSS_X);
+    if (Math.abs(target - S.cam) > 40) S.cam += (target - S.cam) * Math.min(1, 0.12 * dt);
+    else S.cam = target;
+  }
+}
+function updatePlats(dt) {
+  for (const p of S.plats) {
+    const ox = p.x, oy = p.y;
+    if (p.kind === 'move') {
+      p.ph += p.sp * dt;
+      p.x = p.x0 + (1 - Math.cos(p.ph)) / 2 * p.ax;
+      p.y = p.y0 - (1 - Math.cos(p.ph)) / 2 * p.ay;
+    } else if (p.kind === 'sink') {
+      // sinks slowly into the lava while Kai stands on it, comes back up when he is gone
+      const on = S.kai.platform === p;
+      if (on) p.y = Math.min(LAVA_Y + 30, p.y + 0.45 * dt); else p.y = Math.max(p.y0, p.y - 0.6 * dt);
+    }
+    p.dx = p.x - ox; p.dy = p.y - oy;
+  }
+}
+const platSolid = p => !(p.kind === 'sink' && p.y > LAVA_Y);
+function updateKai(dt) {
+  const k = S.kai, prevY = k.y; k.prevY = prevY;
+  if (k.inv > 0) k.inv -= dt;
+  if (k.hurtT > 0) k.hurtT -= dt;
+  if (k.landT > 0) k.landT -= dt;
+  if (k.shootT > 0) k.shootT -= dt;
+  k.faceAnim += (k.face - k.faceAnim) * Math.min(1, 0.7 * dt);
+  const target = k.dir * SPEED * (S.phase === 'boss' ? 1.05 : 1);
+  if (k.hurtT <= 0) {
+    if (k.dir === 0) { const s = Math.sign(k.vx); k.vx -= s * Math.min(Math.abs(k.vx), BRAKE * dt); }
+    else k.vx += clamp(target - k.vx, -ACC * dt * (k.ground ? 1 : 0.7), ACC * dt * (k.ground ? 1 : 0.7));
+  }
+  if (k.platform) k.x += k.platform.dx;
+  let nx = k.x + k.vx * dt;
+  const ax = arenaX(), minX = ax != null ? ax + 40 : 30, maxX = S.fight === 'volcano' || S.phase === 'won' ? VOLC.baseL - 30 : ax != null ? ax + W - 40 : VOLC.baseL - 30;
+  if (nx < minX) { nx = minX; k.vx = 0; } if (nx > maxX) { nx = maxX; k.vx = 0; }
+  k.x = nx;
+  if (k.ground && Math.abs(k.vx) < Math.abs(target) - 0.3) k.pushT = (k.pushT + dt) % 40; else if (k.pushT > 0 && k.pushT < 34) k.pushT += dt; else k.pushT = 0;
+  if (k.ground && k.platform) {
+    const pl = k.platform;
+    if (!platSolid(pl) || k.x < pl.x - 18 || k.x > pl.x + pl.w + 18) { k.ground = false; k.platform = null; k.coyote = 6; }
+    else k.y = pl.y;
+  } else if (k.ground) {
+    // riding along the floor: on rock y = FLOOR, on lava a little lower (and the board heats up)
+    if (groundAt(k.x)) { k.y = FLOOR; k.onLava = false; }
+    else { k.y = LAVA_Y; if (!k.onLava) { k.onLava = true; Audio.play('lavahit'); } }
+  }
+  if (k.onLava && k.ground && !k.platform) {
+    k.heat += dt;
+    if (Math.random() < 0.4 * dt) S.particles.push({ x: k.x + rand(-30, 30), y: LAVA_Y - 4, vx: rand(-0.5, 0.5), vy: rand(-2, -1), r: rand(2, 4), color: Math.random() < 0.5 ? '#ff7a1a' : '#ffd23a', life: 0.8, g: -0.02 });
+    if (k.heat > HEAT_MAX) burnOut();
+  } else k.heat = Math.max(0, k.heat - 1.5 * dt);
+  if (!k.ground) {
+    if (k.coyote > 0) k.coyote -= dt;
+    if (k.vy >= 0) k.jumpHeld = false;
+    k.vy += GRAV * dt * (k.vy < 0 && !k.jumpHeld ? 1.6 : 1); k.y += k.vy * dt;
+    if (k.vy > 0) {
+      for (const pl of S.plats) {
+        if (!platSolid(pl) || k.x < pl.x - 14 || k.x > pl.x + pl.w + 14) continue;
+        const top = pl.y;
+        if (prevY <= top + 3 + Math.max(0, -pl.dy) && k.y >= top) { landOn(pl, top); break; }
+      }
+      if (!k.ground && k.y >= FLOOR && groundAt(k.x)) landOn(null, FLOOR);
+      if (!k.ground && k.y >= LAVA_Y && !groundAt(k.x)) { landOn(null, LAVA_Y); k.onLava = true; Audio.play('lavahit'); }
+    }
+  }
+  if (k.ground && !k.platform && !k.onLava && GROUND.some(([a, b]) => k.x > a + 80 && k.x < b - 80)) k.safeX = k.x;
+}
+function landOn(pl, top) {
+  const k = S.kai;
+  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8; S.combo = 0;
+  Audio.play('land');
+}
+function stompBounce(top) {
+  const k = S.kai;
+  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false;
+  S.shake = Math.max(S.shake, 3);
+}
+
+// ---------------- enemies ----------------
+function updateSalas(dt) {
+  const k = S.kai, kb = kaiBox();
+  for (const c of S.salas) {
+    if (c.dead) { c.deadT += dt; continue; }
+    if (Math.abs(c.x - k.x) > 1400) continue;
+    c.t += dt; c.x += c.dir * 1.5 * dt;
+    if (c.x < c.x1 || !GROUND.some(([a, b]) => c.x - 34 > a && c.x - 34 < b)) { c.x = Math.max(c.x, c.x1); c.dir = 1; }
+    if (c.x > c.x2 || !GROUND.some(([a, b]) => c.x + 34 > a && c.x + 34 < b)) { c.x = Math.min(c.x, c.x2); c.dir = -1; }
+    const cb = salaBox(c);
+    if (!overlap(kb, cb)) continue;
+    if (k.vy > 0 && (k.prevY ?? k.y) <= cb.y1 + 16) { killSala(c, true); stompBounce(cb.y1); }
+    else hurt(c.x);
+  }
+}
+function killSala(c, stomped) { c.dead = true; c.deadT = 0; Audio.play('stomp'); burst(c.x, FLOOR - 20, '#ff7a3a', 12, 4); if (stomped) comboScore(PTS.salamander, c.x, FLOOR - 60); else addScore(PTS.salamander, c.x, FLOOR - 60); }
+function updateBats(dt) {
+  const k = S.kai, kb = kaiBox();
+  for (const p of S.bats) {
+    if (p.dead) { p.deadT += dt; p.vy += 0.4 * dt; p.y += p.vy * dt; continue; }
+    if (Math.abs(p.x - k.x) > 1400) continue;
+    p.t += dt;
+    if (p.state === 'fly') {
+      p.x += p.dir * 1.8 * dt;
+      if (p.x < p.x1) { p.x = p.x1; p.dir = 1; } if (p.x > p.x2) { p.x = p.x2; p.dir = -1; }
+      p.y += ((p.hy + Math.sin(p.t * 0.09) * 20) - p.y) * Math.min(1, 0.1 * dt);
+      p.cool -= dt;
+      const dx = k.x - p.x;
+      if (p.cool <= 0 && Math.abs(dx) < 300 && Math.abs(dx) > 50 && playing()) { p.state = 'dive'; p.st = 0; p.sx = p.x; p.sy = p.y; p.tx = k.x; p.dir = Math.sign(dx); Audio.play('flap'); }
+    } else if (p.state === 'dive') {
+      p.st += dt; const u = Math.min(1, p.st / 60), ex = p.sx + (p.tx - p.sx) * 2;
+      p.x = p.sx + (ex - p.sx) * u; p.y = p.sy + (FLOOR - 70 - p.sy) * Math.sin(u * Math.PI);
+      if (u >= 1) { p.state = 'fly'; p.cool = p.baby ? rand(40, 90) : rand(140, 240); if (!p.baby) { p.x1 = Math.min(p.x1, p.x - 150); p.x2 = Math.max(p.x2, p.x + 150); } }
+    }
+    const pb = batBox(p);
+    if (!overlap(kb, pb)) continue;
+    if (k.vy > 0 && (k.prevY ?? k.y) <= pb.y1 + 16) { killBat(p, true); stompBounce(pb.y1); }
+    else hurt(p.x);
+  }
+}
+function killBat(p, stomped) { p.dead = true; p.deadT = 0; p.vy = -3; Audio.play('stomp'); burst(p.x, p.y, '#ffb347', 12, 4); if (stomped) comboScore(PTS.bat, p.x, p.y - 30); else addScore(PTS.bat, p.x, p.y - 30); }
+
+// ---------------- stalactites: shake, then fall when Kai rides underneath ----------------
+function updateStalactites(dt) {
+  const k = S.kai;
+  for (const s of S.stalac) {
+    if (s.state === 'hang') { if (Math.abs(k.x + k.vx * 12 - s.x) < 120 && playing()) { s.state = 'shake'; s.t = 0; Audio.play('tink'); } }
+    else if (s.state === 'shake') { s.t += dt; if (Math.random() < 0.3 * dt) S.particles.push({ x: s.x + rand(-8, 8), y: -DY + 30, vx: 0, vy: rand(1, 2), r: 2, color: '#6b4a3a', life: 0.8, g: 0.2 }); if (s.t > 40) { s.state = 'fall'; s.y = -DY + 20; s.vy = 1; } }
+    else if (s.state === 'fall') {
+      s.vy += 0.5 * dt; s.y += s.vy * dt;
+      if (Math.abs(s.x - k.x) < 24 && s.y + 40 > k.y - 108 && s.y < k.y - 4) { hurt(s.x); s.state = 'gone'; s.back = 0; burst(s.x, s.y + 30, '#8a6a5a', 14, 4); }
+      else if (s.y + 40 >= (groundAt(s.x) ? FLOOR : LAVA_Y)) { s.state = 'gone'; s.back = 0; burst(s.x, FLOOR - 4, '#8a6a5a', 14, 4); Audio.play('land'); }
+    } else if (s.state === 'gone') { s.back += dt; if (s.back > 600 && Math.abs(s.x - k.x) > 500) s.state = 'hang'; }
+  }
+}
+
+// ---------------- lava: bubbles that spit lava balls, lava falls that switch on and off ----------------
+const lavafallOn = (lf, t) => ((t + lf[1]) % 260) < 150;          // on 150 frames, off 110
+const lavafallWarn = (lf, t) => { const u = (t + lf[1]) % 260; return u > 230; };
+function updateLava(dt) {
+  const k = S.kai;
+  // a bubble forms in the lava near Kai (warning), then a lava ball jumps out in an arc
+  S.bubbleT -= dt;
+  if (S.bubbleT <= 0 && playing() && !S.fight) {
+    S.bubbleT = rand(70, 130);
+    const x = k.x + k.vx * 40 + rand(-260, 260);
+    if (lavaAt(x) && !S.cools.some(c => x > c.x1 - 20 && x < c.x2 + 20)) S.bubbles.push({ x, t: 0 });
+  }
+  for (const b of S.bubbles) {
+    b.t += dt;
+    if (b.t > 50 && !b.done) { b.done = true; S.blobs.push({ x: b.x, y: LAVA_Y, vx: rand(-1.5, 1.5), vy: -rand(10, 13) }); Audio.play('pop'); }
+  }
+  S.bubbles = S.bubbles.filter(b => !b.done);
+  for (const o of S.blobs) {
+    o.vy += 0.4 * dt; o.x += o.vx * dt; o.y += o.vy * dt;
+    if (Math.abs(o.x - k.x) < 26 && o.y > k.y - 108 && o.y < k.y) { hurt(o.x); o.done = true; burst(o.x, o.y, '#ff7a1a', 10, 3); }
+    if (o.vy > 0 && o.y > LAVA_Y) o.done = true;
+  }
+  S.blobs = S.blobs.filter(o => !o.done);
+  // lava falls: touching one while it pours costs a heart
+  for (const lf of LAVAFALLS) if (lavafallOn(lf, S.t) && Math.abs(k.x - lf[0]) < 32) hurt(lf[0]);
+}
+
+// ---------------- water bombs ----------------
+function updateBombs(dt) {
+  for (const b of S.bombs) {
+    b.vy += 0.35 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += 0.2 * dt;
+    let hit = false;
+    for (const c of S.salas) if (!c.dead && overlap({ x1: b.x - 8, x2: b.x + 8, y1: b.y - 8, y2: b.y + 8 }, salaBox(c))) hit = true;
+    for (const p of S.bats) if (!p.dead && overlap({ x1: b.x - 8, x2: b.x + 8, y1: b.y - 8, y2: b.y + 8 }, batBox(p))) hit = true;
+    if (!hit && bombHitsFight(b)) { b.done = true; splash(b.x, b.y, false); continue; }
+    const floorY = groundAt(b.x) ? FLOOR : LAVA_Y;
+    if (hit || b.y >= floorY) { b.done = true; splash(b.x, Math.min(b.y, floorY), !hit && floorY === LAVA_Y); }
+    if (b.x < S.cam - 100 || b.x > S.cam + W + 100) b.done = true;
+  }
+  S.bombs = S.bombs.filter(b => !b.done);
+}
+// the splash puts out every enemy close by; on lava it leaves a stone crust to ride on for a while
+function splash(x, y, onLava) {
+  burst(x, y, '#7fd0ff', 18, 5); burst(x, y, '#ffffff', 8, 3); Audio.play('pop');
+  for (const c of S.salas) if (!c.dead && Math.abs(c.x - x) < 70 && Math.abs(FLOOR - 20 - y) < 80) killSala(c, false);
+  for (const p of S.bats) if (!p.dead && Math.abs(p.x - x) < 60 && Math.abs(p.y - y) < 60) killBat(p, false);
+  if (onLava) {
+    S.cools.push({ x1: x - 70, x2: x + 70, t: 360 });
+    for (let i = 0; i < 10; i++) S.particles.push({ x: x + rand(-60, 60), y: LAVA_Y - 4, vx: rand(-0.5, 0.5), vy: rand(-2.5, -1), r: rand(5, 10), color: 'rgba(230,230,240,0.6)', life: 1.2, g: -0.03 });
+    Audio.play('air');
+  }
+}
+
+// ---------------- pickups / particles ----------------
+function updatePickups() {
+  const k = S.kai, kb = kaiBox();
+  for (const o of S.objects) {
+    if (o.done || Math.abs(o.x - k.x) > 90) continue;
+    if (kb.x1 - o.r < o.x && kb.x2 + o.r > o.x && kb.y1 - o.r < o.y && kb.y2 + 8 > o.y) {
+      o.done = true;
+      if (o.type === 'coin') { S.coins++; addScore(PTS.coin); burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
+      if (o.type === 'heart') { S.hearts++; S.heartFlash = -30; burst(o.x, o.y, '#ff3b5c', 14, 3); Audio.play('chest'); flash('+1 HERZ', 50); }
+    }
+  }
+}
+function updateParticles(dt) {
+  for (const p of S.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g ?? 0.18) * dt; p.life -= 0.03 * dt; }
+  S.particles = S.particles.filter(p => p.life > 0);
+}
+
+// ---------------- the mine cart ride: asked on the way (also when Kai comes by in the air) ----------------
+function updateSites() {
+  const k = S.kai;
+  if (k.x > 260) S.asked.up = false;
+  if (!S.asked.up && k.x < PIPE_UP + 10 && k.dir < 0 && k.ground) { S.asked.up = true; askUp(); return; }
+  for (const [id, x] of Object.entries(SITES)) {
+    const gate = x + 120, d = Math.abs(k.x - gate);
+    if (d > 300) { S.asked[id] = false; S.near[id] = false; }
+    if (d < 60) S.near[id] = true;
+    if (!S.asked[id] && S.near[id] && k.ground && d < 300) {
+      S.asked[id] = true; S.ask = id; S.phase = 'ask'; k.vx = 0; k.dir = 0; Audio.play('chime');
+    }
+  }
+}
+
+// ---------------- panel buttons ----------------
+const BTN = {
+  start: { x: W / 2 - 110, y: 250, w: 220, h: 46 },
+  yes: { x: W / 2 - 215, y: 228, w: 200, h: 44 }, no: { x: W / 2 + 15, y: 228, w: 200, h: 44 },
+  goYes: { x: W / 2 - 215, y: 228, w: 210, h: 40 }, goNo: { x: W / 2 + 5, y: 228, w: 210, h: 40 },
+  up: { x: W / 2 - 250, y: 236, w: 240, h: 44 }, menu: { x: W / 2 + 10, y: 236, w: 240, h: 44 },
+  music: { x: W - 252, y: 10, w: 34, h: 30 }, sfx: { x: W - 212, y: 10, w: 34, h: 30 },
+};
+const inRect = (p, b) => b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+function toLogical(e) { const r = canvas.getBoundingClientRect(), sc = Math.min(r.width / W, r.height / VH); return { x: (e.clientX - r.left - (r.width - W * sc) / 2) / sc, y: (e.clientY - r.top - (r.height - VH * sc) / 2) / sc - DY }; }
+canvas.addEventListener('pointerdown', e => {
+  if (CUR !== ME || TRANS || MENU.open || CONFIRM.open) return;
+  if (e.pointerType === 'mouse' && e.button === 2) return;
+  const p = toLogical(e), hp = { x: p.x, y: p.y + DY };
+  Audio.init();
+  if (pauseClick(hp)) return;
+  if (PAUSE.on) return;
+  if (INV.btn && invClick(hp)) return;
+  if (INV.open) return;
+  if (inRect(hp, BTN.music)) { Audio.toggleMusic(); return; }
+  if (inRect(hp, BTN.sfx)) { Audio.toggleSfx(); return; }
+  if (S.phase === 'start') { beginWorld(); return; }
+  if (S.phase === 'ask') {
+    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; if (id === 'up') leaveUp(); else startLore(); }
+    else if (inRect(p, BTN.no)) { S.ask = null; S.phase = 'play'; Audio.play('tink'); }
+    return;
+  }
+  if (S.phase === 'lore') { lorePointer(p); return; }
+  if (S.phase === 'gameover') { if (inRect(p, BTN.goYes)) resetGame(); else if (inRect(p, BTN.goNo)) { resetGame(); toMainMenu(); } return; }
+  if (S.phase === 'won') { if (inRect(p, BTN.up)) leaveUp(); else if (inRect(p, BTN.menu)) toMainMenu(); return; }
+});
+
+function enter() { if (!SAVE.seenLava) { S.phase = 'start'; S.noHud = true; } else beginWorld(); }
+function enterFromMenu() { S.noHud = S.phase === 'start'; }
+const TEST = {
+  setX(x) { const k = S.kai; k.x = x; k.safeX = x; k.y = FLOOR; k.ground = true; k.platform = null; S.cam = clamp(x - W * 0.32, 0, BOSS_X); },
+  mid() { TEST.setX(MID_X + 300); }, boss() { TEST.setX(BOSS_X + 300); }, lore() { startLore(); },
+};
+// =====================================================================
+//  LAVAHÖHLEN – THE TWO BOSSES
+//  MIDDLE BOSS: MAGMA-ANKYLOSAURUS (arena in the middle of the cave, camera locked)
+//    walks at Kai → curls up and rolls through the arena as a ball of fire (jump over it, it bounces off
+//    the walls) → stops, glowing hot. A water bomb cools him down: his armour turns grey and soft – now
+//    jump on him! Every water bomb also takes a little energy off him.
+//  END BOSS: DER RIESENVULKAN (fills the right side of the last screen)
+//    throws lava rocks in an arc (shadow = where they land), rolls lava waves over the floor (jump),
+//    sends fire salamanders. When his crater glows wide open: a water bomb into it = a big hit.
+//    Bombs on his slopes count a little too. Energy 0 → the fire goes out, he turns into a green hill.
+// =====================================================================
+const ANKY_HP = 100, VOLC_HP = 100;
+const VOLC = { cx: BOSS_X + W - 230, craterY: 118, baseL: BOSS_X + W - 470 };   // crater centre, foot of the mountain
+function updateFights(dt) {
+  const k = S.kai;
+  if (!S.fight && !S.ankyDone && k.x > MID_X + 200 && k.x < MID_X + W - 200) startAnky();
+  if (!S.fight && k.x > BOSS_X + 240 && S.phase === 'play') startVolcano();
+  if (S.fight === 'anky') updateAnky(dt);
+  if (S.fight === 'volcano') updateVolcano(dt);
+}
+
+// ================= MAGMA-ANKYLOSAURUS =================
+function startAnky() {
+  S.fight = 'anky'; S.phase = 'boss';
+  S.anky = { x: MID_X + W - 220, face: -1, hp: ANKY_HP, bar: 1, state: 'enter', t: 0, bounces: 0, flash: 0, rot: 0, walkT: 0 };
+  Audio.setBoss(true); Audio.play('roar'); S.shake = 8;
+  flash('Der MAGMA-ANKYLOSAURUS! Kühl ihn mit Wasserbomben ab und spring auf ihn drauf!', 220);
+}
+const ankyBox = a => a.state === 'roll' || a.state === 'curl'
+  ? { x1: a.x - 44, x2: a.x + 44, y1: FLOOR - 88, y2: FLOOR }
+  : { x1: a.x - 78, x2: a.x + 78, y1: FLOOR - 74, y2: FLOOR };
+function updateAnky(dt) {
+  const a = S.anky, k = S.kai, lo = MID_X + 90, hi = MID_X + W - 90;
+  a.t += dt; if (a.flash > 0) a.flash -= dt;
+  a.bar += (a.hp / ANKY_HP - a.bar) * Math.min(1, 0.1 * dt);
+  const weak = 1 - a.hp / ANKY_HP;
+  switch (a.state) {
+    case 'enter': if (a.t > 60) { a.state = 'walk'; a.t = 0; } break;
+    case 'walk':
+      a.face = Math.sign(k.x - a.x) || a.face;
+      a.x = clamp(a.x + a.face * (1.3 + weak) * dt, lo, hi); a.walkT += dt;
+      if (a.t > 130 - weak * 40) { a.state = 'curl'; a.t = 0; Audio.play('roar'); }
+      break;
+    case 'curl': if (a.t > 30) { a.state = 'roll'; a.t = 0; a.bounces = 0; a.face = Math.sign(k.x - a.x) || a.face; Audio.play('grind'); } break;
+    case 'roll':
+      // a ball of fire: rolls fast, bounces off the walls twice
+      a.x += a.face * (8 + weak * 3) * dt; a.rot += a.face * 0.3 * dt;
+      if (Math.random() < 0.6 * dt) S.particles.push({ x: a.x + rand(-30, 30), y: FLOOR - rand(0, 20), vx: -a.face * rand(0.5, 2), vy: rand(-2, -0.5), r: rand(3, 6), color: Math.random() < 0.5 ? '#ff7a1a' : '#ffd23a', life: 0.9, g: 0.05 });
+      if (a.x < lo) { a.x = lo; a.face = 1; a.bounces++; S.shake = 6; Audio.play('clank'); }
+      if (a.x > hi) { a.x = hi; a.face = -1; a.bounces++; S.shake = 6; Audio.play('clank'); }
+      if (a.bounces >= 2 && Math.abs(a.x - (lo + hi) / 2) < 200) { a.state = 'hot'; a.t = 0; a.rot = 0; }
+      break;
+    case 'hot':
+      // stopped and glowing: NOW cool him with a water bomb
+      if (Math.random() < 0.3 * dt) S.particles.push({ x: a.x + rand(-50, 50), y: FLOOR - 70, vx: rand(-0.4, 0.4), vy: rand(-2, -1), r: rand(4, 8), color: 'rgba(255,140,60,0.6)', life: 1, g: -0.02 });
+      if (a.t > 170) { a.state = 'walk'; a.t = 0; }
+      break;
+    case 'cool':
+      // grey and soft: jump on him
+      if (a.t > 220) { a.state = 'walk'; a.t = 0; flash('Er glüht wieder!', 60); }
+      break;
+    case 'dead':
+      a.rot = Math.min(Math.PI, a.rot + 0.08 * dt);
+      if (a.t > 120) endAnky();
+      return;
+  }
+  // touching him: on his cool back = a hit, everything else hurts
+  const kb = kaiBox(), ab = ankyBox(a);
+  if (overlap(kb, ab)) {
+    if (a.state === 'cool' && k.vy > 0 && (k.prevY ?? k.y) <= ab.y1 + 18) { damageAnky(25, k.x, ab.y1); stompBounce(ab.y1); }
+    else if (a.state !== 'cool') hurt(a.x);
+  }
+}
+function damageAnky(n, x, y) {
+  const a = S.anky; if (!a || a.state === 'dead') return;
+  a.hp = Math.max(0, a.hp - n); a.flash = 14; S.shake = Math.max(S.shake, n > 10 ? 10 : 4);
+  burst(x, y, '#ffd23a', n > 10 ? 18 : 8, 4); Audio.play(n > 10 ? 'bossHit' : 'whack');
+  if (n > 10) S.pops.push({ x, y: y - 20, text: tx('TREFFER!'), t: 0, big: true });
+  if (a.hp <= 0) { a.state = 'dead'; a.t = 0; Audio.play('bossDie'); flash('MAGMA-ANKYLOSAURUS BESIEGT!', 120); }
+}
+function endAnky() {
+  S.fight = null; S.phase = 'play'; S.ankyDone = true; S.anky = null; Audio.setBoss(false); Audio.play('win');
+  S.coins += 15;
+  if (!SAVE.pts.boss_anky) { SAVE.pts.boss_anky = true; addScore(PTS.miniboss, S.kai.x, S.kai.y - 140, true); flash(tx('Der Weg ist frei! +{n} Punkte', { n: fmtNum(PTS.miniboss) }), 140); }
+  else flash('Der Weg ist frei!', 120);
+  reachCheckpoint(MID_X + W + 120);
+  saveProgress();
+}
+
+// ================= DER RIESENVULKAN =================
+function startVolcano() {
+  S.fight = 'volcano'; S.phase = 'boss'; S.blobs = []; S.bubbles = [];
+  S.boss = { hp: VOLC_HP, bar: 1, state: 'wake', t: 0, crater: 0, cyc: 0, rockT: 90, waveT: 200, salaT: 300, flash: 0, green: 0, steam: 0 };
+  Audio.setBoss(true); Audio.play('roar'); S.shake = 12;
+  flash('Der RIESENVULKAN! Wirf eine Wasserbombe in den glühenden Krater!', 220);
+}
+const volcBody = () => ({ x1: VOLC.baseL + 40, x2: BOSS_X + W + 40, y1: VOLC.craterY + 10, y2: FLOOR });
+function updateVolcano(dt) {
+  const b = S.boss, k = S.kai, weak = 1 - b.hp / VOLC_HP;
+  b.t += dt; if (b.flash > 0) b.flash -= dt; if (b.steam > 0) b.steam -= dt;
+  b.bar += (b.hp / VOLC_HP - b.bar) * Math.min(1, 0.1 * dt);
+  if (b.state === 'wake') { if (b.t > 80) { b.state = 'fight'; b.t = 0; } return; }
+  if (b.state === 'dead') {
+    b.green = Math.min(1, b.green + 0.012 * dt);
+    if (b.t > 150) winLava();
+    return;
+  }
+  // crater: closed for a while, then glowing wide open (the moment to throw a bomb into it)
+  b.cyc += dt;
+  const closed = 230 - weak * 60, open = 190;
+  if (b.cyc < closed) b.crater = Math.max(0, b.crater - 0.05 * dt);
+  else if (b.cyc < closed + open) { if (b.crater < 0.05) Audio.play('roar'); b.crater = Math.min(1, b.crater + 0.06 * dt); }
+  else b.cyc = 0;
+  // lava rocks in an arc at Kai (the shadow shows where)
+  b.rockT -= dt;
+  if (b.rockT <= 0) {
+    b.rockT = rand(80, 120) - weak * 30;
+    const n = weak > 0.6 ? 2 : 1;
+    for (let i = 0; i < n; i++) S.rocks.push({ sx: VOLC.cx, sy: VOLC.craterY - 10, tx: clamp(k.x + k.vx * 60 + rand(-90, 90) + i * 140, BOSS_X + 60, VOLC.baseL - 20), t: 0, T: 100 });
+    Audio.play('explosion');
+  }
+  // lava waves rolling over the floor to the left
+  b.waveT -= dt;
+  if (b.waveT <= 0) { b.waveT = rand(190, 260) - weak * 60; S.waves.push({ x: VOLC.baseL, vx: -(5 + weak * 2) }); Audio.play('swish'); }
+  // fire salamanders come out at his foot
+  b.salaT -= dt;
+  if (b.salaT <= 0) { b.salaT = rand(300, 420) - weak * 120; S.salas.push({ x: VOLC.baseL - 30, x1: BOSS_X + 60, x2: VOLC.baseL - 30, dir: -1, t: 0, dead: false, deadT: 0 }); }
+  updateVolcRocks(dt);
+  // the mountain itself is a wall – touching his hot slope hurts
+  if (k.x > VOLC.baseL - 20) hurt(VOLC.baseL + 40);
+}
+function updateVolcRocks(dt) {
+  const k = S.kai;
+  for (const r of S.rocks) {
+    r.t += dt;
+    if (r.t >= r.T && !r.done) {
+      r.done = true; burst(r.tx, FLOOR - 6, '#ff7a1a', 20, 5); burst(r.tx, FLOOR - 6, '#ffd23a', 8, 3); S.shake = Math.max(S.shake, 5); Audio.play('lavahit');
+      if (Math.abs(k.x - r.tx) < 50 && k.y > FLOOR - 70) hurt(r.tx);
+    }
+  }
+  S.rocks = S.rocks.filter(r => !r.done);
+  for (const w of S.waves) {
+    w.x += w.vx * dt;
+    if (Math.abs(w.x - k.x) < 30 && k.y > FLOOR - 26) hurt(w.x);
+  }
+  S.waves = S.waves.filter(w => w.x > BOSS_X - 40);
+}
+const rockPos = r => { const u = clamp(r.t / r.T, 0, 1); return { x: r.sx + (r.tx - r.sx) * u, y: r.sy + (FLOOR - 10 - r.sy) * u - Math.sin(u * Math.PI) * 180, u }; };
+function damageVolcano(n, x, y) {
+  const b = S.boss; if (!b || b.state !== 'fight') return;
+  b.hp = Math.max(0, b.hp - n); b.flash = 14; S.shake = Math.max(S.shake, n > 10 ? 12 : 4);
+  for (let i = 0; i < (n > 10 ? 16 : 5); i++) S.particles.push({ x: x + rand(-30, 30), y: y + rand(-10, 10), vx: rand(-1, 1), vy: rand(-3, -1), r: rand(6, 12), color: 'rgba(235,240,250,0.7)', life: 1.3, g: -0.03 });
+  Audio.play(n > 10 ? 'bossHit' : 'whack');
+  if (n > 10) { b.steam = 60; b.cyc = 0; S.pops.push({ x, y: y - 30, text: tx('VOLLTREFFER!'), t: 0, big: true }); }
+  if (b.hp <= 0) {
+    b.state = 'dead'; b.t = 0; b.crater = 0; S.rocks = []; S.waves = [];
+    for (const c of S.salas) if (!c.dead && c.x > BOSS_X) { c.dead = true; c.deadT = 0; }
+    Audio.play('bossDie'); flash('DER RIESENVULKAN IST AUS!', 150);
+  }
+}
+// a water bomb reaches a boss? (returns true when it was used up there)
+function bombHitsFight(bm) {
+  const p = { x1: bm.x - 8, x2: bm.x + 8, y1: bm.y - 8, y2: bm.y + 8 };
+  if (S.fight === 'anky' && S.anky && S.anky.state !== 'dead' && overlap(p, ankyBox(S.anky))) {
+    const a = S.anky;
+    if (a.state === 'hot') { a.state = 'cool'; a.t = 0; Audio.play('air'); flash('Abgekühlt! JETZT draufspringen!', 90); }
+    damageAnky(6, bm.x, bm.y);
+    return true;
+  }
+  if (S.fight === 'volcano' && S.boss && S.boss.state === 'fight') {
+    const b = S.boss;
+    if (b.crater > 0.6 && Math.abs(bm.x - VOLC.cx) < 75 && bm.y > VOLC.craterY - 50 && bm.y < VOLC.craterY + 30) { damageVolcano(15, VOLC.cx, VOLC.craterY); return true; }
+    if (overlap(p, volcBody()) && bm.x > VOLC.baseL + 60) { damageVolcano(3, bm.x, bm.y); return true; }
+  }
+  return false;
+}
+function winLava() {
+  if (S.phase === 'won') return;
+  S.phase = 'won'; Audio.setBoss(false); Audio.play('win'); Audio.play('cheer');
+  S.coins += 30; SAVE.done.lava = true; bossSummary('lava'); saveProgress();
+  burst(S.kai.x, S.kai.y - 60, '#ffd23a', 40, 6);
+}
+function updateBossDead(dt) { if (S.boss) S.boss.t += dt; }
+// =====================================================================
+//  LAVAHÖHLEN – MINI GAME: LORE-FAHRT (mine cart ride)
+//  Kai sits in a mine cart that races along the rails through the cave. Tap / Space = the cart jumps.
+//  Jump over holes in the track and over rocks – but not into the glow bats flying above the rails.
+//  Collect the gems. 25 seconds; crashing 3 times = the ride is over.
+// =====================================================================
+const LORE_T = 1500, LORE_SP = 5.6, CART_X = 300, RAIL_Y = FLOOR - 16, CART_JUMP = -10.8, CART_G = 0.5;
+function startLore() {
+  const k = S.kai; k.vx = 0; k.dir = 0;
+  S.game = { id: 'lore', t: 0, y: RAIL_Y, vy: 0, ground: true, obs: [], gems: [], crashes: 0, inv: 0, result: null, next: 140, scroll: 0, got: 0 };
+  S.phase = 'lore'; Audio.play('chime');
+  flash(isTouchDev() ? 'Tippen = mit der Lore springen!' : 'Leertaste / Klick = mit der Lore springen!', 140);
+}
+function loreJump() { const g = S.game; if (!g || g.result || !g.ground) return; g.vy = CART_JUMP; g.ground = false; Audio.play('jump'); }
+function lorePointer(p) {
+  const g = S.game; if (!g) return;
+  if (g.result) {
+    if (g.result === 'lose' && inRect(p, GBTN.again)) { S.game = null; startLore(); return; }
+    if (inRect(p, g.result === 'lose' ? GBTN.next2 : GBTN.next)) endLore();
+    return;
+  }
+  loreJump();
+}
+function gameKey(e) {
+  if (S.phase !== 'lore') return;
+  const g = S.game; if (!g) return;
+  if (g.result) { if (e.code === 'Space' || e.code === 'Enter') endLore(); return; }
+  if (!e.repeat && (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW')) { e.preventDefault(); loreJump(); }
+}
+function gameKeyUp() {}
+const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 }, again: { x: W / 2 - 235, y: 250, w: 220, h: 44 }, next2: { x: W / 2 + 15, y: 250, w: 220, h: 44 } };
+const cartBox = g => ({ x1: CART_X - 40, x2: CART_X + 40, y1: g.y - 110, y2: g.y });
+const overGap = g => g.obs.some(o => o.type === 'gap' && CART_X > o.x + 12 && CART_X < o.x + o.w - 12);
+function updateLore(dt) {
+  const g = S.game; if (!g || g.result) return;
+  g.t += dt; g.scroll += LORE_SP * dt;
+  if (g.inv > 0) g.inv -= dt;
+  // new obstacles: holes in the track, rocks on the rails, glow bats above
+  g.next -= LORE_SP * dt;
+  if (g.next <= 0 && g.t < LORE_T - 100) {
+    const r = Math.random(), x = W + 40;
+    if (r < 0.4) { const w = rand(90, 130); g.obs.push({ type: 'gap', x, w }); for (let i = 0; i < 3; i++) g.gems.push({ x: x + w / 2 + (i - 1) * 30, y: RAIL_Y - 130 + Math.abs(i - 1) * 14 }); }
+    else if (r < 0.75) { g.obs.push({ type: 'rock', x, w: 40, h: 34 }); g.gems.push({ x: x + 20, y: RAIL_Y - 120 }); }
+    else { g.obs.push({ type: 'bat', x, w: 46, y: RAIL_Y - 170 + Math.random() * 20, t: 0 }); g.gems.push({ x: x + 23, y: RAIL_Y - 60 }); }
+    g.next = rand(300, 460);
+  }
+  for (const o of g.obs) { o.x -= LORE_SP * dt; if (o.type === 'bat') o.t = (o.t || 0) + dt; }
+  for (const gm of g.gems) gm.x -= LORE_SP * dt;
+  g.obs = g.obs.filter(o => o.x + o.w > -60); g.gems = g.gems.filter(gm => gm.x > -30 && !gm.done);
+  // the cart: on the rails or in the air
+  if (!g.ground) {
+    g.vy += CART_G * dt; g.y += g.vy * dt;
+    if (g.y >= RAIL_Y && !overGap(g)) { g.y = RAIL_Y; g.vy = 0; g.ground = true; Audio.play('land'); }
+  } else if (overGap(g)) { g.ground = false; g.vy = 1; }
+  if (g.y > RAIL_Y + 40) { crash(); g.y = RAIL_Y; g.vy = 0; g.ground = true; for (const o of g.obs) if (o.type === 'gap' && o.x < CART_X + 60) o.x = -999; }
+  const b = cartBox(g);
+  for (const o of g.obs) {
+    if (o.type === 'rock' && !o.hit && b.x2 > o.x && b.x1 < o.x + o.w && b.y2 > RAIL_Y - o.h) { o.hit = true; crash(); }
+    if (o.type === 'bat' && !o.hit && b.x2 > o.x && b.x1 < o.x + o.w && b.y1 < o.y + 14 && b.y2 > o.y - 14) { o.hit = true; crash(); }
+  }
+  for (const gm of g.gems) if (!gm.done && Math.abs(gm.x - CART_X) < 44 && gm.y > b.y1 - 10 && gm.y < b.y2 + 10) { gm.done = true; S.coins++; addScore(PTS.coin); g.got++; Audio.play('pearl'); }
+  if (g.crashes >= 3) { g.result = 'lose'; Audio.play('nomatch'); saveProgress(); }
+  else if (g.t >= LORE_T) {
+    g.result = 'win'; S.coins += 20; SAVE.mini.lore = true;
+    g.pts = !SAVE.pts.mini_lore; if (g.pts) { SAVE.pts.mini_lore = true; S.score += PTS.mini; }
+    saveProgress(); Audio.play('win'); Audio.play('cheer');
+  }
+}
+function crash() { const g = S.game; if (g.inv > 0) return; g.crashes++; g.inv = 70; S.shake = 8; Audio.play('crash'); }
+function endLore() {
+  const k = S.kai, gate = SITES.lore + 120;
+  S.game = null; S.phase = 'play'; saveProgress();
+  k.x = gate + 200; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
+  Audio.play('tink');
+}
+// =====================================================================
+//  DRAWING – DIE LAVAHÖHLEN (same flat cartoon style, dark cave lit by glowing lava)
+// =====================================================================
+const BASALT = '#4a3a38', BASALT_D = '#33282a', BASALT_L = '#6a5652', LAVA = '#ff6a1a', LAVA_L = '#ffb02e';
+
+function draw() {
+  ctx.save();
+  if (S.shake > 0) ctx.translate(rand(-S.shake, S.shake) * 0.6, rand(-S.shake, S.shake) * 0.4);
+  if (S.phase === 'lore') { drawLoreScene(); ctx.restore(); if (!S.noHud) drawHUD(); drawScreens(); return; }
+  drawCaveBack();
+  ctx.save(); ctx.translate(-S.cam, 0);
+  drawVolcano();
+  drawLavaPools();
+  drawGround();
+  drawCeiling();
+  drawPipeUp();
+  drawSites();
+  drawCheckpoints();
+  for (const p of S.plats) if (onScreen(p.x - 20, p.w + 40)) drawPlat(p);
+  for (const lf of LAVAFALLS) if (onScreen(lf[0] - 40, 80)) drawLavafall(lf);
+  for (const s of S.stalac) if (onScreen(s.x - 30, 60)) drawStalactite(s);
+  for (const o of S.objects) if (!o.done && onScreen(o.x - 20, 40)) { if (o.type === 'coin') drawCoin(o); else drawFruitHeart(o); }
+  for (const c of S.salas) if (onScreen(c.x - 60, 120) && !(c.dead && c.deadT > 60)) drawSala(c);
+  for (const p of S.bats) if (onScreen(p.x - 60, 120) && !(p.dead && p.y > FLOOR + 300)) drawBat(p.x, p.y, p.dir, p.t, 1, p.dead);
+  if (S.anky) drawAnky(S.anky);
+  drawVolcRocks();
+  for (const o of S.blobs) drawLavaBall(o.x, o.y, 9);
+  for (const b of S.bombs) drawBomb(b.x, b.y, b.rot, 1);
+  for (const p of S.particles) { ctx.globalAlpha = Math.max(0, Math.min(1, p.life)); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  drawPops(S.pops);
+  ctx.restore();
+  if (!S.hideKai) drawKai();
+  ctx.restore();
+  if (!S.noHud) drawHUD();
+  if (!MENU.open) drawScreens();
+}
+const onScreen = (x, w) => x + w > S.cam - 60 && x < S.cam + W + 60;
+
+// ---------------- the cave ----------------
+function drawCaveBack() {
+  const g = ctx.createLinearGradient(0, -DY, 0, H);
+  g.addColorStop(0, '#1a0f10'); g.addColorStop(0.6, '#3a1c14'); g.addColorStop(1, '#6a2a12');
+  ctx.fillStyle = g; ctx.fillRect(0, -DY, W, H + DY);
+  // far cave walls with glowing cracks (slow parallax)
+  const off = S.cam * 0.2, span = 1600;
+  for (let i = 0; i < 7; i++) {
+    const x = ((i * 240 - off) % span + span) % span - 150, top = 60 + (i * 47) % 70;
+    ctx.fillStyle = i % 2 ? '#2c1a18' : '#33201c';
+    ctx.beginPath(); ctx.moveTo(x - 110, H); ctx.lineTo(x - 70, top + 30); ctx.lineTo(x - 20, top); ctx.lineTo(x + 40, top + 20); ctx.lineTo(x + 110, H); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = `rgba(255,110,30,${0.25 + Math.sin(S.t * 0.04 + i) * 0.12})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 30, top + 40); ctx.lineTo(x - 10, top + 90); ctx.lineTo(x - 26, top + 140); ctx.stroke();
+  }
+  // a warm glow from below
+  const gl = ctx.createLinearGradient(0, FLOOR - 120, 0, H); gl.addColorStop(0, 'rgba(255,100,20,0)'); gl.addColorStop(1, 'rgba(255,100,20,0.25)');
+  ctx.fillStyle = gl; ctx.fillRect(0, FLOOR - 120, W, H - FLOOR + 120);
+}
+function drawCeiling() {
+  const x0 = Math.floor((S.cam - 60) / 60) * 60, x1 = S.cam + W + 60, top = -DY - 4;
+  ctx.save(); ctx.fillStyle = BASALT_D; ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x0, top);
+  for (let x = x0; x <= x1; x += 60) ctx.lineTo(x, top + 22 + Math.abs(Math.sin(x * 0.013)) * 18);
+  ctx.lineTo(x1, top); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function drawLavaPools() {
+  const x0 = S.cam - 40, x1 = S.cam + W + 40;
+  // the lava lies under everything – the rock floor is drawn on top of it
+  const g = ctx.createLinearGradient(0, LAVA_Y, 0, H + 40); g.addColorStop(0, LAVA_L); g.addColorStop(0.3, LAVA); g.addColorStop(1, '#c2300e');
+  ctx.fillStyle = g; ctx.fillRect(x0, LAVA_Y, x1 - x0, H - LAVA_Y + 40);
+  ctx.strokeStyle = '#fff0a0'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let x = Math.floor(x0 / 12) * 12; x < x1; x += 12) ctx.lineTo(x, LAVA_Y + Math.sin(x * 0.05 + S.t * 0.08) * 2);
+  ctx.stroke();
+  // bubbles = warning: a lava ball will jump out here
+  for (const b of S.bubbles) { const u = b.t / 50; ctx.fillStyle = `rgba(255,220,120,${0.5 + u * 0.4})`; ctx.strokeStyle = '#ff4a0a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, LAVA_Y, 6 + u * 14, Math.PI, 0); ctx.fill(); ctx.stroke(); }
+  // stone crusts left by water bombs (they glow again before they melt)
+  for (const c of S.cools) {
+    const melt = c.t < 60 && Math.floor(c.t / 6) % 2 === 0;
+    ctx.fillStyle = melt ? '#8a5a44' : '#6e6a6a'; ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(c.x1, FLOOR - 4, c.x2 - c.x1, LAVA_Y - FLOOR + 14, 8); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(40,30,30,0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(c.x1 + 30, FLOOR); ctx.lineTo(c.x1 + 50, FLOOR + 10); ctx.moveTo(c.x2 - 40, FLOOR + 2); ctx.lineTo(c.x2 - 54, FLOOR + 12); ctx.stroke();
+  }
+}
+function drawGround() {
+  const x0 = S.cam - 40, x1 = S.cam + W + 40;
+  for (const [a, b] of GROUND) {
+    if (b < x0 || a > x1) continue;
+    const l = Math.max(a, x0), r = Math.min(b, x1);
+    const g = ctx.createLinearGradient(0, FLOOR, 0, H + 40); g.addColorStop(0, BASALT); g.addColorStop(1, BASALT_D);
+    ctx.fillStyle = g; ctx.fillRect(l, FLOOR - 4, r - l, H - FLOOR + 44);
+    ctx.fillStyle = BASALT_L; ctx.fillRect(l, FLOOR - 6, r - l, 6);
+    ctx.strokeStyle = 'rgba(255,110,30,0.45)'; ctx.lineWidth = 1.5;
+    for (let x = Math.floor(l / 110) * 110; x < r; x += 110) { ctx.beginPath(); ctx.moveTo(x + 20, FLOOR + 6); ctx.lineTo(x + 34, FLOOR + 20); ctx.lineTo(x + 26, FLOOR + 34); ctx.stroke(); }
+    ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(l, FLOOR - 6); ctx.lineTo(r, FLOOR - 6); ctx.stroke();
+    // glowing edge where rock meets lava
+    ctx.fillStyle = LAVA_L;
+    if (a > x0) { ctx.fillRect(a - 3, FLOOR, 4, H - FLOOR + 40); }
+    if (b < x1) { ctx.fillRect(b - 1, FLOOR, 4, H - FLOOR + 40); }
+  }
+}
+function drawPlat(p) {
+  ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+  const x = p.x, y = p.y;
+  ctx.fillStyle = p.kind === 'sink' ? '#5a3a30' : p.kind === 'move' ? '#5e4e4c' : BASALT;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + p.w, y); ctx.lineTo(x + p.w - 14, y + 24); ctx.lineTo(x + p.w * 0.55, y + 34); ctx.lineTo(x + 18, y + 26); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = BASALT_L; ctx.fillRect(x + 2, y - 3, p.w - 4, 5); ctx.lineWidth = 1.5; ctx.strokeRect(x + 2, y - 3, p.w - 4, 5);
+  if (p.kind === 'sink') { ctx.strokeStyle = 'rgba(255,120,30,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 10, y + 20); ctx.lineTo(x + p.w - 20, y + 22); ctx.stroke(); }
+  if (p.kind === 'move') { ctx.fillStyle = 'rgba(255,160,60,0.5)'; for (let i = 0; i < 3; i++) { const u = (S.t * 0.05 + i / 3) % 1; ctx.beginPath(); ctx.arc(x + p.w * (0.25 + i * 0.25), y + 40 + u * 16, 6 * (1 - u) + 2, 0, Math.PI * 2); ctx.fill(); } }
+  ctx.restore();
+}
+function drawLavafall(lf) {
+  const x = lf[0], on = lavafallOn(lf, S.t), warn = lavafallWarn(lf, S.t), top = -DY + 20;
+  ctx.save();
+  // the opening in the ceiling
+  ctx.fillStyle = '#1a0f10'; ctx.beginPath(); ctx.ellipse(x, top, 34, 10, 0, 0, Math.PI * 2); ctx.fill();
+  if (on) {
+    const g = ctx.createLinearGradient(x - 26, 0, x + 26, 0); g.addColorStop(0, '#d8400e'); g.addColorStop(0.5, LAVA_L); g.addColorStop(1, '#d8400e');
+    ctx.fillStyle = g; ctx.fillRect(x - 26, top, 52, FLOOR - top);
+    ctx.strokeStyle = 'rgba(255,240,170,0.8)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) { const yy = ((S.t * 6 + i * 70) % (FLOOR - top)) + top; ctx.beginPath(); ctx.moveTo(x - 12 + i * 12, yy); ctx.lineTo(x - 12 + i * 12, yy + 30); ctx.stroke(); }
+    ctx.fillStyle = LAVA_L; ctx.beginPath(); ctx.ellipse(x, FLOOR - 2, 44, 10, 0, 0, Math.PI * 2); ctx.fill();
+  } else {
+    if (warn) { ctx.fillStyle = 'rgba(255,170,60,0.8)'; ctx.fillRect(x - 3, top, 6, FLOOR - top); }
+    ctx.fillStyle = 'rgba(255,120,30,0.7)'; const d = (S.t * 4) % (FLOOR - top); ctx.beginPath(); ctx.arc(x, top + d, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawStalactite(s) {
+  if (s.state === 'gone') return;
+  const top = -DY + 14;
+  let x = s.x, y = s.state === 'fall' ? s.y : top;
+  if (s.state === 'shake') x += Math.sin(S.t * 2) * 2.5;
+  ctx.save(); ctx.fillStyle = BASALT_L; ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x - 16, y); ctx.lineTo(x + 16, y); ctx.lineTo(x + 3, y + 46); ctx.lineTo(x - 2, y + 46); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.moveTo(x - 8, y + 4); ctx.lineTo(x - 2, y + 30); ctx.lineTo(x - 2, y + 4); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  if (s.state === 'fall' || s.state === 'shake') {
+    const fy = groundAt(s.x) ? FLOOR : LAVA_Y;
+    ctx.fillStyle = 'rgba(20,10,10,0.4)'; ctx.beginPath(); ctx.ellipse(s.x, fy - 3, 14, 3, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+function drawPipeUp() {
+  const x = PIPE_UP;
+  if (!onScreen(x - 80, 200)) return;
+  ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+  const g = ctx.createLinearGradient(x - 40, 0, x + 40, 0); g.addColorStop(0, '#6a5a58'); g.addColorStop(0.4, '#a8968e'); g.addColorStop(1, '#4a3c3a');
+  ctx.fillStyle = g; ctx.fillRect(x - 36, -DY, 72, FLOOR - 70 + DY); ctx.strokeRect(x - 36, -DY - 4, 72, FLOOR - 70 + DY + 4);
+  ctx.fillStyle = '#8a7a74'; ctx.beginPath(); ctx.roundRect(x - 46, FLOOR - 86, 92, 18, 4); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  drawSign(x + 110, FLOOR - 64, '▲ ' + tx('DINO-TAL'), '#9fe07a');
+  if (Math.abs(S.kai.x - x) < 70 && S.phase === 'play') {
+    ctx.save(); ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 4; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
+    const t = tx('Weiter nach links = zurück ins Tal'); ctx.strokeText(t, x + 140, FLOOR - 150); ctx.fillText(t, x + 140, FLOOR - 150); ctx.restore();
+  }
+}
+function drawCheckpoints() {
+  for (const x of CHECKPOINTS) {
+    if (!onScreen(x - 30, 60)) continue;
+    const on = S.cpX >= x;
+    ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+    ctx.fillStyle = BASALT_L; ctx.beginPath(); ctx.roundRect(x - 14, FLOOR - 40, 28, 36, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x - 2, FLOOR - 150, 4, 112);
+    const wave = Math.sin(S.t * 0.12) * 4;
+    ctx.fillStyle = on ? '#34c759' : '#d8352c';
+    ctx.beginPath(); ctx.moveTo(x + 2, FLOOR - 150); ctx.quadraticCurveTo(x + 22, FLOOR - 146 + wave, x + 40, FLOOR - 140); ctx.lineTo(x + 2, FLOOR - 126); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+}
+function drawSites() {
+  const x = SITES.lore;
+  if (!onScreen(x - 60, 380)) return;
+  ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+  // mine entrance with wooden beams, rails going in
+  ctx.fillStyle = '#1a0f10'; ctx.beginPath(); ctx.moveTo(x + 40, FLOOR); ctx.lineTo(x + 40, FLOOR - 110); ctx.quadraticCurveTo(x + 110, FLOOR - 150, x + 180, FLOOR - 110); ctx.lineTo(x + 180, FLOOR); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#8a5a32'; ctx.fillRect(x + 30, FLOOR - 120, 14, 120); ctx.strokeRect(x + 30, FLOOR - 120, 14, 120); ctx.fillRect(x + 176, FLOOR - 120, 14, 120); ctx.strokeRect(x + 176, FLOOR - 120, 14, 120);
+  ctx.fillRect(x + 22, FLOOR - 132, 176, 14); ctx.strokeRect(x + 22, FLOOR - 132, 176, 14);
+  ctx.strokeStyle = '#9aa0a8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 40, FLOOR - 6); ctx.lineTo(x + 300, FLOOR - 6); ctx.stroke();
+  drawCart(x + 250, FLOOR - 8, 0.8, false);
+  ctx.restore();
+  drawSign(x + 120, FLOOR - 150, tx('LORE-FAHRT'), '#ffb02e');
+}
+function drawSign(x, y, text, col) {
+  ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+  ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x - 3, y, 6, FLOOR - y); ctx.strokeRect(x - 3, y, 6, FLOOR - y);
+  ctx.font = 'bold 14px Arial'; const w = ctx.measureText(text).width + 22;
+  ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x - w / 2, y - 26, w, 26, 6); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = OUT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y - 12);
+  ctx.restore();
+}
+function drawCoin(o) {
+  const s = Math.abs(Math.cos(o.p * 1.5));
+  ctx.save(); ctx.translate(o.x, o.y + Math.sin(o.p) * 2); ctx.scale(Math.max(0.15, s), 1);
+  ctx.fillStyle = '#ffd23a'; ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = '#c98f10'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+function drawFruitHeart(o) { drawHeart(o.x, o.y + Math.sin(o.p * 1.3) * 4, 12, true); }
+function drawHeart(cx, cy, r, full) {
+  ctx.save(); ctx.translate(cx, cy); ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(0, r * 0.9);
+  ctx.bezierCurveTo(-r * 1.3, -r * 0.1, -r * 0.9, -r * 1.1, 0, -r * 0.45);
+  ctx.bezierCurveTo(r * 0.9, -r * 1.1, r * 1.3, -r * 0.1, 0, r * 0.9); ctx.closePath();
+  ctx.fillStyle = full ? '#ff3b5c' : 'rgba(255,255,255,0.15)'; ctx.fill();
+  ctx.strokeStyle = full ? OUT : 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.8; ctx.stroke();
+  if (full) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.ellipse(-r * 0.4, -r * 0.35, r * 0.22, r * 0.14, -0.6, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+function drawLavaBall(x, y, r) {
+  const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 1, x, y, r);
+  g.addColorStop(0, '#fff3a0'); g.addColorStop(0.5, '#ff9a2a'); g.addColorStop(1, '#d8351a');
+  ctx.fillStyle = g; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+}
+// a water bomb (blue balloon with a knot)
+function drawBomb(x, y, rot, s) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot * 0.3); ctx.scale(s, s); ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+  ctx.fillStyle = '#3aa0f0'; ctx.beginPath(); ctx.ellipse(0, 0, 10, 12, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.beginPath(); ctx.ellipse(-3.5, -4.5, 3, 4, -0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1f6fb8'; ctx.beginPath(); ctx.moveTo(-3, 11); ctx.lineTo(3, 11); ctx.lineTo(0, 16); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+// ---------------- creatures ----------------
+function drawSala(c) {
+  ctx.save(); ctx.translate(c.x, FLOOR);
+  if (c.dead) { ctx.globalAlpha = Math.max(0, 1 - c.deadT / 60); ctx.translate(0, -8); ctx.scale(1, -1); ctx.translate(0, 8); }
+  ctx.scale(c.dir, 1); ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+  const w = c.dead ? 0 : Math.sin(c.t * 0.35) * 5;
+  ctx.fillStyle = '#d8401a';
+  for (const [lx, sw] of [[-14, w], [12, -w]]) { ctx.beginPath(); ctx.ellipse(lx + sw, -4, 6, 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(-20, -14); ctx.quadraticCurveTo(-44, -16 + w, -52, -8); ctx.quadraticCurveTo(-40, -8, -18, -8); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ff6a2a'; ctx.beginPath(); ctx.ellipse(0, -14, 24, 10, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(26, -18, 12, 8, 0.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ffd23a'; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(-14 + i * 9, -21, 2.5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(30, -21, 2.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = OUT; ctx.beginPath(); ctx.arc(31, -21, 1.2, 0, Math.PI * 2); ctx.fill();
+  // little flames on the back
+  if (!c.dead) { ctx.fillStyle = 'rgba(255,200,60,0.8)'; for (let i = 0; i < 3; i++) { const f = Math.sin(S.t * 0.3 + i) * 3; ctx.beginPath(); ctx.moveTo(-10 + i * 10, -22); ctx.quadraticCurveTo(-8 + i * 10, -32 - f, -4 + i * 10, -22); ctx.fill(); } }
+  ctx.restore();
+}
+function drawBat(x, y, dir, t, sc, dead) {
+  ctx.save(); ctx.translate(x, y); if (dead) ctx.rotate(dir * 2.6); ctx.scale(dir * sc, sc); ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+  const f = Math.sin(t * 0.45) * 12;
+  ctx.fillStyle = '#4a2a5a';
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(0, -2); ctx.quadraticCurveTo(s * 18, -16 - f, s * 32, -6 - f); ctx.lineTo(s * 26, 2 - f * 0.3); ctx.lineTo(s * 18, -2); ctx.lineTo(s * 10, 4); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  ctx.fillStyle = '#5e3a70'; ctx.beginPath(); ctx.ellipse(0, 0, 10, 9, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-6, -6); ctx.lineTo(-4, -14); ctx.lineTo(-1, -7); ctx.moveTo(6, -6); ctx.lineTo(4, -14); ctx.lineTo(1, -7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ffb02e'; ctx.beginPath(); ctx.arc(-3.5, -1, 2.2, 0, Math.PI * 2); ctx.arc(3.5, -1, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function drawAnky(a) {
+  const cool = a.state === 'cool', hot = a.state === 'hot' || a.state === 'roll' || a.state === 'curl';
+  ctx.save();
+  if (a.flash > 0 && Math.floor(a.flash / 4) % 2 === 0) ctx.globalAlpha = 0.55;
+  const shell = cool ? '#8a8c90' : hot ? '#e2541c' : '#b0562a', spike = cool ? '#cfd3d8' : '#ffd23a';
+  if (a.state === 'roll' || a.state === 'curl') {
+    // curled up into a spiky ball of fire
+    const r = a.state === 'curl' ? 34 + Math.min(1, a.t / 30) * 10 : 44;
+    ctx.translate(a.x, FLOOR - r); ctx.rotate(a.rot); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+    ctx.fillStyle = spike; for (let i = 0; i < 10; i++) { const an = i / 10 * Math.PI * 2; ctx.beginPath(); ctx.moveTo(Math.cos(an - 0.15) * r, Math.sin(an - 0.15) * r); ctx.lineTo(Math.cos(an) * (r + 14), Math.sin(an) * (r + 14)); ctx.lineTo(Math.cos(an + 0.15) * r, Math.sin(an + 0.15) * r); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = shell; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,230,120,0.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, Math.PI * 1.4); ctx.stroke();
+    ctx.restore(); return;
+  }
+  ctx.translate(a.x, FLOOR); if (a.state === 'dead') { ctx.translate(0, -40); ctx.rotate(-a.face * a.rot); ctx.translate(0, 40); }
+  ctx.scale(a.face, 1); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+  const step = a.state === 'walk' ? Math.sin(a.walkT * 0.2) * 5 : 0;
+  ctx.fillStyle = cool ? '#7a7c80' : '#8a4a2a';
+  for (const [lx, s] of [[-50, step], [-22, -step], [24, step], [50, -step]]) { ctx.beginPath(); ctx.roundRect(lx - 9 + s, -30, 18, 30, 6); ctx.fill(); ctx.stroke(); }
+  // tail with club
+  ctx.fillStyle = shell; ctx.beginPath(); ctx.moveTo(-70, -40); ctx.quadraticCurveTo(-110, -36, -124, -28); ctx.lineTo(-120, -20); ctx.quadraticCurveTo(-100, -26, -66, -26); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = spike; ctx.beginPath(); ctx.ellipse(-130, -24, 14, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  // armoured body
+  ctx.fillStyle = shell; ctx.beginPath(); ctx.moveTo(-74, -28); ctx.quadraticCurveTo(-70, -86, 0, -84); ctx.quadraticCurveTo(70, -84, 76, -28); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = spike;
+  for (let i = 0; i < 6; i++) { const px = -56 + i * 22, py = -78 - Math.sin((i + 0.5) / 6 * Math.PI) * 8; ctx.beginPath(); ctx.moveTo(px - 7, py + 8); ctx.lineTo(px, py - 8); ctx.lineTo(px + 7, py + 8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if (!cool) { ctx.strokeStyle = 'rgba(255,230,120,0.85)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-40, -60); ctx.lineTo(-20, -50); ctx.lineTo(0, -64); ctx.lineTo(24, -52); ctx.lineTo(44, -62); ctx.stroke(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; }
+  // head
+  ctx.fillStyle = cool ? '#9a9ca0' : '#a8562e'; ctx.beginPath(); ctx.moveTo(70, -48); ctx.quadraticCurveTo(100, -52, 108, -34); ctx.quadraticCurveTo(100, -22, 72, -26); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(94, -40, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = OUT; ctx.beginPath(); ctx.arc(95.5, -40, 2, 0, Math.PI * 2); ctx.fill();
+  if (cool) { ctx.fillStyle = '#7fd0ff'; ctx.beginPath(); ctx.arc(80, -66, 3, 0, Math.PI * 2); ctx.arc(-10, -96, 3, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+// ---------------- the Riesenvulkan ----------------
+const mix = (a, b, u) => { const pa = [1, 3, 5].map(i => parseInt(a.substr(i, 2), 16)), pb = [1, 3, 5].map(i => parseInt(b.substr(i, 2), 16)); return 'rgb(' + pa.map((v, i) => Math.round(v + (pb[i] - v) * u)).join(',') + ')'; };
+function drawVolcano() {
+  if (!onScreen(VOLC.baseL - 40, 600)) return;
+  const b = S.boss, gr = b ? b.green : 0, cr = b ? b.crater : 0, cx = VOLC.cx, ty = VOLC.craterY;
+  ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+  if (b && b.flash > 0 && Math.floor(b.flash / 4) % 2 === 0) ctx.globalAlpha = 0.7;
+  // the mountain
+  ctx.fillStyle = mix('#5a3a32', '#5aa04a', gr);
+  ctx.beginPath(); ctx.moveTo(VOLC.baseL, FLOOR + 4); ctx.lineTo(cx - 70, ty); ctx.lineTo(cx + 70, ty); ctx.lineTo(BOSS_X + W + 120, FLOOR + 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // lava streams down the slopes (they go out when he is beaten)
+  if (gr < 0.5) {
+    ctx.strokeStyle = LAVA; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.globalAlpha *= 1 - gr * 2;
+    ctx.beginPath(); ctx.moveTo(cx - 40, ty + 6); ctx.quadraticCurveTo(cx - 90, ty + 80, cx - 150, FLOOR - 30); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + 30, ty + 6); ctx.quadraticCurveTo(cx + 70, ty + 70, cx + 110, FLOOR - 60); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.strokeStyle = OUT; ctx.lineWidth = 3;
+  }
+  // flowers when he is green again
+  if (gr > 0.5) { for (let i = 0; i < 9; i++) { const fx = VOLC.baseL + 80 + i * 50, fy = FLOOR - 20 - ((i * 37) % 60); ctx.fillStyle = ['#ff6a8a', '#ffd23a', '#ffffff'][i % 3]; ctx.beginPath(); ctx.arc(fx, fy, 5, 0, Math.PI * 2); ctx.fill(); } }
+  // the crater: dim when closed, glowing wide open
+  ctx.fillStyle = gr > 0.5 ? '#4a8a3a' : mix('#4a1a10', '#fff0a0', cr);
+  ctx.beginPath(); ctx.ellipse(cx, ty, 70, 12 + cr * 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  if (cr > 0.5 && gr < 0.5) { ctx.fillStyle = `rgba(255,180,60,${(cr - 0.5) * 1.2})`; ctx.beginPath(); ctx.ellipse(cx, ty - 20, 60, 30, 0, 0, Math.PI * 2); ctx.fill(); }
+  // the face
+  const ey = ty + 60, angry = b && b.state === 'fight';
+  ctx.fillStyle = '#fff'; for (const ex of [cx - 40, cx + 40]) { ctx.beginPath(); ctx.ellipse(ex, ey, 16, 12, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+  ctx.fillStyle = gr > 0.5 ? OUT : '#ff4a0a'; for (const ex of [cx - 42, cx + 38]) { ctx.beginPath(); ctx.arc(ex, ey + 2, 6, 0, Math.PI * 2); ctx.fill(); }
+  if (angry) { ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(cx - 60, ey - 22); ctx.lineTo(cx - 24, ey - 12); ctx.moveTo(cx + 60, ey - 22); ctx.lineTo(cx + 24, ey - 12); ctx.stroke(); ctx.lineWidth = 3; }
+  if (gr > 0.5) { ctx.beginPath(); ctx.arc(cx, ey + 34, 26, 0.2, Math.PI - 0.2); ctx.stroke(); }
+  else { ctx.fillStyle = '#2a0e08'; ctx.beginPath(); ctx.ellipse(cx, ey + 44, 34, 10 + cr * 14, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = LAVA; ctx.beginPath(); ctx.ellipse(cx, ey + 48 + cr * 4, 22, 4 + cr * 6, 0, 0, Math.PI * 2); ctx.fill(); }
+  // steam after a hit into the crater
+  if (b && b.steam > 0) { ctx.fillStyle = `rgba(240,244,250,${b.steam / 60 * 0.8})`; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(cx - 40 + i * 20, ty - 30 - (60 - b.steam) * 1.2 - i * 6, 18, 0, Math.PI * 2); ctx.fill(); } }
+  ctx.restore();
+}
+function drawVolcRocks() {
+  for (const r of S.rocks) {
+    const u = clamp(r.t / r.T, 0, 1);
+    ctx.fillStyle = `rgba(20,5,0,${0.15 + u * 0.45})`; ctx.beginPath(); ctx.ellipse(r.tx, FLOOR - 4, 12 + u * 34, 3 + u * 5, 0, 0, Math.PI * 2); ctx.fill();
+    if (u > 0.55) { ctx.strokeStyle = `rgba(255,80,20,${(u - 0.55) * 1.8})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(r.tx, FLOOR - 4, 12 + u * 34, 3 + u * 5, 0, 0, Math.PI * 2); ctx.stroke(); }
+    const p = rockPos(r); drawLavaBall(p.x, p.y, 14);
+  }
+  for (const w of S.waves) {
+    ctx.save(); ctx.fillStyle = LAVA; ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(w.x - 36, FLOOR); ctx.quadraticCurveTo(w.x - 20, FLOOR - 34, w.x, FLOOR - 26); ctx.quadraticCurveTo(w.x + 22, FLOOR - 18, w.x + 30, FLOOR); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = LAVA_L; ctx.beginPath(); ctx.arc(w.x - 10, FLOOR - 22, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ---------------- Kai / Bali ----------------
+function drawKai() {
+  const k = S.kai, sx = k.x - S.cam;
+  if (k.inv > 0 && Math.floor(k.inv / 5) % 2 === 0) return;
+  const air = !k.ground, push = k.ground && k.pushT > 0 && k.pushT < 34 ? k.pushT / 34 : 0;
+  let fa = k.faceAnim; if (Math.abs(fa) < 0.14) fa = 0.14 * (Math.sign(fa) || 1);
+  ctx.save(); ctx.translate(sx, 0);
+  // the Magma-Board glows on lava
+  if (k.onLava && k.ground) { ctx.fillStyle = `rgba(255,140,40,${0.4 + Math.sin(S.t * 0.4) * 0.2})`; ctx.beginPath(); ctx.ellipse(0, k.y - 4, 50, 10, 0, 0, Math.PI * 2); ctx.fill(); }
+  ctx.save(); ctx.scale(fa, 1);
+  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
+    push, flip: 0, armsUp: air && k.shootT <= 0, ouch: k.hurtT > 0, wind: Math.min(1, Math.abs(k.vx) / SPEED), outfit: SAVE.outfit });
+  if (k.shootT > 0) drawBomb(24, k.y - 64 - (14 - k.shootT) * 0.8, 0, 0.7);
+  ctx.restore();
+  // heat bar above Kai while he rides on the lava
+  if (k.heat > 1) {
+    const f = clamp(k.heat / HEAT_MAX, 0, 1);
+    ctx.fillStyle = 'rgba(20,10,10,0.7)'; ctx.beginPath(); ctx.roundRect(-30, k.y - 140, 60, 10, 5); ctx.fill();
+    ctx.fillStyle = f > 0.66 ? '#ff3b30' : f > 0.33 ? '#ff9a2a' : '#ffd23a'; ctx.beginPath(); ctx.roundRect(-29, k.y - 139, 58 * f, 8, 4); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---------------- the mine cart ride (screen space) ----------------
+function drawCart(x, y, s, front) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+  ctx.fillStyle = '#6e6a66'; ctx.beginPath(); ctx.moveTo(-46, -46); ctx.lineTo(46, -46); ctx.lineTo(38, -8); ctx.lineTo(-38, -8); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#8a8680'; ctx.fillRect(-46, -50, 92, 8); ctx.strokeRect(-46, -50, 92, 8);
+  ctx.strokeStyle = 'rgba(30,20,20,0.4)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-20, -40); ctx.lineTo(-18, -14); ctx.moveTo(20, -40); ctx.lineTo(18, -14); ctx.stroke();
+  ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.fillStyle = '#3a3a40';
+  for (const wx of [-26, 26]) { ctx.beginPath(); ctx.arc(wx, -4, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+  ctx.restore();
+}
+function drawLoreScene() {
+  const g = S.game;
+  drawCaveBack();
+  const off = g ? g.scroll : 0;
+  // ceiling beams rushing by
+  ctx.fillStyle = '#5a3a22'; for (let i = 0; i < 6; i++) { const x = ((i * 260 - off * 1.0) % 1560 + 1560) % 1560 - 100; ctx.fillRect(x, -DY, 16, DY + 70); ctx.fillRect(x - 30, 60, 76, 12); }
+  // rails with ties (holes are left out)
+  const isGap = x => g && g.obs.some(o => o.type === 'gap' && x > o.x && x < o.x + o.w);
+  ctx.fillStyle = BASALT; ctx.fillRect(0, RAIL_Y + 6, W, H - RAIL_Y);
+  if (g) for (const o of g.obs) if (o.type === 'gap') { const gg = ctx.createLinearGradient(0, RAIL_Y, 0, H); gg.addColorStop(0, '#1a0f10'); gg.addColorStop(1, LAVA); ctx.fillStyle = gg; ctx.fillRect(o.x, RAIL_Y + 6, o.w, H - RAIL_Y); }
+  ctx.fillStyle = '#7a5a3a';
+  for (let x = -((off) % 40); x < W; x += 40) if (!isGap(x + 8)) ctx.fillRect(x, RAIL_Y + 2, 18, 8);
+  ctx.strokeStyle = '#b8bec6'; ctx.lineWidth = 4;
+  ctx.beginPath(); let pen = false;
+  for (let x = 0; x <= W; x += 6) { if (isGap(x)) { pen = false; continue; } if (!pen) { ctx.moveTo(x, RAIL_Y + 2); pen = true; } else ctx.lineTo(x, RAIL_Y + 2); }
+  ctx.stroke();
+  if (!g) return;
+  for (const o of g.obs) {
+    if (o.type === 'rock') { ctx.fillStyle = BASALT_L; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(o.x, RAIL_Y + 2); ctx.lineTo(o.x + 6, RAIL_Y - o.h + 4); ctx.lineTo(o.x + o.w * 0.6, RAIL_Y - o.h); ctx.lineTo(o.x + o.w, RAIL_Y + 2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    if (o.type === 'bat') drawBat(o.x + o.w / 2, o.y + Math.sin(o.t * 0.15) * 8, -1, o.t, 1.1, false);
+  }
+  for (const gm of g.gems) if (!gm.done) { ctx.save(); ctx.translate(gm.x, gm.y); ctx.fillStyle = '#5ae0ff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(9, -2); ctx.lineTo(0, 10); ctx.lineTo(-9, -2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+  // the cart with Kai
+  if (g.result !== 'lose' && !(g.inv > 0 && Math.floor(g.inv / 5) % 2 === 0)) {
+    drawKaiFigure({ x: CART_X - 4, y: g.y - 30, tilt: g.ground ? 0 : -0.08, crouch: 6, push: 0, flip: 0, armsUp: !g.ground, wind: 0.9, outfit: SAVE.outfit });
+    drawCart(CART_X, g.y + 4, 1, true);
+  }
+  ctx.save(); ctx.translate(0, -DY);
+  ctx.fillStyle = 'rgba(20,10,10,0.6)'; ctx.beginPath(); ctx.roundRect(W / 2 - 170, 8, 340, 30, 12); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(tx('Noch {s} s', { s: Math.max(0, Math.ceil((LORE_T - g.t) / 60)) }) + '   ·   ' + tx('Unfälle: {n} / 3', { n: g.crashes }), W / 2, 24);
+  ctx.restore();
+}
+
+// ---------------- HUD ----------------
+function drawHUD() {
+  ctx.save(); ctx.translate(0, -DY); ctx.textBaseline = 'middle';
+  const x = 18, hy = 18, n = S.hearts, show = Math.min(n, 8);
+  const boxW = n > 8 ? 120 : Math.max(60, show * 22 + 16);
+  ctx.fillStyle = S.heartFlash > 0 ? 'rgba(120,10,20,0.8)' : S.heartFlash < 0 ? 'rgba(120,90,10,0.8)' : 'rgba(20,30,50,0.6)';
+  ctx.beginPath(); ctx.roundRect(x - 6, hy - 6, boxW, 26, 10); ctx.fill();
+  if (n > 8) { drawHeart(x + 10, hy + 7, 9, true); ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial'; ctx.fillText('× ' + n, x + 26, hy + 8); }
+  else for (let i = 0; i < Math.max(show, 1); i++) drawHeart(x + 10 + i * 22, hy + 7, 9, i < n);
+  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W - 168, 10, 156, 30, 10); ctx.fill();
+  drawCoin({ x: W - 148, y: 25, p: 0 });
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial'; ctx.fillText('× ' + S.coins, W - 132, 26);
+  for (const [b, on, icon] of [[BTN.music, Audio.musicOn, drawNoteIcon], [BTN.sfx, Audio.sfxOn, drawSpeakerIcon]]) {
+    ctx.fillStyle = on ? 'rgba(20,30,50,0.6)' : 'rgba(80,10,10,0.7)'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 9); ctx.fill();
+    icon(b.x + b.w / 2 - 1, b.y + b.h / 2, on);
+  }
+  drawProgressBox(12, 44);
+  if (S.phase === 'play') drawWayBar(S.kai.x, BOSS_X, CHECKPOINTS, S.cpX, [['lore', SITES.lore], ['anky', MID_X + 200]], tx('VULKAN'), '#ff9a2a');
+  if (S.fight === 'anky' && S.anky) drawBossBar(tx('MAGMA-ANKYLOSAURUS'), S.anky.bar);
+  if (S.fight === 'volcano' && S.boss) drawBossBar(tx('RIESENVULKAN'), S.boss.bar);
+  drawScoreBox(S.score);
+  if (S.msgTimer > 0) {
+    ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
+    ctx.strokeText(S.msg, W / 2, 84); ctx.fillText(S.msg, W / 2, 84); ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+function drawNoteIcon(x, y, on) {
+  ctx.save(); ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(x - 3, y + 5, 4, 3, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x + 1, y + 5); ctx.lineTo(x + 1, y - 8); ctx.lineTo(x + 7, y - 5); ctx.stroke();
+  if (!on) { ctx.strokeStyle = '#ff6a5a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x - 9, y - 9); ctx.lineTo(x + 9, y + 9); ctx.stroke(); }
+  ctx.restore();
+}
+function drawSpeakerIcon(x, y, on) {
+  ctx.save(); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x - 8, y - 3); ctx.lineTo(x - 4, y - 3); ctx.lineTo(x + 1, y - 8); ctx.lineTo(x + 1, y + 8); ctx.lineTo(x - 4, y + 3); ctx.lineTo(x - 8, y + 3); ctx.closePath(); ctx.fill();
+  if (on) { ctx.beginPath(); ctx.arc(x + 3, y, 6, -0.8, 0.8); ctx.stroke(); }
+  else { ctx.strokeStyle = '#ff6a5a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x + 4, y - 5); ctx.lineTo(x + 10, y + 5); ctx.moveTo(x + 10, y - 5); ctx.lineTo(x + 4, y + 5); ctx.stroke(); }
+  ctx.restore();
+}
+
+// ---------------- panels ----------------
+function panel(title, lines, titleColor, ty = 78) {
+  ctx.save(); ctx.fillStyle = 'rgba(30,10,6,0.78)'; ctx.fillRect(0, -VH, W, 3 * VH);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = titleColor; ctx.strokeStyle = OUT; ctx.lineWidth = 6; ctx.font = 'bold 40px Arial';
+  ctx.strokeText(title, W / 2, ty); ctx.fillText(title, W / 2, ty);
+  ctx.fillStyle = '#fff2e6'; ctx.font = 'bold 15px Arial';
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, 120 + i * (lines.length > 4 ? 21 : 24)));
+  ctx.restore();
+}
+function button(b, label, c1, c2) {
+  ctx.save(); const pulse = 1 + Math.sin(S.t * 0.08) * 0.03;
+  ctx.translate(b.x + b.w / 2, b.y + b.h / 2); ctx.scale(pulse, pulse);
+  const g = ctx.createLinearGradient(0, -b.h / 2, 0, b.h / 2); g.addColorStop(0, c1); g.addColorStop(1, c2);
+  ctx.fillStyle = g; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, 14); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, 0, 1);
+  ctx.restore();
+}
+function drawScreens() {
+  const touch = CTRL.touch;
+  if (S.phase === 'start') {
+    panel(tx('DIE LAVAHÖHLEN'), [
+      touch ? tx('◀ ▶ links gedrückt halten = fahren · SPRUNG rechts = springen') : tx('Pfeil ← / → halten = fahren · Leertaste / Klick = springen'),
+      touch ? tx('Neu: WASSERBOMBEN – Wurf-Taste rechts unten') : tx('Neu: WASSERBOMBEN – X oder rechte Maustaste'),
+      tx('Das Magma-Board fährt kurz über Lava – aber nicht zu lange, sonst wird es zu heiß!'),
+      tx('Eine Wasserbombe auf Lava macht für kurze Zeit einen Stein-Weg.'),
+      tx('In der Mitte: der MAGMA-ANKYLOSAURUS. Am Ende: der RIESENVULKAN.'),
+    ], '#ffb02e');
+    button(BTN.start, '▶  ' + tx('LOS GEHT\'S'), '#34c759', '#1f8f3c');
+  }
+  if (S.phase === 'ask' && S.ask === 'up') {
+    panel(tx('ZURÜCK INS DINO-TAL?'), [tx('Durch die Röhre kommst du wieder hinauf ins Tal.')], '#9fe07a');
+    button(BTN.yes, '▲ ' + tx('JA, HINAUF'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, HIERBLEIBEN'), '#8a96a8', '#5d6878');
+  } else if (S.phase === 'ask') {
+    panel(tx('LORE-FAHRT'), [tx('Rase 25 Sekunden mit der Lore durch die Mine!'), tx('Tippen / Leertaste = springen: über Löcher und Steine, aber nicht in die Fledermäuse.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffb02e');
+    button(BTN.yes, tx('JA, SPIELEN!'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
+  }
+  if (S.phase === 'lore' && S.game && S.game.result) {
+    ctx.save(); ctx.fillStyle = 'rgba(30,10,6,0.55)'; ctx.fillRect(0, -VH, W, 3 * VH); ctx.restore();
+    resultPanel(S.game.result === 'win' ? tx('Super gefahren!') : tx('Zu viele Unfälle! Versuch es nochmal.'), S.game.result === 'win');
+  }
+  if (S.phase === 'gameover') {
+    panel(tx('KEINE LEBEN MEHR!'), [tx('Alle 3 Leben sind weg. Nochmal versuchen?'), tx('Du startest beim letzten Checkpoint.')], '#ff7a6a');
+    button(BTN.goYes, tx('NOCHMAL VERSUCHEN'), '#36c6f4', '#1677a8'); button(BTN.goNo, tx('NEIN – ZUM MENÜ'), '#8a96a8', '#5d6878');
+  }
+  if (S.phase === 'won') {
+    const all = SAVE.done.tal && SAVE.done.hoehe && SAVE.done.lava;
+    panel(tx('DER RIESENVULKAN IST AUS!'), [tx('Die Lavahöhlen sind geschafft! +30 Münzen'), ...summaryLines(S.summary),
+      all ? tx('Alle drei Bosse besiegt – Level 3 ist geschafft!') : tx('Noch offen:') + ' ' + openBosses().join(' · ')], '#7dffa0');
+    button(BTN.up, '▲ ' + tx('ZURÜCK INS TAL'), '#34c759', '#1f8f3c'); button(BTN.menu, tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
+  }
+}
+function resultPanel(text, win) {
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 26px Arial';
+  ctx.strokeText(text, W / 2, 190); ctx.fillText(text, W / 2, 190);
+  if (win) { const t = tx('+20 Münzen · Pokal-Stern!') + (S.game && S.game.pts ? '  ·  +' + fmtNum(PTS.mini) + ' ' + tx('Punkte') : ''); ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(t, W / 2, 222); ctx.fillText(t, W / 2, 222); }
+  ctx.restore();
+  if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
+}
+
+Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu });
+return ME;
+}
+
 // ======================================================================
 // LEVEL 2 – ONE PAGE: city, sky and deep sea live in the same canvas.
 // Switching worlds is a continuous camera move (like Level 1):
@@ -4156,8 +5514,8 @@ return ME;
 // ======================================================================
 let CUR = null, TRANS = null;
 // LEVEL 3 – DINOLAND: the dino valley and the Felsenhöhe above it (the Lavahöhlen follow).
-const FACTORY = { tal: makeTal, hoehe: makeHoehe };
-const THEME = { tal: 'dino', hoehe: 'hoehe' };
+const FACTORY = { tal: makeTal, hoehe: makeHoehe, lava: makeLava };
+const THEME = { tal: 'dino', hoehe: 'hoehe', lava: 'lava' };
 const worldKey = file => (file || 'tal').replace('.html', '');
 function makeWorld(file, query) { const key = worldKey(file); const w = FACTORY[key](new URLSearchParams(query || '')); w.key = key; w.fromFinal = /from=replay/.test(query || ''); return w; }
 function activate(w) {
@@ -4173,7 +5531,8 @@ const lerp = (a, b, u) => a + (b - a) * u;
 function beginTransition(file, query) {
   if (TRANS) return;
   const from = CUR, toKey = worldKey(file);
-  const kind = (from.key === 'stadt' && toKey === 'himmel') || (from.key === 'tal' && toKey === 'hoehe') ? 'up'
+  const kind = from.key === 'tal' && toKey === 'lava' ? 'pipe'
+    : (from.key === 'stadt' && toKey === 'himmel') || (from.key === 'tal' && toKey === 'hoehe') || (from.key === 'lava' && toKey === 'tal') ? 'up'
     : (from.key === 'himmel' && toKey === 'stadt') || (from.key === 'hoehe' && toKey === 'tal') ? 'down'
     : /final=1/.test(query) ? 'cut'
     : from.key === 'stadt' && toKey === 'tiefsee' ? (/pipe=1/.test(query) ? 'pipe' : 'dive')
@@ -4185,7 +5544,7 @@ function beginTransition(file, query) {
   // Kai's start / end point ON THE SCREEN (the dino worlds scroll, so the camera is taken off)
   const x1 = next.S.kai && next.S.cam != null ? next.S.kai.x - next.S.cam : 250;
   TRANS = { kind, splash: /splash=1/.test(query || ''), from, to: next, t: 0, T: kind === 'up' ? 140 : kind === 'down' ? 130 : kind === 'pipe' ? 170 : 150, x0: k.x - (from.S.cam || 0), x1, y0: k.y, splashed: false,
-    climb: from.key === 'tal' || from.key === 'hoehe' };
+    climb: kind !== 'pipe' && ['tal', 'hoehe', 'lava'].includes(from.key), lava: toKey === 'lava' || from.key === 'lava' };
   from.S.hideKai = true; from.S.noHud = true; next.S.hideKai = true; next.S.noHud = true;
   next.S.phase = 'transit';
 }
@@ -4239,9 +5598,10 @@ function transKai(tr, p) {
     o.wings = undefined; o.diver = p < 0.55; o.armsUp = p > 0.45 && p < 0.9; o.crouch = p > 0.93 ? 7 : 3;
   } else if (tr.kind === 'pipe') {
     // sinks into the tube, slides down the underground, comes out at the top of the sea
-    y = p < 0.12 ? lerp(tr.y0, tr.y0 + 70, easeIn(p / 0.12)) : lerp(tr.y0 + 70, 210, ease((p - 0.12) / 0.88));
-    o.wings = undefined; o.diver = p > 0.75; o.armsUp = p > 0.08 && p < 0.8; o.crouch = 5;
-    return { x: p < 0.78 ? tr.x0 : lerp(tr.x0, 250, ease((p - 0.78) / 0.22)), y, o };
+    const endY = tr.lava ? FLOOR : 210;
+    y = p < 0.12 ? lerp(tr.y0, tr.y0 + 70, easeIn(p / 0.12)) : lerp(tr.y0 + 70, endY, ease((p - 0.12) / 0.88));
+    o.wings = undefined; o.diver = !tr.lava && p > 0.75; o.armsUp = p > 0.08 && p < 0.8; o.crouch = 5;
+    return { x: p < 0.78 ? tr.x0 : lerp(tr.x0, tr.lava ? tr.x1 : 250, ease((p - 0.78) / 0.22)), y, o };
   } else if (tr.splash) {
     // came off the harbor pier: already in the water – straight down to where the sea game starts
     y = lerp(tr.y0, 210, ease(p));
@@ -4258,10 +5618,16 @@ function drawSeam(tr, y) {
   if (tr.kind === 'pipe') {
     // underground: earth, stones, and the green tube going straight down
     const y2 = y + PIPE_GAP;
-    const g = ctx.createLinearGradient(0, y, 0, y2); g.addColorStop(0, '#6b4a2e'); g.addColorStop(0.5, '#4a321f'); g.addColorStop(1, '#2a3f4f');
+    const g = ctx.createLinearGradient(0, y, 0, y2); g.addColorStop(0, '#6b4a2e'); g.addColorStop(0.5, '#4a321f'); g.addColorStop(1, tr.lava ? '#3a1c14' : '#2a3f4f');
     ctx.fillStyle = g; ctx.fillRect(0, y, W, PIPE_GAP);
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     for (let i = 0; i < 40; i++) { ctx.beginPath(); ctx.ellipse((i * 137) % W, y + 20 + (i * 53) % (PIPE_GAP - 40), 10 + i % 4 * 4, 6 + i % 3 * 2, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore(); return;
+  }
+  if (tr.lava) {
+    // between the valley and the lava caves: a band of rock and earth
+    const g = ctx.createLinearGradient(0, y - 60, 0, y + 60); g.addColorStop(0, '#6b4a2e'); g.addColorStop(0.5, '#3a281c'); g.addColorStop(1, '#2a1810');
+    ctx.fillStyle = g; ctx.fillRect(0, y - 60, W, 120);
     ctx.restore(); return;
   }
   if (tr.kind === 'dive' || tr.kind === 'surface') {
@@ -4285,7 +5651,7 @@ function drawSeam(tr, y) {
 // the open space above each world (the screen is taller than the world): matching sky / water colour
 function drawBand(w) {
   if (DY <= 0) return;
-  const S2 = w.S, cols = w.key === 'tal' ? ['#f2a65a', '#f7c47e'] : w.key === 'hoehe' ? ['#4fa8e6', '#5fb3ea'] : w.key === 'stadt' ? ['#479fdc', '#5fb8ec'] : w.key === 'tiefsee' ? ['#47bde3', '#1a8fbf']
+  const S2 = w.S, cols = w.key === 'tal' ? ['#f2a65a', '#f7c47e'] : w.key === 'hoehe' ? ['#4fa8e6', '#5fb3ea'] : w.key === 'lava' ? ['#140a0a', '#1a0f10'] : w.key === 'stadt' ? ['#479fdc', '#5fb8ec'] : w.key === 'tiefsee' ? ['#47bde3', '#1a8fbf']
     : S2.phase === 'foot' ? ['#7cc9f4', '#7cc9f4'] : ['#55b3ec', '#6cc3f2'];
   const g = ctx.createLinearGradient(0, 0, 0, DY + 1); g.addColorStop(0, cols[0]); g.addColorStop(1, cols[1]);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, DY + 1);
@@ -4320,7 +5686,9 @@ function drawTransition() {
     // the tube from the city street down through the earth into the sea
     const top = tr.y0 + DY + off.from, bot = off.seam + PIPE_GAP + 50, x1 = tr.x0 - 40, x2 = tr.x0 + 40;
     tube = { top, bot, x1, x2 };
-    const g = ctx.createLinearGradient(x1, 0, x2, 0); g.addColorStop(0, '#1f7a34'); g.addColorStop(0.3, '#4fc45f'); g.addColorStop(0.55, '#2f9e45'); g.addColorStop(1, '#165c27');
+    const g = ctx.createLinearGradient(x1, 0, x2, 0);
+    if (tr.lava) { g.addColorStop(0, '#5a4a48'); g.addColorStop(0.3, '#b8a69c'); g.addColorStop(0.55, '#8a7a74'); g.addColorStop(1, '#3a2c2a'); }
+    else { g.addColorStop(0, '#1f7a34'); g.addColorStop(0.3, '#4fc45f'); g.addColorStop(0.55, '#2f9e45'); g.addColorStop(1, '#165c27'); }
     ctx.fillStyle = g; ctx.fillRect(x1, Math.max(off.seam, top + 20), x2 - x1, bot - Math.max(off.seam, top + 20));
     ctx.fillStyle = 'rgba(10,40,20,0.55)'; ctx.fillRect(x1 + 8, top + 6, x2 - x1 - 16, bot - top - 6);
     ctx.fillStyle = '#165c27'; ctx.beginPath(); ctx.roundRect(x1 - 6, bot - 14, x2 - x1 + 12, 16, 4); ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.stroke();
@@ -4328,7 +5696,7 @@ function drawTransition() {
   drawKaiFigure(Object.assign({ x: kk.x, y: kk.y + DY, push: 0, flip: 0, wind: 0.8, outfit: SAVE.outfit, prop: tr.t * 0.3 }, kk.o));
   if (tube) {
     // the front of the tube is see-through, so Kai is visible sliding inside
-    ctx.fillStyle = 'rgba(60,180,80,0.38)'; ctx.fillRect(tube.x1, tube.top + 20, tube.x2 - tube.x1, tube.bot - tube.top - 34);
+    ctx.fillStyle = TRANS && TRANS.lava ? 'rgba(200,170,150,0.25)' : 'rgba(60,180,80,0.38)'; ctx.fillRect(tube.x1, tube.top + 20, tube.x2 - tube.x1, tube.bot - tube.top - 34);
     ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(tube.x1, tube.top + 20); ctx.lineTo(tube.x1, tube.bot - 14); ctx.moveTo(tube.x2, tube.top + 20); ctx.lineTo(tube.x2, tube.bot - 14); ctx.stroke();
   }
 }
@@ -4337,7 +5705,7 @@ function drawTransition() {
 // Progress is saved automatically (browser storage on this device).
 // With a saved game the page opens with WEITERSPIELEN (big) and "Komplett neu anfangen" (small, asks first).
 const MENU = { open: false, btns: {} }, CONFIRM = { open: false, btns: {} };
-const hasProgress = () => !!(SAVE.started || SAVE.done.tal || SAVE.done.hoehe || SAVE.done.lava || SAVE.items.magmaBoard || SAVE.seenHoehe);
+const hasProgress = () => !!(SAVE.started || SAVE.done.tal || SAVE.done.hoehe || SAVE.done.lava || SAVE.items.magmaBoard || SAVE.seenHoehe || SAVE.seenLava);
 function askNewGame() { CONFIRM.open = true; Audio.play('warn'); }
 function doNewGame() {
   const keep = { char: SAVE.char, outfit: SAVE.outfit, outfitKai: SAVE.outfitKai, outfitBali: SAVE.outfitBali, owned: SAVE.owned, importedL2: true, best: SAVE.best || 0 };
@@ -4379,7 +5747,10 @@ function drawMenu() {
   // little overview: worlds + coins
   drawWorldIcon('tal', W / 2 - 60, cy - 26, SAVE.done.tal); drawWorldIcon('hoehe', W / 2 - 30, cy - 26, SAVE.done.hoehe); drawWorldIcon('lava', W / 2, cy - 26, SAVE.done.lava);
   ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left'; ctx.fillText('● ' + SAVE.coins, W / 2 + 50, cy - 26);
+  const stars = ['rodeo', 'fossil', 'ptero', 'lore'].filter(m => SAVE.mini[m] === true).length;
+  ctx.fillStyle = '#ffd23a'; ctx.fillText('★ ' + stars + '/4', W / 2 + 110, cy - 26);
   ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial';
+  if (stars === 4 && SAVE.done.tal && SAVE.done.hoehe && SAVE.done.lava) ctx.fillText(tx('100 % – POKAL! Alles geschafft!'), W / 2, cy + (hasProgress() ? 186 : 146));
   ctx.fillText(tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score || 0), r: fmtNum(SAVE.best || 0) }), W / 2, cy + (hasProgress() ? 166 : 126));
   ctx.restore();
   const prog = hasProgress();
@@ -4495,6 +5866,12 @@ function ctlButton(c, pressed, label, icon) {
     ctx.beginPath(); ctx.moveTo(x, y - 20); ctx.lineTo(x + 17, y); ctx.lineTo(x + 7, y); ctx.lineTo(x + 7, y + 14); ctx.lineTo(x - 7, y + 14); ctx.lineTo(x - 7, y); ctx.lineTo(x - 17, y); ctx.closePath(); ctx.fill();
   } else if (icon === 'sling') {
     drawSlingIcon(x, y - 1, 1.18);
+  } else if (icon === 'bomb') {
+    ctx.save(); ctx.translate(x, y + 2); ctx.scale(1.6, 1.6); ctx.strokeStyle = OUT; ctx.lineWidth = 1.6;
+    ctx.fillStyle = '#3aa0f0'; ctx.beginPath(); ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(-3, -4, 2.6, 3.4, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1f6fb8'; ctx.beginPath(); ctx.moveTo(-3, 10); ctx.lineTo(3, 10); ctx.lineTo(0, 14); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
   } else if (icon === 'left' || icon === 'right') {
     const d = icon === 'left' ? -1 : 1;
     ctx.beginPath(); ctx.moveTo(x + d * 20, y + 8); ctx.lineTo(x - d * 12, y - 12); ctx.lineTo(x - d * 12, y + 28); ctx.closePath(); ctx.fill();
@@ -4534,7 +5911,7 @@ function drawControls() {
     ctlButton(leftC(), want < 0, '', 'left'); ctlButton(rightC(), want > 0, '', 'right');
   }
   if (jumpVisible()) ctlButton(jumpC(), CTRL.jumpP.size > 0, tx('SPRUNG'), 'jump');
-  if (shootVisible()) ctlButton(shootC(), CTRL.shootP.size > 0 || CTRL.right, tx(CUR.ctl.icon === 'stick' ? 'SCHLAG' : 'SCHUSS'), CUR.ctl.icon);
+  if (shootVisible()) ctlButton(shootC(), CTRL.shootP.size > 0 || CTRL.right, tx(CUR.ctl.icon === 'stick' ? 'SCHLAG' : CUR.ctl.icon === 'bomb' ? 'WURF' : 'SCHUSS'), CUR.ctl.icon);
 }
 function updateControls() {
   // holding the shoot button (or the right mouse button) keeps shooting – the weapon's own cooldown sets the pace

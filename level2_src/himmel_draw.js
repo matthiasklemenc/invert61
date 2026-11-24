@@ -432,7 +432,11 @@ function drawHarp() {
     ctx.fillStyle = lit ? '#ffd23a' : pressed ? '#bfe6ff' : '#ffffff';
     ctx.strokeStyle = OUT; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.roundRect(x + 2, P.y, P.keyW - 4, P.keyH, [0, 0, 8, 8]); ctx.fill(); ctx.stroke();
-    if (hint) { ctx.fillStyle = `rgba(255,210,58,${h.fails >= 8 ? 0.55 : 0.35 * Math.min(1, h.hintT / 10)})`; ctx.fillRect(x + 4, P.y + 2, P.keyW - 8, P.keyH - 4); }
+    if (hint) {
+      // the key to press glows yellow (stronger than before), with a yellow frame
+      ctx.fillStyle = `rgba(255,200,30,${0.7 * Math.min(1, h.hintT / 10)})`; ctx.fillRect(x + 4, P.y + 2, P.keyW - 8, P.keyH - 4);
+      ctx.save(); ctx.strokeStyle = '#ffb300'; ctx.lineWidth = 4; ctx.strokeRect(x + 4, P.y + 2, P.keyW - 8, P.keyH - 4); ctx.restore();
+    }
     if (lit) { ctx.save(); ctx.shadowColor = '#ffd23a'; ctx.shadowBlur = 20; ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 3; ctx.strokeRect(x + 3, P.y + 1, P.keyW - 6, P.keyH - 2); ctx.restore(); }
     ctx.fillStyle = OUT; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText(names[i], x + P.keyW / 2, P.y + P.keyH - 16);
     if (!isTouch) { ctx.font = '10px Arial'; ctx.fillStyle = '#8a8a8a'; ctx.fillText('ASDFGHJK'[i], x + P.keyW / 2, P.y + 14); }
@@ -442,7 +446,7 @@ function drawHarp() {
   // status line
   ctx.textAlign = 'center'; ctx.font = 'bold 13px Arial'; ctx.fillStyle = '#fff';
   const st = h.mode === 'input' ? tx('Du bist dran!') : h.mode === 'end' ? '' : tx('Hör zu…');
-  ctx.fillText(st + '   ·   ' + tx('Versuch {a} / {b}', { a: Math.min(h.fails + 1, 10), b: 10 }), W / 2, P.y - 18);
+  ctx.fillText(st + '   ·   ' + tx('Versuch {a} / {b}', { a: Math.min(h.fails + 1, HARP_TRIES), b: HARP_TRIES }), W / 2, P.y - 18);
   // progress dots of the melody
   for (let i = 0; i < h.melody.length; i++) { ctx.fillStyle = h.mode === 'input' && i < h.idx ? '#5fd36a' : 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.arc(P.x0 - 4 + i * 14, P.y - 18, 4, 0, Math.PI * 2); ctx.fill(); }
   ctx.restore();

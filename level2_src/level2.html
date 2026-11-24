@@ -526,6 +526,7 @@ const TR = {
   'Wir üben nächstes Mal weiter!': ['We\'ll practise again next time!', '¡Practicamos la próxima vez!'],
   'Die Himmelstreppe führt zurück in die Stadt…': ['The stairway leads back to the city…', 'La escalera te lleva de vuelta a la ciudad…'],
   'Ich spiele langsamer…': ['I\'ll play slower…', 'Toco más despacio…'], 'Ich helfe dir ein bisschen…': ['I\'ll help you a little…', 'Te ayudo un poquito…'],
+  'Letzter Versuch – ich zeige dir jede Taste!': ['Last try – I\'ll show you every key!', '¡Último intento – te muestro cada tecla!'],
   // ---------- level end ----------
   'LEVEL 2 GESCHAFFT!': ['LEVEL 2 COMPLETE!', '¡NIVEL 2 COMPLETADO!'], 'LEVEL 3 FREIGESCHALTET': ['LEVEL 3 UNLOCKED', 'NIVEL 3 DESBLOQUEADO'],
   'LEVEL 3: UNDER CONSTRUCTION': ['LEVEL 3: UNDER CONSTRUCTION', 'NIVEL 3: EN CONSTRUCCIÓN'], 'LEVEL 3: DINOLAND': ['LEVEL 3: DINOLAND', 'NIVEL 3: DINOLANDIA'],
@@ -3450,7 +3451,10 @@ function startHarp() {
   Audio.pauseBg(true);   // harp: background music off (it comes back when Kai leaves the sky)
   flash(tx('Hör gut zu und spiel die Melodie nach!'), 120);
 }
-function harpTempo() { return S.harp.fails >= 3 ? 52 : 36; }
+// 5 tries: from the 3rd try the angel plays slower, in the 4th each key glows briefly before it is due,
+// in the 5th (last) try each key glows until it is pressed (at most 5 seconds)
+const HARP_TRIES = 5;
+function harpTempo() { return S.harp.fails >= 2 ? 52 : 36; }
 function updateHarp(dt) {
   const h = S.harp;
   if (h.litT > 0) { h.litT -= dt; if (h.litT <= 0) h.lit = -1; }
@@ -3470,8 +3474,8 @@ function updateHarp(dt) {
 }
 function setHint() {
   const h = S.harp;
-  if (h.fails >= 8) { h.hint = h.melody[h.idx]; h.hintT = 99999; }          // long glow
-  else if (h.fails >= 6) { h.hint = h.melody[h.idx]; h.hintT = 22; }        // short glow
+  if (h.fails >= 4) { h.hint = h.melody[h.idx]; h.hintT = 300; }            // 5th try: glows until pressed (max. 5 s)
+  else if (h.fails >= 3) { h.hint = h.melody[h.idx]; h.hintT = 30; }        // 4th try: short, bright glow
   else { h.hint = -1; h.hintT = 0; }
 }
 function harpClick(p) {
@@ -3489,10 +3493,10 @@ function harpKey(i) {
     } else setHint();
   } else {
     h.fails++; Audio.play('denied');
-    if (h.fails >= 10) { h.mode = 'end'; h.timer = 150; h.done = false; flash(tx('Wir üben nächstes Mal weiter!'), 150); }
+    if (h.fails >= HARP_TRIES) { h.mode = 'end'; h.timer = 150; h.done = false; flash(tx('Wir üben nächstes Mal weiter!'), 150); }
     else {
       h.mode = 'wrong'; h.timer = 70;
-      flash(h.fails === 3 ? tx('Ich spiele langsamer…') : h.fails === 6 ? tx('Ich helfe dir ein bisschen…') : tx('Falsch – hör nochmal zu!'), 70);
+      flash(h.fails === 2 ? tx('Ich spiele langsamer…') : h.fails === 3 ? tx('Ich helfe dir ein bisschen…') : h.fails === 4 ? tx('Letzter Versuch – ich zeige dir jede Taste!') : tx('Falsch – hör nochmal zu!'), 90);
     }
   }
 }
@@ -4086,7 +4090,11 @@ function drawHarp() {
     ctx.fillStyle = lit ? '#ffd23a' : pressed ? '#bfe6ff' : '#ffffff';
     ctx.strokeStyle = OUT; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.roundRect(x + 2, P.y, P.keyW - 4, P.keyH, [0, 0, 8, 8]); ctx.fill(); ctx.stroke();
-    if (hint) { ctx.fillStyle = `rgba(255,210,58,${h.fails >= 8 ? 0.55 : 0.35 * Math.min(1, h.hintT / 10)})`; ctx.fillRect(x + 4, P.y + 2, P.keyW - 8, P.keyH - 4); }
+    if (hint) {
+      // the key to press glows yellow (stronger than before), with a yellow frame
+      ctx.fillStyle = `rgba(255,200,30,${0.7 * Math.min(1, h.hintT / 10)})`; ctx.fillRect(x + 4, P.y + 2, P.keyW - 8, P.keyH - 4);
+      ctx.save(); ctx.strokeStyle = '#ffb300'; ctx.lineWidth = 4; ctx.strokeRect(x + 4, P.y + 2, P.keyW - 8, P.keyH - 4); ctx.restore();
+    }
     if (lit) { ctx.save(); ctx.shadowColor = '#ffd23a'; ctx.shadowBlur = 20; ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 3; ctx.strokeRect(x + 3, P.y + 1, P.keyW - 6, P.keyH - 2); ctx.restore(); }
     ctx.fillStyle = OUT; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText(names[i], x + P.keyW / 2, P.y + P.keyH - 16);
     if (!isTouch) { ctx.font = '10px Arial'; ctx.fillStyle = '#8a8a8a'; ctx.fillText('ASDFGHJK'[i], x + P.keyW / 2, P.y + 14); }
@@ -4096,7 +4104,7 @@ function drawHarp() {
   // status line
   ctx.textAlign = 'center'; ctx.font = 'bold 13px Arial'; ctx.fillStyle = '#fff';
   const st = h.mode === 'input' ? tx('Du bist dran!') : h.mode === 'end' ? '' : tx('Hör zu…');
-  ctx.fillText(st + '   ·   ' + tx('Versuch {a} / {b}', { a: Math.min(h.fails + 1, 10), b: 10 }), W / 2, P.y - 18);
+  ctx.fillText(st + '   ·   ' + tx('Versuch {a} / {b}', { a: Math.min(h.fails + 1, HARP_TRIES), b: HARP_TRIES }), W / 2, P.y - 18);
   // progress dots of the melody
   for (let i = 0; i < h.melody.length; i++) { ctx.fillStyle = h.mode === 'input' && i < h.idx ? '#5fd36a' : 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.arc(P.x0 - 4 + i * 14, P.y - 18, 4, 0, Math.PI * 2); ctx.fill(); }
   ctx.restore();

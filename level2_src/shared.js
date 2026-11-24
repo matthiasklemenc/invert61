@@ -489,6 +489,7 @@ const TR = {
   'Wir üben nächstes Mal weiter!': ['We\'ll practise again next time!', '¡Practicamos la próxima vez!'],
   'Die Himmelstreppe führt zurück in die Stadt…': ['The stairway leads back to the city…', 'La escalera te lleva de vuelta a la ciudad…'],
   'Ich spiele langsamer…': ['I\'ll play slower…', 'Toco más despacio…'], 'Ich helfe dir ein bisschen…': ['I\'ll help you a little…', 'Te ayudo un poquito…'],
+  'Letzter Versuch – ich zeige dir jede Taste!': ['Last try – I\'ll show you every key!', '¡Último intento – te muestro cada tecla!'],
   // ---------- level end ----------
   'LEVEL 2 GESCHAFFT!': ['LEVEL 2 COMPLETE!', '¡NIVEL 2 COMPLETADO!'], 'LEVEL 3 FREIGESCHALTET': ['LEVEL 3 UNLOCKED', 'NIVEL 3 DESBLOQUEADO'],
   'LEVEL 3: UNDER CONSTRUCTION': ['LEVEL 3: UNDER CONSTRUCTION', 'NIVEL 3: EN CONSTRUCCIÓN'], 'LEVEL 3: DINOLAND': ['LEVEL 3: DINOLAND', 'NIVEL 3: DINOLANDIA'],
