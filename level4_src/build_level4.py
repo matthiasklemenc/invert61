@@ -20,7 +20,7 @@ for name, files in WORLDS:
 function {name}(QUERY) {{
 const ME = {{}};
 {src}
-Object.assign(ME, {{ S, update, draw, canBack: () => false, back: () => {{}}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu }});
+Object.assign(ME, {{ S, update, draw, canBack: () => false, back: () => {{}}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu, sayClick }});
 return ME;
 }}
 """)

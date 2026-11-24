@@ -52,7 +52,7 @@ const HOOKS = { worldInit, worldBegin, worldUpdate, worldPhase, worldPointer, wo
 function WAY_ICONS() { return [['rocket', 150], ['flip', FLIP_ZONES[0][0]], ['arcade', SITES.arcade], ['flip', FLIP_ZONES[1][0]]]; }
 function askInfo(id) {
   if (id === 'exit') return { title: tx('ZURÜCK NACH AURORA 61?'), lines: [tx('Mit der Rakete fliegst du zurück zu Abu auf Aurora 61.')], yes: '🚀 ' + tx('JA, LOSFLIEGEN'), no: tx('NEIN, HIERBLEIBEN'), color: '#7dffa0' };
-  return { title: tx('ALIEN-ATTACKE'), lines: [tx('Ein Spielautomat! Willst du ALIEN-ATTACKE spielen?'), tx('◀ ▶ = fahren · SCHUSS = schießen. 3 Wellen Aliens und dann das Mutterschiff!'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], yes: tx('JA, SPIELEN!'), color: '#b48cff' };
+  return { title: tx('ALIEN-ATTACKE'), lines: [tx('Ein Spielautomat! Willst du ALIEN-ATTACKE spielen?'), tx('◀ ▶ = fahren · SCHUSS = schießen. Erst die Aliens, dann das Mutterschiff!'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], yes: tx('JA, SPIELEN!'), color: '#b48cff' };
 }
 function wonInfo() {
   return { title: tx('STERNENFRESSER BESIEGT!'), lines: [tx('Der Löwe zeigt den Weg: Aurora 61 ist sichtbar! +30 Münzen'), ...summaryLines(S.summary), tx('Fahr hinunter zu Abu und Flappy auf Aurora 61!')],

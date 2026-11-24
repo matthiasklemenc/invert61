@@ -14,6 +14,26 @@ const S = {
   ask: null, asked: {}, near: {}, boss: null, mid: null, noHud: false, hideKai: false, game: null, fly: null, shopMsg: '', shopMsgT: 0,
 };
 const hook = (name, ...a) => { const f = HOOKS[name]; return f ? f(...a) : undefined; };
+// ---------------- read aloud: every text gets a 🔊 button (Kai can't read yet) – in the chosen language ----------------
+const SAY = { list: [] };
+const canSpeak = () => !!window.speechSynthesis;
+function speak(text) {
+  try {
+    if (!window.speechSynthesis || !text) return;
+    // symbols are not read: arrows, dots, = …
+    const clean = text.replace(/[◀▶←→↑↓▲▼·=•|]/g, ', ').replace(/[^\p{L}\p{N}\s.,!?¡¿:;'’"„“()%+–-]/gu, ' ').replace(/\s*,\s*(,\s*)+/g, ', ').replace(/([.!?])\s*\./g, '$1').replace(/\s+/g, ' ').trim();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean); u.lang = { de: 'de-DE', en: 'en-US', es: 'es-ES' }[SAVE.lang] || 'de-DE'; u.rate = 0.92;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+// a tap in screen coordinates (from the controller): a 🔊 button hit?
+function sayClick(hp) {
+  if (!canSpeak()) return false;
+  const p = { x: hp.x, y: hp.y - DY };
+  for (let i = SAY.list.length - 1; i >= 0; i--) { const b = SAY.list[i]; if (p.x >= b.x - 6 && p.x <= b.x + b.w + 6 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6) { Audio.play('tink'); speak(b.text); return true; } }
+  return false;
+}
 
 // ---------------- map helpers ----------------
 const groundAt = x => GROUND.some(([a, b]) => x > a + 4 && x < b - 4);
@@ -96,7 +116,7 @@ window.addEventListener('keydown', e => {
   if (S.phase === 'start' && (e.code === 'Space' || e.code === 'Enter')) { beginWorld(); return; }
   if (hook('worldKey', e)) return;
   if (S.phase === 'shop') { if (e.code === 'Escape' || e.code === 'Enter') leaveShop(); return; }
-  if (S.phase === 'game') { if (!e.repeat && (e.code === 'Space' || e.code === 'KeyX' || e.code === 'ArrowUp')) { e.preventDefault(); hook('gameShoot'); } return; }
+  if (S.phase === 'game') { if (e.code === 'Space' || e.code === 'KeyX' || e.code === 'ArrowUp') { e.preventDefault(); hook('gameShoot'); } return; }
   if (!playing()) return;
   if (e.code === 'KeyX') { shoot(); return; }
   if (e.repeat) return;
@@ -535,5 +555,6 @@ const TEST = {
   startBoss() { TEST.setX(BOSS_X + 300); },
   coins(n) { S.coins = n; saveProgress(); },
   get S() { return S; },
+  get say() { return SAY.list; },
 };
 buildWorld();

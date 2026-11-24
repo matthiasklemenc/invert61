@@ -33,6 +33,8 @@ Object.assign(TR, {
   'Die Aliens sind gelandet!': ['The aliens have landed!', '¡Los aliens aterrizaron!'], 'Du wurdest getroffen!': ['You were hit!', '¡Te dieron!'],
   '◀ ▶ = fahren': ['◀ ▶ = ride', '◀ ▶ = moverse'], 'SCHUSS = Laser': ['SHOOT = laser', 'DISPARO = láser'],
   'Pfeile ← → = fahren': ['Arrows ← → = ride', 'Flechas ← → = moverse'], 'Leertaste / X = Laser': ['Space / X = laser', 'Espacio / X = láser'],
+  '◀ ▶ = fahren · SCHUSS = schießen. Erst die Aliens, dann das Mutterschiff!': ['◀ ▶ = ride · SHOOT = fire. First the aliens, then the mothership!', '◀ ▶ = moverse · DISPARO = disparar. ¡Primero los aliens, luego la nave nodriza!'],
+  'Die Aliens kommen!': ['Here come the aliens!', '¡Vienen los aliens!'], 'ALIENS': ['ALIENS', 'ALIENS'], '{n} Münzen': ['{n} coins', '{n} monedas'],
   'Glupschi': ['Goggly', 'Ojotón'], 'Zacki': ['Zappy', 'Picudo'], 'Wabbel': ['Wobbly', 'Gelatín'],
   // ---------- Sternenfresser ----------
   'STERNENFRESSER': ['STAR EATER', 'COMEESTRELLAS'], 'STERNENFRESSER BESIEGT!': ['STAR EATER DEFEATED!', '¡COMEESTRELLAS VENCIDO!'],

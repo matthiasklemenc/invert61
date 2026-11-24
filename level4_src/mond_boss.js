@@ -59,15 +59,6 @@ function quizBox() {
 const starPos = (C, i) => { const b = quizBox(); return { x: b.x + 20 + C.stars[i][0] * (b.w - 40), y: b.y + 20 + C.stars[i][1] * (b.h - 40) }; };
 function optRect(i) { const top = -DY + 132, h = Math.min(48, (H - 34 - top) / 5 - 7); return { x: 760, y: top + i * (h + 7), w: 330, h }; }
 function sayRect(i) { const r = optRect(i); return { x: r.x + r.w + 8, y: r.y, w: r.h + 6, h: r.h }; }
-function speak(text) {
-  try {
-    if (!window.speechSynthesis) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text); u.lang = { de: 'de-DE', en: 'en-US', es: 'es-ES' }[SAVE.lang] || 'de-DE'; u.rate = 0.9;
-    speechSynthesis.speak(u);
-  } catch (e) {}
-}
-const canSpeak = () => !!window.speechSynthesis;
 function updateQuiz(dt) {
   const q = S.quiz; if (!q) return;
   const b = S.boss; if (b) { b.t += dt; if (b.flash > 0) b.flash -= dt; b.bar += (b.hp / STAR_HP - b.bar) * Math.min(1, 0.1 * dt); }
@@ -103,7 +94,6 @@ function quizTap(p) {
       if (canSpeak() && inRect(p, sayRect(i))) { speak(tx(CONSTELLATIONS[c.opts[i]].name)); return; }
       if (inRect(p, optRect(i))) { answer(i); return; }
     }
-    if (canSpeak() && inRect(p, { x: 760, y: -DY + 86, w: 400, h: 36 })) speak(tx('Wie heißt dieses Sternbild?'));
   }
 }
 function answer(i) {

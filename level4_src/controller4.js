@@ -488,6 +488,8 @@ canvas.addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') CTRL.touch = true; else if (e.pointerType === 'mouse') CTRL.touch = false;
   // right mouse button never jumps – it shoots
   if (e.pointerType === 'mouse' && e.button === 2) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); mouseButtons(e); return; }
+  // 🔊 read-aloud buttons (Level 4): before anything else
+  if (!TRANS && !MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open && CUR && CUR.sayClick && CUR.sayClick(p)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); return; }
   if (EXIT.btn && exitVisible() && inB(p, EXIT.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); toMainMenu(); return; }
   if (shootVisible() && inShootZone(p)) { e.stopImmediatePropagation(); e.preventDefault(); CTRL.shootP.add(e.pointerId); ctlShoot(); return; }
   if (padVisible() && inPadZone(p)) {

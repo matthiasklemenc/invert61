@@ -28,7 +28,8 @@ function pixelArt(rows, x, y, px, col) {
     ctx.fillRect(Math.round(x + c * px), Math.round(y + r * px), px, px);
   }
 }
-const WAVES = [{ rows: 4, cols: 8, step: 34, bomb: 0.010 }, { rows: 5, cols: 8, step: 28, bomb: 0.014 }, { rows: 5, cols: 9, step: 22, bomb: 0.018 }];
+// one wave only (Kai: shorter!) – it marches faster from the start, then the mothership comes
+const WAVES = [{ rows: 4, cols: 8, step: 11, bomb: 0.012 }];
 function startArcade() {
   const k = S.kai; k.vx = 0; k.dir = 0;
   S.game = { id: 'alien', steer: true, t: 0, wave: 0, x: AFX + AFW / 2, dir: 0, shots: [], bombs: [], lives: 3, inv: 0, cool: 0, aliens: [], march: 0, marchN: 0, mdir: 1, frame: 0,
@@ -37,11 +38,12 @@ function startArcade() {
   S.phase = 'game'; Audio.play('blip'); Audio.setBoss(false);
 }
 function buildWave(i) {
-  const g = S.game, w = WAVES[i], gap = 54;
+  const g = S.game, w = WAVES[i], gap = 54, small = afBot() - afTop() < 400;
+  const rows = small ? 3 : w.rows, rg = small ? 32 : 38;      // a small screen (computer): one row less, so there is room to march down
   g.aliens = [];
   const x0 = AFX + (AFW - (w.cols - 1) * gap - 44) / 2;
-  for (let r = 0; r < w.rows; r++) for (let c = 0; c < w.cols; c++) g.aliens.push({ x: x0 + c * gap, y: afTop() + 46 + r * 38, type: r === 0 ? 0 : r < 3 ? 1 : 2, dead: false });
-  g.total = g.aliens.length; g.mdir = 1; g.march = 0; g.pause = 90; g.msg = tx('WELLE {n}', { n: i + 1 }); g.msgT = 90;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < w.cols; c++) g.aliens.push({ x: x0 + c * gap, y: afTop() + (small ? 30 : 46) + r * rg, type: r === 0 ? 0 : r < 2 ? 1 : 2, dead: false });
+  g.total = g.aliens.length; g.mdir = 1; g.march = 0; g.pause = 90; g.msg = tx('Die Aliens kommen!'); g.msgT = 90;
 }
 function buildShields() {
   const g = S.game; g.shields = [];
@@ -92,8 +94,8 @@ function updateArcade(dt) {
       g.march = 0; g.frame ^= 1;
       Audio.note([110, 98, 87, 82][g.marchN++ % 4], 0.09, 'square', 0.07);
       const minX = Math.min(...alive.map(a => a.x)), maxX = Math.max(...alive.map(a => a.x + 44));
-      if ((g.mdir > 0 && maxX + 8 > AFX + AFW - 6) || (g.mdir < 0 && minX - 8 < AFX + 6)) { g.mdir *= -1; for (const a of alive) a.y += 12; }
-      else for (const a of alive) a.x += 8 * g.mdir;
+      if ((g.mdir > 0 && maxX + 10 > AFX + AFW - 6) || (g.mdir < 0 && minX - 10 < AFX + 6)) { g.mdir *= -1; for (const a of alive) a.y += afBot() - afTop() < 400 ? 14 : 28; }
+      else for (const a of alive) a.x += 10 * g.mdir;
     }
     // bombs from the lowest alien of a column
     for (const a of alive) {
@@ -104,7 +106,7 @@ function updateArcade(dt) {
     if (!alive.length) {
       S.coins += 5; Audio.play('chime');
       if (g.wave < WAVES.length - 1) { g.wave++; buildWave(g.wave); }
-      else { g.mother = { x: AFX + AFW / 2 - 84, y: afTop() + 34, hp: 25, max: 25, t: 0, fire: 90, flash: 0 }; g.pause = 90; g.msg = tx('DAS MUTTERSCHIFF!'); g.msgT = 110; Audio.play('alarm'); }
+      else { g.mother = { x: AFX + AFW / 2 - 84, y: afTop() + 34, hp: 20, max: 20, t: 0, fire: 90, flash: 0 }; g.pause = 90; g.msg = tx('DAS MUTTERSCHIFF!'); g.msgT = 110; Audio.play('alarm'); }
     }
   } else {
     const m = g.mother; m.t += dt; if (m.flash > 0) m.flash -= dt;
@@ -203,14 +205,14 @@ function drawArcade() {
   // info: score, lives, wave / mothership energy
   ctx.save(); ctx.textBaseline = 'middle'; ctx.font = 'bold 15px "Courier New", monospace';
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.fillText(tx('PUNKTE') + ' ' + g.score, AFX + 8, afTop() + 12);
-  ctx.textAlign = 'right'; ctx.fillText(g.mother ? tx('MUTTERSCHIFF') : tx('WELLE {n}', { n: g.wave + 1 }) + ' / 3', AFX + AFW - 8, afTop() + 12);
+  ctx.textAlign = 'right'; ctx.fillText(g.mother ? tx('MUTTERSCHIFF') : tx('ALIENS') + ' ' + aliveAliens(g).length, AFX + AFW - 8, afTop() + 12);
   for (let i = 0; i < 3; i++) drawHeart(AFX + AFW / 2 - 24 + i * 24, afTop() + 12, 8, i < g.lives);
   if (g.mother) {
     const f = g.mother.hp / g.mother.max, bw = 240, bx = AFX + AFW / 2 - bw / 2, by = afTop() + 26;
     ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(bx, by, bw, 8);
     ctx.fillStyle = f > 0.6 ? '#34c759' : f > 0.3 ? '#ffcc2e' : '#ff3b30'; ctx.fillRect(bx, by, bw * f, 8);
   }
-  if (g.msgT > 0) { ctx.textAlign = 'center'; ctx.font = 'bold 30px "Courier New", monospace'; ctx.fillStyle = '#ffd23a'; ctx.globalAlpha = Math.min(1, g.msgT / 20); ctx.fillText(g.msg, AFX + AFW / 2, (afTop() + afBot()) / 2); ctx.globalAlpha = 1; }
+  if (g.msgT > 0) { sayBtn(AFX + AFW - 46, (afTop() + afBot()) / 2 - 18, g.msg, 36); ctx.textAlign = 'center'; ctx.font = 'bold 30px "Courier New", monospace'; ctx.fillStyle = '#ffd23a'; ctx.globalAlpha = Math.min(1, g.msgT / 20); ctx.fillText(g.msg, AFX + AFW / 2, (afTop() + afBot()) / 2); ctx.globalAlpha = 1; }
   // how to play (left and right of the machine)
   ctx.textAlign = 'center'; ctx.font = 'bold 13px Arial'; ctx.fillStyle = '#bfe6ff';
   const help = CTRL.touch ? [tx('◀ ▶ = fahren'), tx('SCHUSS = Laser')] : [tx('Pfeile ← → = fahren'), tx('Leertaste / X = Laser')];

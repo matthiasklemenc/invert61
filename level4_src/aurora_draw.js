@@ -330,6 +330,7 @@ function startPanel() {
     tx('In meinem OXXO gibt es den Mega-Mango-Kuchen für die Unterwelt.'),
     tx('Am Ende wartet die FARBHEXE GRISELLA.')].forEach((l, i) => ctx.fillText(l, 380, 190 + i * 20));
   ctx.restore();
+  sayBtn(336, 176, [touch ? tx('◀ ▶ = fahren · SPRUNG = springen · SCHUSS = Farbkugeln') : tx('← → = fahren · Leertaste = springen · X = Farbkugeln'), tx('Traurige Elefanten: gib ihnen 3 Mangos – dann fliegen sie dich über die Schlucht.'), tx('In meinem OXXO gibt es den Mega-Mango-Kuchen für die Unterwelt.'), tx('Am Ende wartet die FARBHEXE GRISELLA.')].join('. '), 34);
   button({ x: W / 2 + 140, y: 268, w: 220, h: 44 }, '▶  ' + tx('LOS GEHT\'S'), '#34c759', '#1f8f3c');
 }
 // Abu stands behind the counter in his OXXO

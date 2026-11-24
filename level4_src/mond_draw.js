@@ -388,6 +388,7 @@ function drawIntro() {
   else if (t > 540) { ctx.font = 'bold 44px Arial'; ctx.lineWidth = 8; ctx.fillStyle = '#ffffff'; ctx.strokeText(tx('DIE MONDBASIS'), W / 2 - 330, H / 2 - 40); ctx.fillText(tx('DIE MONDBASIS'), W / 2 - 330, H / 2 - 40); }
   ctx.restore();
   button(SKIP_BTN, tx('Überspringen') + ' ▶▶', '#4a6fa5', '#2c4a78');
+  sayBtn(W / 2 - 330 - 17, H / 2 + 84, tx(t < 180 ? 'Countdown!' : t < 260 ? 'START!' : t < 470 ? 'Auf zum Mond!' : 'DIE MONDBASIS'), 34);
 }
 function mixCol(a, b, u) {
   const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
@@ -456,10 +457,10 @@ function drawQuiz() {
     : c.state === 'picture' ? tx('Super! Das Sternbild ist zurück!')
     : c.state === 'aurora' ? tx('Im Löwen erscheint der Planet AURORA 61!') : tx('Wie heißt dieses Sternbild?');
   ctx.font = 'bold 18px Arial'; ctx.lineWidth = 5; ctx.fillStyle = '#ffe68a';
-  const hx = c.state === 'ask' || c.state === 'answered' ? 760 + (canSpeak() ? 42 : 0) : 740;
+  const hx = 760 + (canSpeak() ? 42 : 0);
   wrapStroke(head, hx, -DY + 104, 470, 22);
-  if ((c.state === 'ask' || c.state === 'answered') && canSpeak()) sayButton({ x: 760, y: -DY + 88, w: 34, h: 32 });
-  if (c.state === 'trace' && c.wrong >= 2) { ctx.font = 'bold 15px Arial'; ctx.fillStyle = '#9fd8ff'; ctx.lineWidth = 4; ctx.strokeText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); ctx.fillText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); }
+  sayBtn(760, -DY + 88, head, 34);
+  if (c.state === 'trace' && c.wrong >= 2) { sayBtn(700, -DY + 140, tx('Tipp: der gelb blinkende Stern ist der nächste.'), 30); ctx.font = 'bold 15px Arial'; ctx.fillStyle = '#9fd8ff'; ctx.lineWidth = 4; ctx.strokeText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); ctx.fillText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); }
   ctx.font = 'bold 14px Arial'; ctx.fillStyle = '#bfe6ff'; ctx.lineWidth = 4;
   const rd = tx('Sternbild {n}', { n: q.round + 1 }) + '   ·   ' + tx('Noch {n} Treffer', { n: b ? b.hp : 0 });
   ctx.strokeText(rd, 740, H - 14); ctx.fillText(rd, 740, H - 14);
@@ -475,13 +476,14 @@ function drawQuiz() {
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText((i + 1) + '.  ' + tx(CONSTELLATIONS[id].name), r.x + 14, r.y + r.h / 2 + 1);
       ctx.restore();
-      if (canSpeak()) sayButton(sayRect(i));
+      const sr = sayRect(i); sayBtn(sr.x, sr.y, tx(CONSTELLATIONS[id].name), sr.h);
     }
     if (c.state === 'answered') {
       ctx.save(); ctx.textAlign = 'center'; ctx.font = 'bold 26px Arial'; ctx.lineWidth = 6; ctx.strokeStyle = OUT;
       ctx.fillStyle = c.right ? '#7dffa0' : '#ffb0a0';
       const t = c.right ? tx('RICHTIG! Treffer!') : tx('Leider falsch – es ist: {n}', { n: tx(C.name) });
       ctx.strokeText(t, bx.x + bx.w / 2, bx.y + bx.h - 24); ctx.fillText(t, bx.x + bx.w / 2, bx.y + bx.h - 24);
+      sayBtn(bx.x + bx.w / 2 + ctx.measureText(t).width / 2 + 10, bx.y + bx.h - 42, t, 34);
       ctx.restore();
     }
   }

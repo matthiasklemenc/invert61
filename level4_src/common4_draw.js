@@ -5,6 +5,7 @@
 //  drawPuddle and the optional hooks drawSpecial, drawWorldMid, drawWorldFront, drawWorldTop, startPanel, drawShopClerk.
 // =====================================================================
 function draw() {
+  SAY.list = [];
   ctx.save();
   if (S.shake > 0) ctx.translate(rand(-S.shake, S.shake) * 0.6, rand(-S.shake, S.shake) * 0.4);
   if (hook('drawSpecial')) { ctx.restore(); if (!S.noHud && S.phase !== 'intro') drawHUD(); if (!MENU.open) drawScreens(); return; }
@@ -175,6 +176,7 @@ function drawHUD() {
     ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
     ctx.strokeText(S.msg, W / 2, 84); ctx.fillText(S.msg, W / 2, 84); ctx.globalAlpha = 1;
+    sayBtn(W / 2 + ctx.measureText(S.msg).width / 2 + 12, 66, S.msg, 36, -DY);
   }
   ctx.restore();
 }
@@ -193,12 +195,22 @@ function drawSpeakerIcon(x, y, on) {
   ctx.restore();
 }
 
+// ---------------- 🔊 read-aloud button: (x, y) top-left in world coords, yOff for HUD coordinates ----------------
+function sayBtn(x, y, text, size = 34, yOff = 0) {
+  if (!canSpeak() || !text) return;
+  const r = { x, y, w: size, h: size };
+  SAY.list.push({ x, y: y + yOff, w: size, h: size, text });
+  ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 10); ctx.fill(); ctx.stroke();
+  ctx.font = `${Math.round(size * 0.56)}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = OUT; ctx.fillText('🔊', r.x + r.w / 2, r.y + r.h / 2 + 1);
+  ctx.restore();
+}
 // ---------------- panels ----------------
-function panel(title, lines, titleColor, ty = 78) {
+function panel(title, lines, titleColor, ty = 78, extra) {
   ctx.save(); ctx.fillStyle = 'rgba(16,22,44,0.76)'; ctx.fillRect(0, -VH, W, 3 * VH);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = titleColor; ctx.strokeStyle = OUT; ctx.lineWidth = 6; ctx.font = 'bold 40px Arial';
   ctx.strokeText(title, W / 2, ty); ctx.fillText(title, W / 2, ty);
+  sayBtn(W / 2 + ctx.measureText(title).width / 2 + 16, ty - 21, [title, ...lines].join('. ') + (extra ? '. ' + extra : ''), 42);
   ctx.fillStyle = '#f2f8ff'; ctx.font = 'bold 15px Arial';
   lines.forEach((l, i) => ctx.fillText(l, W / 2, 120 + i * (lines.length > 4 ? 21 : 24)));
   ctx.restore();
@@ -216,7 +228,7 @@ function drawScreens() {
   if (S.phase === 'start') hook('startPanel');
   if (S.phase === 'ask' && S.ask) {
     const a = askInfo(S.ask);
-    panel(a.title, a.lines, a.color || '#9fd8ff');
+    panel(a.title, a.lines, a.color || '#9fd8ff', 78, (a.yes || tx('JA')) + ' … ' + (a.no || tx('NEIN, WEITER')));
     button(BTN.yes, a.yes || tx('JA'), '#34c759', '#1f8f3c'); button(BTN.no, a.no || tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'shop') drawShop();
@@ -226,7 +238,7 @@ function drawScreens() {
   }
   if (S.phase === 'won') {
     const w = wonInfo();
-    panel(w.title, w.lines, '#7dffa0');
+    panel(w.title, w.lines, '#7dffa0', 78, w.b1 + ' … ' + (w.b2 || tx('ZUM MENÜ')));
     button(BTN.won1, w.b1, '#34c759', '#1f8f3c'); button(BTN.won2, w.b2 || tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
 }
@@ -237,6 +249,7 @@ function resultPanel(text, win, extra) {
   ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 28px Arial';
   ctx.strokeText(text, W / 2, 190); ctx.fillText(text, W / 2, 190);
   if (extra) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(extra, W / 2, 226); ctx.fillText(extra, W / 2, 226); }
+  ctx.font = 'bold 28px Arial'; sayBtn(W / 2 + ctx.measureText(text).width / 2 + 14, 170, text + (extra ? '. ' + extra : ''), 40);
   ctx.restore();
   if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
   else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
@@ -266,6 +279,7 @@ function drawShop() {
     ctx.textAlign = 'center'; ctx.font = 'bold 14px Arial';
     if (owned) { ctx.fillStyle = '#9ff5b5'; ctx.fillText(it.kind === 'cloth' ? tx('Anziehen') : tx('Gekauft ✓'), r.x + r.w / 2, r.y + r.h - 14); }
     else { ctx.fillStyle = afford ? '#ffd23a' : '#ff8a7a'; ctx.fillText('● ' + it.price, r.x + r.w / 2, r.y + r.h - 14); }
+    sayBtn(r.x + r.w - 30, r.y + r.h - 30, tx(it.name) + (it.desc ? '. ' + tx(it.desc) : '') + '. ' + (owned ? (it.kind === 'cloth' ? tx('Anziehen') : tx('Gekauft ✓')) : tx('{n} Münzen', { n: it.price })), 26);
   });
   ctx.restore();
   button(BTN.shopDone, tx('FERTIG'), '#34c759', '#1f8f3c');
@@ -279,11 +293,12 @@ function wrapText(t, x, y, maxW, lh) {
 function speech(x, y, w, text, tx0, ty0) {
   ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top';
   const lines = []; let line = '';
-  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 24 && line) { lines.push(line); line = wd; } else line = t; }
+  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 60 && line) { lines.push(line); line = wd; } else line = t; }
   if (line) lines.push(line);
-  const h = lines.length * 18 + 18;
+  const h = Math.max(lines.length * 18 + 18, 46);
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.roundRect(x, y, w, h, 14); ctx.fill(); ctx.stroke();
+  ctx.restore(); sayBtn(x + w - 38, y + 6, text, 32); ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   if (tx0 != null) { ctx.beginPath(); ctx.moveTo(x + 24, y + h - 2); ctx.lineTo(tx0, ty0); ctx.lineTo(x + 46, y + h - 2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillRect(x + 22, y + h - 6, 26, 5); }
   ctx.fillStyle = OUT; ctx.textAlign = 'left'; lines.forEach((l, i) => ctx.fillText(l, x + 12, y + 10 + i * 18));
   ctx.restore();

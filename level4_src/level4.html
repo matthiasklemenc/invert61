@@ -839,6 +839,8 @@ Object.assign(TR, {
   'Die Aliens sind gelandet!': ['The aliens have landed!', '¡Los aliens aterrizaron!'], 'Du wurdest getroffen!': ['You were hit!', '¡Te dieron!'],
   '◀ ▶ = fahren': ['◀ ▶ = ride', '◀ ▶ = moverse'], 'SCHUSS = Laser': ['SHOOT = laser', 'DISPARO = láser'],
   'Pfeile ← → = fahren': ['Arrows ← → = ride', 'Flechas ← → = moverse'], 'Leertaste / X = Laser': ['Space / X = laser', 'Espacio / X = láser'],
+  '◀ ▶ = fahren · SCHUSS = schießen. Erst die Aliens, dann das Mutterschiff!': ['◀ ▶ = ride · SHOOT = fire. First the aliens, then the mothership!', '◀ ▶ = moverse · DISPARO = disparar. ¡Primero los aliens, luego la nave nodriza!'],
+  'Die Aliens kommen!': ['Here come the aliens!', '¡Vienen los aliens!'], 'ALIENS': ['ALIENS', 'ALIENS'], '{n} Münzen': ['{n} coins', '{n} monedas'],
   'Glupschi': ['Goggly', 'Ojotón'], 'Zacki': ['Zappy', 'Picudo'], 'Wabbel': ['Wobbly', 'Gelatín'],
   // ---------- Sternenfresser ----------
   'STERNENFRESSER': ['STAR EATER', 'COMEESTRELLAS'], 'STERNENFRESSER BESIEGT!': ['STAR EATER DEFEATED!', '¡COMEESTRELLAS VENCIDO!'],
@@ -1771,7 +1773,7 @@ const HOOKS = { worldInit, worldBegin, worldUpdate, worldPhase, worldPointer, wo
 function WAY_ICONS() { return [['rocket', 150], ['flip', FLIP_ZONES[0][0]], ['arcade', SITES.arcade], ['flip', FLIP_ZONES[1][0]]]; }
 function askInfo(id) {
   if (id === 'exit') return { title: tx('ZURÜCK NACH AURORA 61?'), lines: [tx('Mit der Rakete fliegst du zurück zu Abu auf Aurora 61.')], yes: '🚀 ' + tx('JA, LOSFLIEGEN'), no: tx('NEIN, HIERBLEIBEN'), color: '#7dffa0' };
-  return { title: tx('ALIEN-ATTACKE'), lines: [tx('Ein Spielautomat! Willst du ALIEN-ATTACKE spielen?'), tx('◀ ▶ = fahren · SCHUSS = schießen. 3 Wellen Aliens und dann das Mutterschiff!'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], yes: tx('JA, SPIELEN!'), color: '#b48cff' };
+  return { title: tx('ALIEN-ATTACKE'), lines: [tx('Ein Spielautomat! Willst du ALIEN-ATTACKE spielen?'), tx('◀ ▶ = fahren · SCHUSS = schießen. Erst die Aliens, dann das Mutterschiff!'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], yes: tx('JA, SPIELEN!'), color: '#b48cff' };
 }
 function wonInfo() {
   return { title: tx('STERNENFRESSER BESIEGT!'), lines: [tx('Der Löwe zeigt den Weg: Aurora 61 ist sichtbar! +30 Münzen'), ...summaryLines(S.summary), tx('Fahr hinunter zu Abu und Flappy auf Aurora 61!')],
@@ -1793,6 +1795,26 @@ const S = {
   ask: null, asked: {}, near: {}, boss: null, mid: null, noHud: false, hideKai: false, game: null, fly: null, shopMsg: '', shopMsgT: 0,
 };
 const hook = (name, ...a) => { const f = HOOKS[name]; return f ? f(...a) : undefined; };
+// ---------------- read aloud: every text gets a 🔊 button (Kai can't read yet) – in the chosen language ----------------
+const SAY = { list: [] };
+const canSpeak = () => !!window.speechSynthesis;
+function speak(text) {
+  try {
+    if (!window.speechSynthesis || !text) return;
+    // symbols are not read: arrows, dots, = …
+    const clean = text.replace(/[◀▶←→↑↓▲▼·=•|]/g, ', ').replace(/[^\p{L}\p{N}\s.,!?¡¿:;'’"„“()%+–-]/gu, ' ').replace(/\s*,\s*(,\s*)+/g, ', ').replace(/([.!?])\s*\./g, '$1').replace(/\s+/g, ' ').trim();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean); u.lang = { de: 'de-DE', en: 'en-US', es: 'es-ES' }[SAVE.lang] || 'de-DE'; u.rate = 0.92;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+// a tap in screen coordinates (from the controller): a 🔊 button hit?
+function sayClick(hp) {
+  if (!canSpeak()) return false;
+  const p = { x: hp.x, y: hp.y - DY };
+  for (let i = SAY.list.length - 1; i >= 0; i--) { const b = SAY.list[i]; if (p.x >= b.x - 6 && p.x <= b.x + b.w + 6 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6) { Audio.play('tink'); speak(b.text); return true; } }
+  return false;
+}
 
 // ---------------- map helpers ----------------
 const groundAt = x => GROUND.some(([a, b]) => x > a + 4 && x < b - 4);
@@ -1875,7 +1897,7 @@ window.addEventListener('keydown', e => {
   if (S.phase === 'start' && (e.code === 'Space' || e.code === 'Enter')) { beginWorld(); return; }
   if (hook('worldKey', e)) return;
   if (S.phase === 'shop') { if (e.code === 'Escape' || e.code === 'Enter') leaveShop(); return; }
-  if (S.phase === 'game') { if (!e.repeat && (e.code === 'Space' || e.code === 'KeyX' || e.code === 'ArrowUp')) { e.preventDefault(); hook('gameShoot'); } return; }
+  if (S.phase === 'game') { if (e.code === 'Space' || e.code === 'KeyX' || e.code === 'ArrowUp') { e.preventDefault(); hook('gameShoot'); } return; }
   if (!playing()) return;
   if (e.code === 'KeyX') { shoot(); return; }
   if (e.repeat) return;
@@ -2314,6 +2336,7 @@ const TEST = {
   startBoss() { TEST.setX(BOSS_X + 300); },
   coins(n) { S.coins = n; saveProgress(); },
   get S() { return S; },
+  get say() { return SAY.list; },
 };
 buildWorld();
 // =====================================================================
@@ -2461,7 +2484,8 @@ function pixelArt(rows, x, y, px, col) {
     ctx.fillRect(Math.round(x + c * px), Math.round(y + r * px), px, px);
   }
 }
-const WAVES = [{ rows: 4, cols: 8, step: 34, bomb: 0.010 }, { rows: 5, cols: 8, step: 28, bomb: 0.014 }, { rows: 5, cols: 9, step: 22, bomb: 0.018 }];
+// one wave only (Kai: shorter!) – it marches faster from the start, then the mothership comes
+const WAVES = [{ rows: 4, cols: 8, step: 11, bomb: 0.012 }];
 function startArcade() {
   const k = S.kai; k.vx = 0; k.dir = 0;
   S.game = { id: 'alien', steer: true, t: 0, wave: 0, x: AFX + AFW / 2, dir: 0, shots: [], bombs: [], lives: 3, inv: 0, cool: 0, aliens: [], march: 0, marchN: 0, mdir: 1, frame: 0,
@@ -2470,11 +2494,12 @@ function startArcade() {
   S.phase = 'game'; Audio.play('blip'); Audio.setBoss(false);
 }
 function buildWave(i) {
-  const g = S.game, w = WAVES[i], gap = 54;
+  const g = S.game, w = WAVES[i], gap = 54, small = afBot() - afTop() < 400;
+  const rows = small ? 3 : w.rows, rg = small ? 32 : 38;      // a small screen (computer): one row less, so there is room to march down
   g.aliens = [];
   const x0 = AFX + (AFW - (w.cols - 1) * gap - 44) / 2;
-  for (let r = 0; r < w.rows; r++) for (let c = 0; c < w.cols; c++) g.aliens.push({ x: x0 + c * gap, y: afTop() + 46 + r * 38, type: r === 0 ? 0 : r < 3 ? 1 : 2, dead: false });
-  g.total = g.aliens.length; g.mdir = 1; g.march = 0; g.pause = 90; g.msg = tx('WELLE {n}', { n: i + 1 }); g.msgT = 90;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < w.cols; c++) g.aliens.push({ x: x0 + c * gap, y: afTop() + (small ? 30 : 46) + r * rg, type: r === 0 ? 0 : r < 2 ? 1 : 2, dead: false });
+  g.total = g.aliens.length; g.mdir = 1; g.march = 0; g.pause = 90; g.msg = tx('Die Aliens kommen!'); g.msgT = 90;
 }
 function buildShields() {
   const g = S.game; g.shields = [];
@@ -2525,8 +2550,8 @@ function updateArcade(dt) {
       g.march = 0; g.frame ^= 1;
       Audio.note([110, 98, 87, 82][g.marchN++ % 4], 0.09, 'square', 0.07);
       const minX = Math.min(...alive.map(a => a.x)), maxX = Math.max(...alive.map(a => a.x + 44));
-      if ((g.mdir > 0 && maxX + 8 > AFX + AFW - 6) || (g.mdir < 0 && minX - 8 < AFX + 6)) { g.mdir *= -1; for (const a of alive) a.y += 12; }
-      else for (const a of alive) a.x += 8 * g.mdir;
+      if ((g.mdir > 0 && maxX + 10 > AFX + AFW - 6) || (g.mdir < 0 && minX - 10 < AFX + 6)) { g.mdir *= -1; for (const a of alive) a.y += afBot() - afTop() < 400 ? 14 : 28; }
+      else for (const a of alive) a.x += 10 * g.mdir;
     }
     // bombs from the lowest alien of a column
     for (const a of alive) {
@@ -2537,7 +2562,7 @@ function updateArcade(dt) {
     if (!alive.length) {
       S.coins += 5; Audio.play('chime');
       if (g.wave < WAVES.length - 1) { g.wave++; buildWave(g.wave); }
-      else { g.mother = { x: AFX + AFW / 2 - 84, y: afTop() + 34, hp: 25, max: 25, t: 0, fire: 90, flash: 0 }; g.pause = 90; g.msg = tx('DAS MUTTERSCHIFF!'); g.msgT = 110; Audio.play('alarm'); }
+      else { g.mother = { x: AFX + AFW / 2 - 84, y: afTop() + 34, hp: 20, max: 20, t: 0, fire: 90, flash: 0 }; g.pause = 90; g.msg = tx('DAS MUTTERSCHIFF!'); g.msgT = 110; Audio.play('alarm'); }
     }
   } else {
     const m = g.mother; m.t += dt; if (m.flash > 0) m.flash -= dt;
@@ -2636,14 +2661,14 @@ function drawArcade() {
   // info: score, lives, wave / mothership energy
   ctx.save(); ctx.textBaseline = 'middle'; ctx.font = 'bold 15px "Courier New", monospace';
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.fillText(tx('PUNKTE') + ' ' + g.score, AFX + 8, afTop() + 12);
-  ctx.textAlign = 'right'; ctx.fillText(g.mother ? tx('MUTTERSCHIFF') : tx('WELLE {n}', { n: g.wave + 1 }) + ' / 3', AFX + AFW - 8, afTop() + 12);
+  ctx.textAlign = 'right'; ctx.fillText(g.mother ? tx('MUTTERSCHIFF') : tx('ALIENS') + ' ' + aliveAliens(g).length, AFX + AFW - 8, afTop() + 12);
   for (let i = 0; i < 3; i++) drawHeart(AFX + AFW / 2 - 24 + i * 24, afTop() + 12, 8, i < g.lives);
   if (g.mother) {
     const f = g.mother.hp / g.mother.max, bw = 240, bx = AFX + AFW / 2 - bw / 2, by = afTop() + 26;
     ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(bx, by, bw, 8);
     ctx.fillStyle = f > 0.6 ? '#34c759' : f > 0.3 ? '#ffcc2e' : '#ff3b30'; ctx.fillRect(bx, by, bw * f, 8);
   }
-  if (g.msgT > 0) { ctx.textAlign = 'center'; ctx.font = 'bold 30px "Courier New", monospace'; ctx.fillStyle = '#ffd23a'; ctx.globalAlpha = Math.min(1, g.msgT / 20); ctx.fillText(g.msg, AFX + AFW / 2, (afTop() + afBot()) / 2); ctx.globalAlpha = 1; }
+  if (g.msgT > 0) { sayBtn(AFX + AFW - 46, (afTop() + afBot()) / 2 - 18, g.msg, 36); ctx.textAlign = 'center'; ctx.font = 'bold 30px "Courier New", monospace'; ctx.fillStyle = '#ffd23a'; ctx.globalAlpha = Math.min(1, g.msgT / 20); ctx.fillText(g.msg, AFX + AFW / 2, (afTop() + afBot()) / 2); ctx.globalAlpha = 1; }
   // how to play (left and right of the machine)
   ctx.textAlign = 'center'; ctx.font = 'bold 13px Arial'; ctx.fillStyle = '#bfe6ff';
   const help = CTRL.touch ? [tx('◀ ▶ = fahren'), tx('SCHUSS = Laser')] : [tx('Pfeile ← → = fahren'), tx('Leertaste / X = Laser')];
@@ -2712,15 +2737,6 @@ function quizBox() {
 const starPos = (C, i) => { const b = quizBox(); return { x: b.x + 20 + C.stars[i][0] * (b.w - 40), y: b.y + 20 + C.stars[i][1] * (b.h - 40) }; };
 function optRect(i) { const top = -DY + 132, h = Math.min(48, (H - 34 - top) / 5 - 7); return { x: 760, y: top + i * (h + 7), w: 330, h }; }
 function sayRect(i) { const r = optRect(i); return { x: r.x + r.w + 8, y: r.y, w: r.h + 6, h: r.h }; }
-function speak(text) {
-  try {
-    if (!window.speechSynthesis) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text); u.lang = { de: 'de-DE', en: 'en-US', es: 'es-ES' }[SAVE.lang] || 'de-DE'; u.rate = 0.9;
-    speechSynthesis.speak(u);
-  } catch (e) {}
-}
-const canSpeak = () => !!window.speechSynthesis;
 function updateQuiz(dt) {
   const q = S.quiz; if (!q) return;
   const b = S.boss; if (b) { b.t += dt; if (b.flash > 0) b.flash -= dt; b.bar += (b.hp / STAR_HP - b.bar) * Math.min(1, 0.1 * dt); }
@@ -2756,7 +2772,6 @@ function quizTap(p) {
       if (canSpeak() && inRect(p, sayRect(i))) { speak(tx(CONSTELLATIONS[c.opts[i]].name)); return; }
       if (inRect(p, optRect(i))) { answer(i); return; }
     }
-    if (canSpeak() && inRect(p, { x: 760, y: -DY + 86, w: 400, h: 36 })) speak(tx('Wie heißt dieses Sternbild?'));
   }
 }
 function answer(i) {
@@ -3177,6 +3192,7 @@ function drawIntro() {
   else if (t > 540) { ctx.font = 'bold 44px Arial'; ctx.lineWidth = 8; ctx.fillStyle = '#ffffff'; ctx.strokeText(tx('DIE MONDBASIS'), W / 2 - 330, H / 2 - 40); ctx.fillText(tx('DIE MONDBASIS'), W / 2 - 330, H / 2 - 40); }
   ctx.restore();
   button(SKIP_BTN, tx('Überspringen') + ' ▶▶', '#4a6fa5', '#2c4a78');
+  sayBtn(W / 2 - 330 - 17, H / 2 + 84, tx(t < 180 ? 'Countdown!' : t < 260 ? 'START!' : t < 470 ? 'Auf zum Mond!' : 'DIE MONDBASIS'), 34);
 }
 function mixCol(a, b, u) {
   const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
@@ -3245,10 +3261,10 @@ function drawQuiz() {
     : c.state === 'picture' ? tx('Super! Das Sternbild ist zurück!')
     : c.state === 'aurora' ? tx('Im Löwen erscheint der Planet AURORA 61!') : tx('Wie heißt dieses Sternbild?');
   ctx.font = 'bold 18px Arial'; ctx.lineWidth = 5; ctx.fillStyle = '#ffe68a';
-  const hx = c.state === 'ask' || c.state === 'answered' ? 760 + (canSpeak() ? 42 : 0) : 740;
+  const hx = 760 + (canSpeak() ? 42 : 0);
   wrapStroke(head, hx, -DY + 104, 470, 22);
-  if ((c.state === 'ask' || c.state === 'answered') && canSpeak()) sayButton({ x: 760, y: -DY + 88, w: 34, h: 32 });
-  if (c.state === 'trace' && c.wrong >= 2) { ctx.font = 'bold 15px Arial'; ctx.fillStyle = '#9fd8ff'; ctx.lineWidth = 4; ctx.strokeText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); ctx.fillText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); }
+  sayBtn(760, -DY + 88, head, 34);
+  if (c.state === 'trace' && c.wrong >= 2) { sayBtn(700, -DY + 140, tx('Tipp: der gelb blinkende Stern ist der nächste.'), 30); ctx.font = 'bold 15px Arial'; ctx.fillStyle = '#9fd8ff'; ctx.lineWidth = 4; ctx.strokeText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); ctx.fillText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); }
   ctx.font = 'bold 14px Arial'; ctx.fillStyle = '#bfe6ff'; ctx.lineWidth = 4;
   const rd = tx('Sternbild {n}', { n: q.round + 1 }) + '   ·   ' + tx('Noch {n} Treffer', { n: b ? b.hp : 0 });
   ctx.strokeText(rd, 740, H - 14); ctx.fillText(rd, 740, H - 14);
@@ -3264,13 +3280,14 @@ function drawQuiz() {
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText((i + 1) + '.  ' + tx(CONSTELLATIONS[id].name), r.x + 14, r.y + r.h / 2 + 1);
       ctx.restore();
-      if (canSpeak()) sayButton(sayRect(i));
+      const sr = sayRect(i); sayBtn(sr.x, sr.y, tx(CONSTELLATIONS[id].name), sr.h);
     }
     if (c.state === 'answered') {
       ctx.save(); ctx.textAlign = 'center'; ctx.font = 'bold 26px Arial'; ctx.lineWidth = 6; ctx.strokeStyle = OUT;
       ctx.fillStyle = c.right ? '#7dffa0' : '#ffb0a0';
       const t = c.right ? tx('RICHTIG! Treffer!') : tx('Leider falsch – es ist: {n}', { n: tx(C.name) });
       ctx.strokeText(t, bx.x + bx.w / 2, bx.y + bx.h - 24); ctx.fillText(t, bx.x + bx.w / 2, bx.y + bx.h - 24);
+      sayBtn(bx.x + bx.w / 2 + ctx.measureText(t).width / 2 + 10, bx.y + bx.h - 42, t, 34);
       ctx.restore();
     }
   }
@@ -3306,6 +3323,7 @@ function startPanel() {
 //  drawPuddle and the optional hooks drawSpecial, drawWorldMid, drawWorldFront, drawWorldTop, startPanel, drawShopClerk.
 // =====================================================================
 function draw() {
+  SAY.list = [];
   ctx.save();
   if (S.shake > 0) ctx.translate(rand(-S.shake, S.shake) * 0.6, rand(-S.shake, S.shake) * 0.4);
   if (hook('drawSpecial')) { ctx.restore(); if (!S.noHud && S.phase !== 'intro') drawHUD(); if (!MENU.open) drawScreens(); return; }
@@ -3476,6 +3494,7 @@ function drawHUD() {
     ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
     ctx.strokeText(S.msg, W / 2, 84); ctx.fillText(S.msg, W / 2, 84); ctx.globalAlpha = 1;
+    sayBtn(W / 2 + ctx.measureText(S.msg).width / 2 + 12, 66, S.msg, 36, -DY);
   }
   ctx.restore();
 }
@@ -3494,12 +3513,22 @@ function drawSpeakerIcon(x, y, on) {
   ctx.restore();
 }
 
+// ---------------- 🔊 read-aloud button: (x, y) top-left in world coords, yOff for HUD coordinates ----------------
+function sayBtn(x, y, text, size = 34, yOff = 0) {
+  if (!canSpeak() || !text) return;
+  const r = { x, y, w: size, h: size };
+  SAY.list.push({ x, y: y + yOff, w: size, h: size, text });
+  ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 10); ctx.fill(); ctx.stroke();
+  ctx.font = `${Math.round(size * 0.56)}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = OUT; ctx.fillText('🔊', r.x + r.w / 2, r.y + r.h / 2 + 1);
+  ctx.restore();
+}
 // ---------------- panels ----------------
-function panel(title, lines, titleColor, ty = 78) {
+function panel(title, lines, titleColor, ty = 78, extra) {
   ctx.save(); ctx.fillStyle = 'rgba(16,22,44,0.76)'; ctx.fillRect(0, -VH, W, 3 * VH);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = titleColor; ctx.strokeStyle = OUT; ctx.lineWidth = 6; ctx.font = 'bold 40px Arial';
   ctx.strokeText(title, W / 2, ty); ctx.fillText(title, W / 2, ty);
+  sayBtn(W / 2 + ctx.measureText(title).width / 2 + 16, ty - 21, [title, ...lines].join('. ') + (extra ? '. ' + extra : ''), 42);
   ctx.fillStyle = '#f2f8ff'; ctx.font = 'bold 15px Arial';
   lines.forEach((l, i) => ctx.fillText(l, W / 2, 120 + i * (lines.length > 4 ? 21 : 24)));
   ctx.restore();
@@ -3517,7 +3546,7 @@ function drawScreens() {
   if (S.phase === 'start') hook('startPanel');
   if (S.phase === 'ask' && S.ask) {
     const a = askInfo(S.ask);
-    panel(a.title, a.lines, a.color || '#9fd8ff');
+    panel(a.title, a.lines, a.color || '#9fd8ff', 78, (a.yes || tx('JA')) + ' … ' + (a.no || tx('NEIN, WEITER')));
     button(BTN.yes, a.yes || tx('JA'), '#34c759', '#1f8f3c'); button(BTN.no, a.no || tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'shop') drawShop();
@@ -3527,7 +3556,7 @@ function drawScreens() {
   }
   if (S.phase === 'won') {
     const w = wonInfo();
-    panel(w.title, w.lines, '#7dffa0');
+    panel(w.title, w.lines, '#7dffa0', 78, w.b1 + ' … ' + (w.b2 || tx('ZUM MENÜ')));
     button(BTN.won1, w.b1, '#34c759', '#1f8f3c'); button(BTN.won2, w.b2 || tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
 }
@@ -3538,6 +3567,7 @@ function resultPanel(text, win, extra) {
   ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 28px Arial';
   ctx.strokeText(text, W / 2, 190); ctx.fillText(text, W / 2, 190);
   if (extra) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(extra, W / 2, 226); ctx.fillText(extra, W / 2, 226); }
+  ctx.font = 'bold 28px Arial'; sayBtn(W / 2 + ctx.measureText(text).width / 2 + 14, 170, text + (extra ? '. ' + extra : ''), 40);
   ctx.restore();
   if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
   else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
@@ -3567,6 +3597,7 @@ function drawShop() {
     ctx.textAlign = 'center'; ctx.font = 'bold 14px Arial';
     if (owned) { ctx.fillStyle = '#9ff5b5'; ctx.fillText(it.kind === 'cloth' ? tx('Anziehen') : tx('Gekauft ✓'), r.x + r.w / 2, r.y + r.h - 14); }
     else { ctx.fillStyle = afford ? '#ffd23a' : '#ff8a7a'; ctx.fillText('● ' + it.price, r.x + r.w / 2, r.y + r.h - 14); }
+    sayBtn(r.x + r.w - 30, r.y + r.h - 30, tx(it.name) + (it.desc ? '. ' + tx(it.desc) : '') + '. ' + (owned ? (it.kind === 'cloth' ? tx('Anziehen') : tx('Gekauft ✓')) : tx('{n} Münzen', { n: it.price })), 26);
   });
   ctx.restore();
   button(BTN.shopDone, tx('FERTIG'), '#34c759', '#1f8f3c');
@@ -3580,11 +3611,12 @@ function wrapText(t, x, y, maxW, lh) {
 function speech(x, y, w, text, tx0, ty0) {
   ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top';
   const lines = []; let line = '';
-  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 24 && line) { lines.push(line); line = wd; } else line = t; }
+  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 60 && line) { lines.push(line); line = wd; } else line = t; }
   if (line) lines.push(line);
-  const h = lines.length * 18 + 18;
+  const h = Math.max(lines.length * 18 + 18, 46);
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.roundRect(x, y, w, h, 14); ctx.fill(); ctx.stroke();
+  ctx.restore(); sayBtn(x + w - 38, y + 6, text, 32); ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   if (tx0 != null) { ctx.beginPath(); ctx.moveTo(x + 24, y + h - 2); ctx.lineTo(tx0, ty0); ctx.lineTo(x + 46, y + h - 2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillRect(x + 22, y + h - 6, 26, 5); }
   ctx.fillStyle = OUT; ctx.textAlign = 'left'; lines.forEach((l, i) => ctx.fillText(l, x + 12, y + 10 + i * 18));
   ctx.restore();
@@ -3651,7 +3683,7 @@ function drawElephant(x, y, s, t, wings, dir = 1, sad = false) {
   ctx.restore();
 }
 
-Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu });
+Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu, sayClick });
 return ME;
 }
 
@@ -3752,6 +3784,26 @@ const S = {
   ask: null, asked: {}, near: {}, boss: null, mid: null, noHud: false, hideKai: false, game: null, fly: null, shopMsg: '', shopMsgT: 0,
 };
 const hook = (name, ...a) => { const f = HOOKS[name]; return f ? f(...a) : undefined; };
+// ---------------- read aloud: every text gets a 🔊 button (Kai can't read yet) – in the chosen language ----------------
+const SAY = { list: [] };
+const canSpeak = () => !!window.speechSynthesis;
+function speak(text) {
+  try {
+    if (!window.speechSynthesis || !text) return;
+    // symbols are not read: arrows, dots, = …
+    const clean = text.replace(/[◀▶←→↑↓▲▼·=•|]/g, ', ').replace(/[^\p{L}\p{N}\s.,!?¡¿:;'’"„“()%+–-]/gu, ' ').replace(/\s*,\s*(,\s*)+/g, ', ').replace(/([.!?])\s*\./g, '$1').replace(/\s+/g, ' ').trim();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean); u.lang = { de: 'de-DE', en: 'en-US', es: 'es-ES' }[SAVE.lang] || 'de-DE'; u.rate = 0.92;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+// a tap in screen coordinates (from the controller): a 🔊 button hit?
+function sayClick(hp) {
+  if (!canSpeak()) return false;
+  const p = { x: hp.x, y: hp.y - DY };
+  for (let i = SAY.list.length - 1; i >= 0; i--) { const b = SAY.list[i]; if (p.x >= b.x - 6 && p.x <= b.x + b.w + 6 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6) { Audio.play('tink'); speak(b.text); return true; } }
+  return false;
+}
 
 // ---------------- map helpers ----------------
 const groundAt = x => GROUND.some(([a, b]) => x > a + 4 && x < b - 4);
@@ -3834,7 +3886,7 @@ window.addEventListener('keydown', e => {
   if (S.phase === 'start' && (e.code === 'Space' || e.code === 'Enter')) { beginWorld(); return; }
   if (hook('worldKey', e)) return;
   if (S.phase === 'shop') { if (e.code === 'Escape' || e.code === 'Enter') leaveShop(); return; }
-  if (S.phase === 'game') { if (!e.repeat && (e.code === 'Space' || e.code === 'KeyX' || e.code === 'ArrowUp')) { e.preventDefault(); hook('gameShoot'); } return; }
+  if (S.phase === 'game') { if (e.code === 'Space' || e.code === 'KeyX' || e.code === 'ArrowUp') { e.preventDefault(); hook('gameShoot'); } return; }
   if (!playing()) return;
   if (e.code === 'KeyX') { shoot(); return; }
   if (e.repeat) return;
@@ -4273,6 +4325,7 @@ const TEST = {
   startBoss() { TEST.setX(BOSS_X + 300); },
   coins(n) { S.coins = n; saveProgress(); },
   get S() { return S; },
+  get say() { return SAY.list; },
 };
 buildWorld();
 // =====================================================================
@@ -4575,11 +4628,12 @@ function drawFoto() {
   drawAnimal(task.kind, W / 2 - 290, ty + 6, 1, S.t, 0.8);
   ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'left';
   ctx.fillText(tx('Fotografiere {n} {a}!', { n: task.need, a: tx(task.need > 1 ? ANIMALS[task.kind].plural : ANIMALS[task.kind].name) }) + '   ' + task.got + ' / ' + task.need, W / 2 - 250, ty + 1);
+  sayBtn(W / 2 + 336, ty - 18, tx('Fotografiere {n} {a}!', { n: task.need, a: tx(task.need > 1 ? ANIMALS[task.kind].plural : ANIMALS[task.kind].name) }), 36);
   ctx.textAlign = 'right'; ctx.fillStyle = '#ffd23a';
   ctx.fillText('⏱ ' + Math.max(0, Math.ceil((FOTO_T - g.t) / 60)) + ' s', W / 2 + 316, ty + 1);
   ctx.fillStyle = '#bfe6ff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
   ctx.fillText(tx('Aufgabe {a} von {b}', { a: g.task + 1, b: g.tasks.length }), W / 2, ty + 34);
-  if (g.msgT > 0) { ctx.globalAlpha = Math.min(1, g.msgT / 20); ctx.font = 'bold 20px Arial'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.fillStyle = '#ffffff'; ctx.strokeText(g.msg, W / 2, ty + 64); ctx.fillText(g.msg, W / 2, ty + 64); ctx.globalAlpha = 1; }
+  if (g.msgT > 0) { ctx.font = 'bold 20px Arial'; sayBtn(W / 2 + ctx.measureText(g.msg).width / 2 + 10, ty + 46, g.msg, 32); ctx.globalAlpha = Math.min(1, g.msgT / 20); ctx.font = 'bold 20px Arial'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.fillStyle = '#ffffff'; ctx.strokeText(g.msg, W / 2, ty + 64); ctx.fillText(g.msg, W / 2, ty + 64); ctx.globalAlpha = 1; }
   // the little photos (polaroids) along the bottom
   g.photos.slice(-8).forEach((p, i) => {
     const px = 70 + i * 74, py = H - 56 + Math.max(0, 20 - p.t) * 3;
@@ -5024,6 +5078,7 @@ function startPanel() {
     tx('In meinem OXXO gibt es den Mega-Mango-Kuchen für die Unterwelt.'),
     tx('Am Ende wartet die FARBHEXE GRISELLA.')].forEach((l, i) => ctx.fillText(l, 380, 190 + i * 20));
   ctx.restore();
+  sayBtn(336, 176, [touch ? tx('◀ ▶ = fahren · SPRUNG = springen · SCHUSS = Farbkugeln') : tx('← → = fahren · Leertaste = springen · X = Farbkugeln'), tx('Traurige Elefanten: gib ihnen 3 Mangos – dann fliegen sie dich über die Schlucht.'), tx('In meinem OXXO gibt es den Mega-Mango-Kuchen für die Unterwelt.'), tx('Am Ende wartet die FARBHEXE GRISELLA.')].join('. '), 34);
   button({ x: W / 2 + 140, y: 268, w: 220, h: 44 }, '▶  ' + tx('LOS GEHT\'S'), '#34c759', '#1f8f3c');
 }
 // Abu stands behind the counter in his OXXO
@@ -5042,6 +5097,7 @@ function drawShopClerk() {
 //  drawPuddle and the optional hooks drawSpecial, drawWorldMid, drawWorldFront, drawWorldTop, startPanel, drawShopClerk.
 // =====================================================================
 function draw() {
+  SAY.list = [];
   ctx.save();
   if (S.shake > 0) ctx.translate(rand(-S.shake, S.shake) * 0.6, rand(-S.shake, S.shake) * 0.4);
   if (hook('drawSpecial')) { ctx.restore(); if (!S.noHud && S.phase !== 'intro') drawHUD(); if (!MENU.open) drawScreens(); return; }
@@ -5212,6 +5268,7 @@ function drawHUD() {
     ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
     ctx.strokeText(S.msg, W / 2, 84); ctx.fillText(S.msg, W / 2, 84); ctx.globalAlpha = 1;
+    sayBtn(W / 2 + ctx.measureText(S.msg).width / 2 + 12, 66, S.msg, 36, -DY);
   }
   ctx.restore();
 }
@@ -5230,12 +5287,22 @@ function drawSpeakerIcon(x, y, on) {
   ctx.restore();
 }
 
+// ---------------- 🔊 read-aloud button: (x, y) top-left in world coords, yOff for HUD coordinates ----------------
+function sayBtn(x, y, text, size = 34, yOff = 0) {
+  if (!canSpeak() || !text) return;
+  const r = { x, y, w: size, h: size };
+  SAY.list.push({ x, y: y + yOff, w: size, h: size, text });
+  ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 10); ctx.fill(); ctx.stroke();
+  ctx.font = `${Math.round(size * 0.56)}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = OUT; ctx.fillText('🔊', r.x + r.w / 2, r.y + r.h / 2 + 1);
+  ctx.restore();
+}
 // ---------------- panels ----------------
-function panel(title, lines, titleColor, ty = 78) {
+function panel(title, lines, titleColor, ty = 78, extra) {
   ctx.save(); ctx.fillStyle = 'rgba(16,22,44,0.76)'; ctx.fillRect(0, -VH, W, 3 * VH);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = titleColor; ctx.strokeStyle = OUT; ctx.lineWidth = 6; ctx.font = 'bold 40px Arial';
   ctx.strokeText(title, W / 2, ty); ctx.fillText(title, W / 2, ty);
+  sayBtn(W / 2 + ctx.measureText(title).width / 2 + 16, ty - 21, [title, ...lines].join('. ') + (extra ? '. ' + extra : ''), 42);
   ctx.fillStyle = '#f2f8ff'; ctx.font = 'bold 15px Arial';
   lines.forEach((l, i) => ctx.fillText(l, W / 2, 120 + i * (lines.length > 4 ? 21 : 24)));
   ctx.restore();
@@ -5253,7 +5320,7 @@ function drawScreens() {
   if (S.phase === 'start') hook('startPanel');
   if (S.phase === 'ask' && S.ask) {
     const a = askInfo(S.ask);
-    panel(a.title, a.lines, a.color || '#9fd8ff');
+    panel(a.title, a.lines, a.color || '#9fd8ff', 78, (a.yes || tx('JA')) + ' … ' + (a.no || tx('NEIN, WEITER')));
     button(BTN.yes, a.yes || tx('JA'), '#34c759', '#1f8f3c'); button(BTN.no, a.no || tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'shop') drawShop();
@@ -5263,7 +5330,7 @@ function drawScreens() {
   }
   if (S.phase === 'won') {
     const w = wonInfo();
-    panel(w.title, w.lines, '#7dffa0');
+    panel(w.title, w.lines, '#7dffa0', 78, w.b1 + ' … ' + (w.b2 || tx('ZUM MENÜ')));
     button(BTN.won1, w.b1, '#34c759', '#1f8f3c'); button(BTN.won2, w.b2 || tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
 }
@@ -5274,6 +5341,7 @@ function resultPanel(text, win, extra) {
   ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 28px Arial';
   ctx.strokeText(text, W / 2, 190); ctx.fillText(text, W / 2, 190);
   if (extra) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(extra, W / 2, 226); ctx.fillText(extra, W / 2, 226); }
+  ctx.font = 'bold 28px Arial'; sayBtn(W / 2 + ctx.measureText(text).width / 2 + 14, 170, text + (extra ? '. ' + extra : ''), 40);
   ctx.restore();
   if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
   else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
@@ -5303,6 +5371,7 @@ function drawShop() {
     ctx.textAlign = 'center'; ctx.font = 'bold 14px Arial';
     if (owned) { ctx.fillStyle = '#9ff5b5'; ctx.fillText(it.kind === 'cloth' ? tx('Anziehen') : tx('Gekauft ✓'), r.x + r.w / 2, r.y + r.h - 14); }
     else { ctx.fillStyle = afford ? '#ffd23a' : '#ff8a7a'; ctx.fillText('● ' + it.price, r.x + r.w / 2, r.y + r.h - 14); }
+    sayBtn(r.x + r.w - 30, r.y + r.h - 30, tx(it.name) + (it.desc ? '. ' + tx(it.desc) : '') + '. ' + (owned ? (it.kind === 'cloth' ? tx('Anziehen') : tx('Gekauft ✓')) : tx('{n} Münzen', { n: it.price })), 26);
   });
   ctx.restore();
   button(BTN.shopDone, tx('FERTIG'), '#34c759', '#1f8f3c');
@@ -5316,11 +5385,12 @@ function wrapText(t, x, y, maxW, lh) {
 function speech(x, y, w, text, tx0, ty0) {
   ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top';
   const lines = []; let line = '';
-  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 24 && line) { lines.push(line); line = wd; } else line = t; }
+  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 60 && line) { lines.push(line); line = wd; } else line = t; }
   if (line) lines.push(line);
-  const h = lines.length * 18 + 18;
+  const h = Math.max(lines.length * 18 + 18, 46);
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.roundRect(x, y, w, h, 14); ctx.fill(); ctx.stroke();
+  ctx.restore(); sayBtn(x + w - 38, y + 6, text, 32); ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   if (tx0 != null) { ctx.beginPath(); ctx.moveTo(x + 24, y + h - 2); ctx.lineTo(tx0, ty0); ctx.lineTo(x + 46, y + h - 2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillRect(x + 22, y + h - 6, 26, 5); }
   ctx.fillStyle = OUT; ctx.textAlign = 'left'; lines.forEach((l, i) => ctx.fillText(l, x + 12, y + 10 + i * 18));
   ctx.restore();
@@ -5387,7 +5457,7 @@ function drawElephant(x, y, s, t, wings, dir = 1, sad = false) {
   ctx.restore();
 }
 
-Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu });
+Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu, sayClick });
 return ME;
 }
 
@@ -5465,6 +5535,26 @@ const S = {
   ask: null, asked: {}, near: {}, boss: null, mid: null, noHud: false, hideKai: false, game: null, fly: null, shopMsg: '', shopMsgT: 0,
 };
 const hook = (name, ...a) => { const f = HOOKS[name]; return f ? f(...a) : undefined; };
+// ---------------- read aloud: every text gets a 🔊 button (Kai can't read yet) – in the chosen language ----------------
+const SAY = { list: [] };
+const canSpeak = () => !!window.speechSynthesis;
+function speak(text) {
+  try {
+    if (!window.speechSynthesis || !text) return;
+    // symbols are not read: arrows, dots, = …
+    const clean = text.replace(/[◀▶←→↑↓▲▼·=•|]/g, ', ').replace(/[^\p{L}\p{N}\s.,!?¡¿:;'’"„“()%+–-]/gu, ' ').replace(/\s*,\s*(,\s*)+/g, ', ').replace(/([.!?])\s*\./g, '$1').replace(/\s+/g, ' ').trim();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean); u.lang = { de: 'de-DE', en: 'en-US', es: 'es-ES' }[SAVE.lang] || 'de-DE'; u.rate = 0.92;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+// a tap in screen coordinates (from the controller): a 🔊 button hit?
+function sayClick(hp) {
+  if (!canSpeak()) return false;
+  const p = { x: hp.x, y: hp.y - DY };
+  for (let i = SAY.list.length - 1; i >= 0; i--) { const b = SAY.list[i]; if (p.x >= b.x - 6 && p.x <= b.x + b.w + 6 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6) { Audio.play('tink'); speak(b.text); return true; } }
+  return false;
+}
 
 // ---------------- map helpers ----------------
 const groundAt = x => GROUND.some(([a, b]) => x > a + 4 && x < b - 4);
@@ -5547,7 +5637,7 @@ window.addEventListener('keydown', e => {
   if (S.phase === 'start' && (e.code === 'Space' || e.code === 'Enter')) { beginWorld(); return; }
   if (hook('worldKey', e)) return;
   if (S.phase === 'shop') { if (e.code === 'Escape' || e.code === 'Enter') leaveShop(); return; }
-  if (S.phase === 'game') { if (!e.repeat && (e.code === 'Space' || e.code === 'KeyX' || e.code === 'ArrowUp')) { e.preventDefault(); hook('gameShoot'); } return; }
+  if (S.phase === 'game') { if (e.code === 'Space' || e.code === 'KeyX' || e.code === 'ArrowUp') { e.preventDefault(); hook('gameShoot'); } return; }
   if (!playing()) return;
   if (e.code === 'KeyX') { shoot(); return; }
   if (e.repeat) return;
@@ -5986,6 +6076,7 @@ const TEST = {
   startBoss() { TEST.setX(BOSS_X + 300); },
   coins(n) { S.coins = n; saveProgress(); },
   get S() { return S; },
+  get say() { return SAY.list; },
 };
 buildWorld();
 // =====================================================================
@@ -6449,6 +6540,7 @@ function startPanel() {
 //  drawPuddle and the optional hooks drawSpecial, drawWorldMid, drawWorldFront, drawWorldTop, startPanel, drawShopClerk.
 // =====================================================================
 function draw() {
+  SAY.list = [];
   ctx.save();
   if (S.shake > 0) ctx.translate(rand(-S.shake, S.shake) * 0.6, rand(-S.shake, S.shake) * 0.4);
   if (hook('drawSpecial')) { ctx.restore(); if (!S.noHud && S.phase !== 'intro') drawHUD(); if (!MENU.open) drawScreens(); return; }
@@ -6619,6 +6711,7 @@ function drawHUD() {
     ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
     ctx.strokeText(S.msg, W / 2, 84); ctx.fillText(S.msg, W / 2, 84); ctx.globalAlpha = 1;
+    sayBtn(W / 2 + ctx.measureText(S.msg).width / 2 + 12, 66, S.msg, 36, -DY);
   }
   ctx.restore();
 }
@@ -6637,12 +6730,22 @@ function drawSpeakerIcon(x, y, on) {
   ctx.restore();
 }
 
+// ---------------- 🔊 read-aloud button: (x, y) top-left in world coords, yOff for HUD coordinates ----------------
+function sayBtn(x, y, text, size = 34, yOff = 0) {
+  if (!canSpeak() || !text) return;
+  const r = { x, y, w: size, h: size };
+  SAY.list.push({ x, y: y + yOff, w: size, h: size, text });
+  ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 10); ctx.fill(); ctx.stroke();
+  ctx.font = `${Math.round(size * 0.56)}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = OUT; ctx.fillText('🔊', r.x + r.w / 2, r.y + r.h / 2 + 1);
+  ctx.restore();
+}
 // ---------------- panels ----------------
-function panel(title, lines, titleColor, ty = 78) {
+function panel(title, lines, titleColor, ty = 78, extra) {
   ctx.save(); ctx.fillStyle = 'rgba(16,22,44,0.76)'; ctx.fillRect(0, -VH, W, 3 * VH);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = titleColor; ctx.strokeStyle = OUT; ctx.lineWidth = 6; ctx.font = 'bold 40px Arial';
   ctx.strokeText(title, W / 2, ty); ctx.fillText(title, W / 2, ty);
+  sayBtn(W / 2 + ctx.measureText(title).width / 2 + 16, ty - 21, [title, ...lines].join('. ') + (extra ? '. ' + extra : ''), 42);
   ctx.fillStyle = '#f2f8ff'; ctx.font = 'bold 15px Arial';
   lines.forEach((l, i) => ctx.fillText(l, W / 2, 120 + i * (lines.length > 4 ? 21 : 24)));
   ctx.restore();
@@ -6660,7 +6763,7 @@ function drawScreens() {
   if (S.phase === 'start') hook('startPanel');
   if (S.phase === 'ask' && S.ask) {
     const a = askInfo(S.ask);
-    panel(a.title, a.lines, a.color || '#9fd8ff');
+    panel(a.title, a.lines, a.color || '#9fd8ff', 78, (a.yes || tx('JA')) + ' … ' + (a.no || tx('NEIN, WEITER')));
     button(BTN.yes, a.yes || tx('JA'), '#34c759', '#1f8f3c'); button(BTN.no, a.no || tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'shop') drawShop();
@@ -6670,7 +6773,7 @@ function drawScreens() {
   }
   if (S.phase === 'won') {
     const w = wonInfo();
-    panel(w.title, w.lines, '#7dffa0');
+    panel(w.title, w.lines, '#7dffa0', 78, w.b1 + ' … ' + (w.b2 || tx('ZUM MENÜ')));
     button(BTN.won1, w.b1, '#34c759', '#1f8f3c'); button(BTN.won2, w.b2 || tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
 }
@@ -6681,6 +6784,7 @@ function resultPanel(text, win, extra) {
   ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 28px Arial';
   ctx.strokeText(text, W / 2, 190); ctx.fillText(text, W / 2, 190);
   if (extra) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(extra, W / 2, 226); ctx.fillText(extra, W / 2, 226); }
+  ctx.font = 'bold 28px Arial'; sayBtn(W / 2 + ctx.measureText(text).width / 2 + 14, 170, text + (extra ? '. ' + extra : ''), 40);
   ctx.restore();
   if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
   else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
@@ -6710,6 +6814,7 @@ function drawShop() {
     ctx.textAlign = 'center'; ctx.font = 'bold 14px Arial';
     if (owned) { ctx.fillStyle = '#9ff5b5'; ctx.fillText(it.kind === 'cloth' ? tx('Anziehen') : tx('Gekauft ✓'), r.x + r.w / 2, r.y + r.h - 14); }
     else { ctx.fillStyle = afford ? '#ffd23a' : '#ff8a7a'; ctx.fillText('● ' + it.price, r.x + r.w / 2, r.y + r.h - 14); }
+    sayBtn(r.x + r.w - 30, r.y + r.h - 30, tx(it.name) + (it.desc ? '. ' + tx(it.desc) : '') + '. ' + (owned ? (it.kind === 'cloth' ? tx('Anziehen') : tx('Gekauft ✓')) : tx('{n} Münzen', { n: it.price })), 26);
   });
   ctx.restore();
   button(BTN.shopDone, tx('FERTIG'), '#34c759', '#1f8f3c');
@@ -6723,11 +6828,12 @@ function wrapText(t, x, y, maxW, lh) {
 function speech(x, y, w, text, tx0, ty0) {
   ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top';
   const lines = []; let line = '';
-  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 24 && line) { lines.push(line); line = wd; } else line = t; }
+  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 60 && line) { lines.push(line); line = wd; } else line = t; }
   if (line) lines.push(line);
-  const h = lines.length * 18 + 18;
+  const h = Math.max(lines.length * 18 + 18, 46);
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.roundRect(x, y, w, h, 14); ctx.fill(); ctx.stroke();
+  ctx.restore(); sayBtn(x + w - 38, y + 6, text, 32); ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
   if (tx0 != null) { ctx.beginPath(); ctx.moveTo(x + 24, y + h - 2); ctx.lineTo(tx0, ty0); ctx.lineTo(x + 46, y + h - 2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillRect(x + 22, y + h - 6, 26, 5); }
   ctx.fillStyle = OUT; ctx.textAlign = 'left'; lines.forEach((l, i) => ctx.fillText(l, x + 12, y + 10 + i * 18));
   ctx.restore();
@@ -6794,7 +6900,7 @@ function drawElephant(x, y, s, t, wings, dir = 1, sad = false) {
   ctx.restore();
 }
 
-Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu });
+Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu, sayClick });
 return ME;
 }
 
@@ -7287,6 +7393,8 @@ canvas.addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') CTRL.touch = true; else if (e.pointerType === 'mouse') CTRL.touch = false;
   // right mouse button never jumps – it shoots
   if (e.pointerType === 'mouse' && e.button === 2) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); mouseButtons(e); return; }
+  // 🔊 read-aloud buttons (Level 4): before anything else
+  if (!TRANS && !MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open && CUR && CUR.sayClick && CUR.sayClick(p)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); return; }
   if (EXIT.btn && exitVisible() && inB(p, EXIT.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); toMainMenu(); return; }
   if (shootVisible() && inShootZone(p)) { e.stopImmediatePropagation(); e.preventDefault(); CTRL.shootP.add(e.pointerId); ctlShoot(); return; }
   if (padVisible() && inPadZone(p)) {

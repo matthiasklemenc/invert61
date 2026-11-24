@@ -146,11 +146,12 @@ function drawFoto() {
   drawAnimal(task.kind, W / 2 - 290, ty + 6, 1, S.t, 0.8);
   ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'left';
   ctx.fillText(tx('Fotografiere {n} {a}!', { n: task.need, a: tx(task.need > 1 ? ANIMALS[task.kind].plural : ANIMALS[task.kind].name) }) + '   ' + task.got + ' / ' + task.need, W / 2 - 250, ty + 1);
+  sayBtn(W / 2 + 336, ty - 18, tx('Fotografiere {n} {a}!', { n: task.need, a: tx(task.need > 1 ? ANIMALS[task.kind].plural : ANIMALS[task.kind].name) }), 36);
   ctx.textAlign = 'right'; ctx.fillStyle = '#ffd23a';
   ctx.fillText('⏱ ' + Math.max(0, Math.ceil((FOTO_T - g.t) / 60)) + ' s', W / 2 + 316, ty + 1);
   ctx.fillStyle = '#bfe6ff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
   ctx.fillText(tx('Aufgabe {a} von {b}', { a: g.task + 1, b: g.tasks.length }), W / 2, ty + 34);
-  if (g.msgT > 0) { ctx.globalAlpha = Math.min(1, g.msgT / 20); ctx.font = 'bold 20px Arial'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.fillStyle = '#ffffff'; ctx.strokeText(g.msg, W / 2, ty + 64); ctx.fillText(g.msg, W / 2, ty + 64); ctx.globalAlpha = 1; }
+  if (g.msgT > 0) { ctx.font = 'bold 20px Arial'; sayBtn(W / 2 + ctx.measureText(g.msg).width / 2 + 10, ty + 46, g.msg, 32); ctx.globalAlpha = Math.min(1, g.msgT / 20); ctx.font = 'bold 20px Arial'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.fillStyle = '#ffffff'; ctx.strokeText(g.msg, W / 2, ty + 64); ctx.fillText(g.msg, W / 2, ty + 64); ctx.globalAlpha = 1; }
   // the little photos (polaroids) along the bottom
   g.photos.slice(-8).forEach((p, i) => {
     const px = 70 + i * 74, py = H - 56 + Math.max(0, 20 - p.t) * 3;
