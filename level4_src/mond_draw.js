@@ -457,7 +457,7 @@ function drawQuiz() {
     : c.state === 'picture' ? tx('Super! Das Sternbild ist zurück!')
     : c.state === 'aurora' ? tx('Im Löwen erscheint der Planet AURORA 61!') : tx('Wie heißt dieses Sternbild?');
   ctx.font = 'bold 18px Arial'; ctx.lineWidth = 5; ctx.fillStyle = '#ffe68a';
-  const hx = 760 + (canSpeak() ? 42 : 0);
+  const hx = 760;
   wrapStroke(head, hx, -DY + 104, 470, 22);
   sayBtn(760, -DY + 88, head, 34);
   if (c.state === 'trace' && c.wrong >= 2) { sayBtn(700, -DY + 140, tx('Tipp: der gelb blinkende Stern ist der nächste.'), 30); ctx.font = 'bold 15px Arial'; ctx.fillStyle = '#9fd8ff'; ctx.lineWidth = 4; ctx.strokeText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); ctx.fillText(tx('Tipp: der gelb blinkende Stern ist der nächste.'), 740, -DY + 156); }
@@ -476,7 +476,7 @@ function drawQuiz() {
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText((i + 1) + '.  ' + tx(CONSTELLATIONS[id].name), r.x + 14, r.y + r.h / 2 + 1);
       ctx.restore();
-      const sr = sayRect(i); sayBtn(sr.x, sr.y, tx(CONSTELLATIONS[id].name), sr.h);
+      const sr = sayRect(i); sayBtnKeep(sr.x, sr.y, tx(CONSTELLATIONS[id].name), sr.h);
     }
     if (c.state === 'answered') {
       ctx.save(); ctx.textAlign = 'center'; ctx.font = 'bold 26px Arial'; ctx.lineWidth = 6; ctx.strokeStyle = OUT;

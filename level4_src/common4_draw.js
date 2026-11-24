@@ -196,7 +196,10 @@ function drawSpeakerIcon(x, y, on) {
 }
 
 // ---------------- 🔊 read-aloud button: (x, y) top-left in world coords, yOff for HUD coordinates ----------------
-function sayBtn(x, y, text, size = 34, yOff = 0) {
+// the small 🔊 next to single texts are gone (the 🔊 switch at the top right reads every text) – only the
+// answers of the star quiz keep theirs (sayBtnKeep): Kai has to hear the names to choose.
+function sayBtn() {}
+function sayBtnKeep(x, y, text, size = 34, yOff = 0) {
   if (!canSpeak() || !text) return;
   const r = { x, y, w: size, h: size };
   SAY.list.push({ x, y: y + yOff, w: size, h: size, text });
@@ -293,7 +296,7 @@ function wrapText(t, x, y, maxW, lh) {
 function speech(x, y, w, text, tx0, ty0) {
   ctx.save(); ctx.font = 'bold 14px Arial'; ctx.textBaseline = 'top';
   const lines = []; let line = '';
-  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 60 && line) { lines.push(line); line = wd; } else line = t; }
+  for (const wd of text.split(' ')) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 24 && line) { lines.push(line); line = wd; } else line = t; }
   if (line) lines.push(line);
   const h = Math.max(lines.length * 18 + 18, 46);
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
