@@ -341,6 +341,11 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  'So geht\'s: Tippe auf ein Feld = graben. Findest du keinen Knochen, zeigt eine Zahl,': ['How it works: tap a field = dig. If there is no bone, a number shows', 'Así se juega: toca un campo = excavar. Si no hay hueso, un número muestra'],
+  'wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). 0 = rundherum ist nichts.': ['how many bones lie in the 8 fields around it (diagonals too). 0 = nothing around.', 'cuántos huesos hay en los 8 campos de alrededor (también en diagonal). 0 = nada alrededor.'],
+  'Im Sand liegen 6 Knochen eines Dino-Skeletts versteckt. Du hast 15 Grabungen.': ['6 bones of a dino skeleton are hidden in the sand. You have 15 digs.', 'En la arena hay 6 huesos de un esqueleto escondidos. Tienes 15 excavaciones.'],
+  'Tippe auf ein Feld zum Graben. Ist dort kein Knochen, zeigt eine Zahl,': ['Tap a field to dig. If there is no bone, a number shows', 'Toca un campo para excavar. Si no hay hueso, un número muestra'],
+  'wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). Gelb = 1, Orange = 2, Rot = 3.': ['how many bones lie in the 8 fields around it (diagonals too). Yellow = 1, orange = 2, red = 3.', 'cuántos huesos hay en los 8 campos de alrededor (también en diagonal). Amarillo = 1, naranja = 2, rojo = 3.'],
   // ---------- LEVEL 3 · LAVAHÖHLEN ----------
   'DIE LAVAHÖHLEN': ['THE LAVA CAVES', 'LAS CUEVAS DE LAVA'], 'LAVAHÖHLEN': ['LAVA CAVES', 'CUEVAS DE LAVA'], 'VULKAN': ['VOLCANO', 'VOLCÁN'],
   'Wasserbomben': ['Water bombs', 'Bombas de agua'], 'nur in den Lavahöhlen': ['only in the lava caves', 'solo en las cuevas de lava'], 'WURF': ['THROW', 'LANZAR'],

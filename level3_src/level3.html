@@ -378,6 +378,11 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  'So geht\'s: Tippe auf ein Feld = graben. Findest du keinen Knochen, zeigt eine Zahl,': ['How it works: tap a field = dig. If there is no bone, a number shows', 'Así se juega: toca un campo = excavar. Si no hay hueso, un número muestra'],
+  'wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). 0 = rundherum ist nichts.': ['how many bones lie in the 8 fields around it (diagonals too). 0 = nothing around.', 'cuántos huesos hay en los 8 campos de alrededor (también en diagonal). 0 = nada alrededor.'],
+  'Im Sand liegen 6 Knochen eines Dino-Skeletts versteckt. Du hast 15 Grabungen.': ['6 bones of a dino skeleton are hidden in the sand. You have 15 digs.', 'En la arena hay 6 huesos de un esqueleto escondidos. Tienes 15 excavaciones.'],
+  'Tippe auf ein Feld zum Graben. Ist dort kein Knochen, zeigt eine Zahl,': ['Tap a field to dig. If there is no bone, a number shows', 'Toca un campo para excavar. Si no hay hueso, un número muestra'],
+  'wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). Gelb = 1, Orange = 2, Rot = 3.': ['how many bones lie in the 8 fields around it (diagonals too). Yellow = 1, orange = 2, red = 3.', 'cuántos huesos hay en los 8 campos de alrededor (también en diagonal). Amarillo = 1, naranja = 2, rojo = 3.'],
   // ---------- LEVEL 3 · LAVAHÖHLEN ----------
   'DIE LAVAHÖHLEN': ['THE LAVA CAVES', 'LAS CUEVAS DE LAVA'], 'LAVAHÖHLEN': ['LAVA CAVES', 'CUEVAS DE LAVA'], 'VULKAN': ['VOLCANO', 'VOLCÁN'],
   'Wasserbomben': ['Water bombs', 'Bombas de agua'], 'nur in den Lavahöhlen': ['only in the lava caves', 'solo en las cuevas de lava'], 'WURF': ['THROW', 'LANZAR'],
@@ -2794,7 +2799,7 @@ function drawScreens() {
     const r = S.ask === 'rodeo';
     panel(r ? tx('DINO-RODEO') : tx('FOSSILIEN AUSGRABEN'), r
       ? [tx('Kannst du dich 15 Sekunden auf dem wilden Triceratops halten?'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')]
-      : [tx('Finde alle 6 Knochen eines Dino-Skeletts im Sand.'), tx('Ein leeres Loch zeigt, wie viele Knochen direkt daneben liegen.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffd23a');
+      : [tx('Im Sand liegen 6 Knochen eines Dino-Skeletts versteckt. Du hast 15 Grabungen.'), tx('Tippe auf ein Feld zum Graben. Ist dort kein Knochen, zeigt eine Zahl,'), tx('wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). Gelb = 1, Orange = 2, Rot = 3.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffd23a');
     button(BTN.yes, tx('JA, SPIELEN!'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'rodeo') drawRodeo();
@@ -2853,7 +2858,18 @@ function drawFossil() {
       ctx.beginPath(); ctx.roundRect(-18, -4, 36, 8, 4); ctx.fill(); ctx.stroke();
       for (const [bx, by] of [[-18, -4], [-18, 4], [18, -4], [18, 4]]) { ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
       ctx.restore();
-    } else { ctx.fillStyle = cl.n ? '#fff' : 'rgba(255,255,255,0.5)'; ctx.font = 'bold 20px Arial'; ctx.fillText(cl.n ? String(cl.n) : '·', x + FOS.cw / 2, y + FOS.ch / 2 + 1); }
+    } else {
+      // the number = how many bones lie in the 8 fields right around it; the colour shows "how warm" it is
+      ctx.fillStyle = ['rgba(255,255,255,0.55)', '#ffe066', '#ffa63a', '#ff5a3a', '#ff2a6a'][Math.min(cl.n, 4)];
+      ctx.strokeStyle = OUT; ctx.lineWidth = 3; ctx.font = 'bold 22px Arial';
+      ctx.strokeText(String(cl.n), x + FOS.cw / 2, y + FOS.ch / 2 + 1); ctx.fillText(String(cl.n), x + FOS.cw / 2, y + FOS.ch / 2 + 1);
+    }
+  }
+  // how it works (always visible under the sand field)
+  if (!g.result) {
+    ctx.fillStyle = '#fff6e8'; ctx.font = 'bold 13px Arial';
+    ctx.fillText(tx('So geht\'s: Tippe auf ein Feld = graben. Findest du keinen Knochen, zeigt eine Zahl,'), W / 2, FOS.y + FOS.rows * FOS.ch + 16);
+    ctx.fillText(tx('wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). 0 = rundherum ist nichts.'), W / 2, FOS.y + FOS.rows * FOS.ch + 34);
   }
   ctx.restore();
   if (g.result) { ctx.save(); ctx.fillStyle = 'rgba(30,18,10,0.7)'; ctx.fillRect(0, -VH, W, 3 * VH); ctx.restore(); }
