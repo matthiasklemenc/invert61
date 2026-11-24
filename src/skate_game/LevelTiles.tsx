@@ -1,4 +1,5 @@
 import React from 'react';
+import { gameAssetUrl } from './GameConstants';
 
 // ------------------------------------------------------------------
 //  Level selection tiles (Games → Skateboard-Game → menu)
@@ -47,6 +48,7 @@ export function getGameLang(): Lang {
 // ---------------- pictures (own drawings, viewBox 100 x 100) ----------------
 
 const PicStreet = () => (
+    <div className="relative w-full h-full">
     <svg viewBox="0 0 100 100" className="w-full h-full block">
         <defs>
             <linearGradient id="lt-sky1" x1="0" y1="0" x2="0" y2="1">
@@ -74,36 +76,16 @@ const PicStreet = () => (
         <g fill="#ddd"><rect x="8" y="93" width="12" height="2" /><rect x="44" y="93" width="12" height="2" /><rect x="80" y="93" width="12" height="2" /></g>
         {/* shadow */}
         <ellipse cx="50" cy="89" rx="14" ry="2" fill="#000" opacity="0.3" />
-        {/* Kai in the air (ollie) */}
-        <g transform="translate(50 50) rotate(-8)">
-            {/* board */}
-            <rect x="-17" y="20" width="34" height="4" rx="2" fill="#c52323" stroke="#222" strokeWidth="1" />
-            <circle cx="-10" cy="26" r="2.4" fill="#eee" stroke="#222" strokeWidth="0.8" />
-            <circle cx="10" cy="26" r="2.4" fill="#eee" stroke="#222" strokeWidth="0.8" />
-            {/* legs (bent) */}
-            <path d="M-3 4 L-9 12 L-8 20" stroke="#f1c9a5" strokeWidth="3.4" fill="none" strokeLinecap="round" />
-            <path d="M3 4 L9 11 L8 20" stroke="#f1c9a5" strokeWidth="3.4" fill="none" strokeLinecap="round" />
-            {/* shorts */}
-            <path d="M-6 0 L6 0 L8 8 L1 8 L0 5 L-1 8 L-8 8 Z" fill="#2f4f7f" stroke="#222" strokeWidth="0.8" />
-            {/* shoes */}
-            <rect x="-11" y="17" width="7" height="3" rx="1" fill="#fff" stroke="#222" strokeWidth="0.7" />
-            <rect x="5" y="17" width="7" height="3" rx="1" fill="#fff" stroke="#222" strokeWidth="0.7" />
-            {/* body */}
-            <path d="M-6 -16 L6 -16 L7 1 L-7 1 Z" fill="#ffffff" stroke="#222" strokeWidth="0.8" />
-            {/* arms out */}
-            <path d="M-6 -14 L-15 -8 L-21 -11" stroke="#f1c9a5" strokeWidth="3" fill="none" strokeLinecap="round" />
-            <path d="M6 -14 L15 -19 L21 -16" stroke="#f1c9a5" strokeWidth="3" fill="none" strokeLinecap="round" />
-            {/* head */}
-            <circle cx="0" cy="-23" r="7" fill="#f1c9a5" stroke="#222" strokeWidth="0.8" />
-            {/* blond hair to the shoulders */}
-            <path d="M-7.5 -24 Q-9 -14 -6 -13 L-5 -20 Z M7.5 -24 Q9 -14 6 -13 L5 -20 Z" fill="#f2d35b" stroke="#222" strokeWidth="0.6" />
-            {/* blue cap */}
-            <path d="M-7.5 -25 Q0 -34 7.5 -25 Z" fill="#2a63c9" stroke="#222" strokeWidth="0.8" />
-            <path d="M6 -25.5 L13 -24 L7 -23.5 Z" fill="#2a63c9" stroke="#222" strokeWidth="0.7" />
-            <circle cx="3" cy="-22" r="0.9" fill="#222" />
-            <path d="M1 -18.5 Q3 -17.5 5 -18.8" stroke="#222" strokeWidth="0.7" fill="none" />
-        </g>
     </svg>
+    {/* Kai (his own picture from Level 1), a little in the air above the street */}
+    <img
+        src={gameAssetUrl('kai/kai_ride_1.png')}
+        alt="Kai"
+        draggable={false}
+        className="absolute"
+        style={{ left: '50%', bottom: '14%', height: '66%', transform: 'translateX(-50%) rotate(-6deg)' }}
+    />
+    </div>
 );
 
 const PicKraken = () => (

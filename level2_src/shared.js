@@ -509,6 +509,9 @@ function tx(key, params) {
   if (params) for (const k in params) s = s.split('{' + k + '}').join(params[k]);
   // whoever is riding is greeted by name: "Hallo Bali!", "Ahoi, Kapitän Bali!" …
   if (SAVE.char === 'bali') s = s.replace(/\bKai\b/g, 'Bali');
+  // the name typed in the game menu ("Choose your own name") replaces the rider's name: "Ahoi, Kapitän Max!"
+  let myName = ''; try { myName = (localStorage.getItem('invert-skate-username') || '').trim(); } catch (e) {}
+  if (myName) s = s.replace(SAVE.char === 'bali' ? /\bBali\b/g : /\bKai\b/g, myName);
   return s;
 }
 

@@ -384,6 +384,13 @@ const TR = {
   'Tippe auf ein Feld zum Graben. Ist dort kein Knochen, zeigt eine Zahl,': ['Tap a field to dig. If there is no bone, a number shows', 'Toca un campo para excavar. Si no hay hueso, un número muestra'],
   'wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). Gelb = 1, Orange = 2, Rot = 3.': ['how many bones lie in the 8 fields around it (diagonals too). Yellow = 1, orange = 2, red = 3.', 'cuántos huesos hay en los 8 campos de alrededor (también en diagonal). Amarillo = 1, naranja = 2, rojo = 3.'],
   // ---------- LEVEL 3 · LAVAHÖHLEN ----------
+  'Rase 30 Sekunden mit der Lore über drei Gleise – immer schneller!': ['Race the cart over three tracks for 30 seconds – faster and faster!', '¡Corre 30 segundos con la vagoneta por tres vías – cada vez más rápido!'],
+  '▲ ▼ = Gleis wechseln · SPRUNG = über Löcher und Felsen · DUCKEN = unter Balken und Fledermäusen': ['▲ ▼ = change track · JUMP = over holes and rocks · DUCK = under beams and bats', '▲ ▼ = cambiar de vía · SALTO = sobre hoyos y rocas · AGACHAR = bajo vigas y murciélagos'],
+  'Kommt eine Lore entgegen (rotes !), wechsle schnell das Gleis.': ['A cart coming towards you (red !)? Change the track quickly.', '¿Viene una vagoneta (! rojo)? Cambia rápido de vía.'],
+  '▲ ▼ = Gleis wechseln · SPRUNG · DUCKEN halten': ['▲ ▼ = change track · JUMP · hold DUCK', '▲ ▼ = cambiar de vía · SALTO · mantén AGACHAR'],
+  '↑ ↓ = Gleis · Leertaste = springen · X halten = ducken': ['↑ ↓ = track · Space = jump · hold X = duck', '↑ ↓ = vía · Espacio = saltar · mantén X = agacharse'],
+  'Tasten: ↑ ↓ = Gleis · Leertaste = springen · X halten = ducken': ['Keys: ↑ ↓ = track · Space = jump · hold X = duck', 'Teclas: ↑ ↓ = vía · Espacio = saltar · mantén X = agacharse'],
+  'DUCKEN': ['DUCK', 'AGACHAR'],
   'DIE LAVAHÖHLEN': ['THE LAVA CAVES', 'LAS CUEVAS DE LAVA'], 'LAVAHÖHLEN': ['LAVA CAVES', 'CUEVAS DE LAVA'], 'VULKAN': ['VOLCANO', 'VOLCÁN'],
   'Wasserbomben': ['Water bombs', 'Bombas de agua'], 'nur in den Lavahöhlen': ['only in the lava caves', 'solo en las cuevas de lava'], 'WURF': ['THROW', 'LANZAR'],
   'Du hast WASSERBOMBEN! Wurf-Taste rechts unten.': ['You got WATER BOMBS! Throw button at the bottom right.', '¡Tienes BOMBAS DE AGUA! Botón de lanzar abajo a la derecha.'],
@@ -720,6 +727,9 @@ function tx(key, params) {
   if (params) for (const k in params) s = s.split('{' + k + '}').join(params[k]);
   // whoever is riding is greeted by name: "Hallo Bali!", "Ahoi, Kapitän Bali!" …
   if (SAVE.char === 'bali') s = s.replace(/\bKai\b/g, 'Bali');
+  // the name typed in the game menu ("Choose your own name") replaces the rider's name: "Ahoi, Kapitän Max!"
+  let myName = ''; try { myName = (localStorage.getItem('invert-skate-username') || '').trim(); } catch (e) {}
+  if (myName) s = s.replace(SAVE.char === 'bali' ? /\bBali\b/g : /\bKai\b/g, myName);
   return s;
 }
 
@@ -4743,7 +4753,7 @@ canvas.addEventListener('pointerdown', e => {
     else if (inRect(p, BTN.no)) { S.ask = null; S.phase = 'play'; Audio.play('tink'); }
     return;
   }
-  if (S.phase === 'lore') { lorePointer(p); return; }
+  if (S.phase === 'lore') { lorePointer(p, e.pointerId); return; }
   if (S.phase === 'gameover') { if (inRect(p, BTN.goYes)) resetGame(); else if (inRect(p, BTN.goNo)) { resetGame(); toMainMenu(); } return; }
   if (S.phase === 'won') { if (inRect(p, BTN.up)) leaveUp(); else if (inRect(p, BTN.menu)) toMainMenu(); return; }
 });
@@ -4938,66 +4948,123 @@ function winLava() {
 }
 function updateBossDead(dt) { if (S.boss) S.boss.t += dt; }
 // =====================================================================
-//  LAVAHÖHLEN – MINI GAME: LORE-FAHRT (mine cart ride)
-//  Kai sits in a mine cart that races along the rails through the cave. Tap / Space = the cart jumps.
-//  Jump over holes in the track and over rocks – but not into the glow bats flying above the rails.
-//  Collect the gems. 25 seconds; crashing 3 times = the ride is over.
+//  LAVAHÖHLEN – MINI GAME: LORE-FAHRT (mine cart race)
+//  Three tracks above each other. The cart races to the right and gets faster and faster.
+//    ▲ / ▼        = change to the track above / below
+//    SPRUNG       = jump (over holes in the track and rocks)
+//    DUCKEN (hold)= duck (under low beams and glow bats)
+//    an oncoming cart can't be jumped – change the track! (a "!" warns at the right edge)
+//  Gems on all tracks. 30 seconds; 3 crashes = the ride is over.
 // =====================================================================
-const LORE_T = 1500, LORE_SP = 5.6, CART_X = 300, RAIL_Y = FLOOR - 16, CART_JUMP = -10.8, CART_G = 0.5;
+const LORE_T = 1800, CART_X = 380, CART_JUMP = -9.6, CART_G = 0.5;
+// the three tracks use the whole height of the screen above the buttons (0 = bottom, 1 = middle, 2 = top)
+const loreBottom = () => H - 140;
+const loreGap = () => clamp((loreBottom() - (-DY + 140)) / 2, 96, 140);
+const laneY = i => loreBottom() - i * loreGap();
+const loreSpeed = g => 5 + Math.min(1, g.t / LORE_T) * 3.5; // faster and faster
 function startLore() {
   const k = S.kai; k.vx = 0; k.dir = 0;
-  S.game = { id: 'lore', t: 0, y: RAIL_Y, vy: 0, ground: true, obs: [], gems: [], crashes: 0, inv: 0, result: null, next: 140, scroll: 0, got: 0 };
+  S.game = { id: 'lore', t: 0, lane: 1, from: 1, sw: 0, y: laneY(1), jy: 0, vy: 0, air: false, duck: false, duckP: new Set(), duckKey: false,
+    obs: [], gems: [], crashes: 0, inv: 0, result: null, next: 200, scroll: 0, got: 0 };
   S.phase = 'lore'; Audio.play('chime');
-  flash(isTouchDev() ? 'Tippen = mit der Lore springen!' : 'Leertaste / Klick = mit der Lore springen!', 140);
+  flash(isTouchDev() ? '▲ ▼ = Gleis wechseln · SPRUNG · DUCKEN halten' : '↑ ↓ = Gleis · Leertaste = springen · X halten = ducken', 180);
 }
-function loreJump() { const g = S.game; if (!g || g.result || !g.ground) return; g.vy = CART_JUMP; g.ground = false; Audio.play('jump'); }
-function lorePointer(p) {
+// ---------- controls ----------
+function loreLane(d) {
+  const g = S.game; if (!g || g.result || g.air || g.sw > 0) return;
+  const n = clamp(g.lane + d, 0, 2); if (n === g.lane) return;
+  g.from = g.lane; g.lane = n; g.sw = 12; Audio.play('clank');
+}
+function loreJump() { const g = S.game; if (!g || g.result || g.air || g.sw > 0) return; g.vy = CART_JUMP; g.air = true; Audio.play('jump'); }
+// the four buttons of the ride (screen / world coordinates of the lower part)
+const LBTN = { R: 52 };
+const loreBtn = () => {
+  const R = LBTN.R, y = H - 12 - R;
+  return { down: { x: 18 + R, y }, up: { x: 18 + R * 3 + 20, y }, duck: { x: W - 18 - R * 3 - 20, y }, jump: { x: W - 18 - R, y } };
+};
+const inCircle = (p, c) => Math.hypot(p.x - c.x, p.y - c.y) < LBTN.R + 12;
+function lorePointer(p, id) {
   const g = S.game; if (!g) return;
   if (g.result) {
     if (g.result === 'lose' && inRect(p, GBTN.again)) { S.game = null; startLore(); return; }
     if (inRect(p, g.result === 'lose' ? GBTN.next2 : GBTN.next)) endLore();
     return;
   }
-  loreJump();
+  const b = loreBtn();
+  if (inCircle(p, b.up)) loreLane(1);
+  else if (inCircle(p, b.down)) loreLane(-1);
+  else if (inCircle(p, b.duck)) g.duckP.add(id);
+  else if (inCircle(p, b.jump)) loreJump();
+  else if (p.x > W / 2) loreJump();                      // anywhere else on the right half = jump
 }
+const releaseDuck = e => { if (CUR === ME && S.game && S.game.duckP) S.game.duckP.delete(e.pointerId); };
+window.addEventListener('pointerup', releaseDuck); window.addEventListener('pointercancel', releaseDuck);
 function gameKey(e) {
   if (S.phase !== 'lore') return;
   const g = S.game; if (!g) return;
   if (g.result) { if (e.code === 'Space' || e.code === 'Enter') endLore(); return; }
-  if (!e.repeat && (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW')) { e.preventDefault(); loreJump(); }
+  if (e.repeat) return;
+  if (e.code === 'ArrowUp' || e.code === 'KeyW') loreLane(1);
+  else if (e.code === 'ArrowDown' || e.code === 'KeyS') loreLane(-1);
+  else if (e.code === 'Space') { e.preventDefault(); loreJump(); }
+  else if (e.code === 'KeyX' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') g.duckKey = true;
 }
+window.addEventListener('keyup', e => { if (CUR === ME && S.game && S.game.id === 'lore' && (e.code === 'KeyX' || e.code === 'ShiftLeft' || e.code === 'ShiftRight')) S.game.duckKey = false; });
 function gameKeyUp() {}
 const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 }, again: { x: W / 2 - 235, y: 250, w: 220, h: 44 }, next2: { x: W / 2 + 15, y: 250, w: 220, h: 44 } };
-const cartBox = g => ({ x1: CART_X - 40, x2: CART_X + 40, y1: g.y - 110, y2: g.y });
-const overGap = g => g.obs.some(o => o.type === 'gap' && CART_X > o.x + 12 && CART_X < o.x + o.w - 12);
+
+// ---------- the ride ----------
+// the cart's box: standing Kai reaches 110 px above the rail, ducking only 58
+const cartBox = g => ({ x1: CART_X - 40, x2: CART_X + 40, y1: g.y + g.jy - (g.duck ? 58 : 110), y2: g.y + g.jy });
+const overGap = (g, lane) => g.obs.some(o => o.type === 'gap' && o.lane === lane && CART_X > o.x + 14 && CART_X < o.x + o.w - 14);
+function spawnLore(g) {
+  const lane = Math.floor(Math.random() * 3), x = W + 60, r = Math.random(), late = g.t / LORE_T;
+  if (r < 0.24) g.obs.push({ type: 'gap', lane, x, w: rand(90, 130) });
+  else if (r < 0.42) g.obs.push({ type: 'rock', lane, x, w: 40, h: 34 });
+  else if (r < 0.6) g.obs.push({ type: 'beam', lane, x, w: 46 });
+  else if (r < 0.76) g.obs.push({ type: 'bat', lane, x, w: 44, t: 0 });
+  else if (!g.obs.some(o => o.type === 'cart' && (o.warn > 0 || o.x > CART_X - 100))) g.obs.push({ type: 'cart', lane, x: x + 260, w: 92, warn: 70 });   // oncoming: announced at the edge first (only one at a time – there is always a free track)
+  else g.obs.push({ type: 'rock', lane, x, w: 40, h: 34 });
+  // gems: a row on some track, sometimes high up (only with a jump)
+  if (Math.random() < 0.7) { const gl = Math.floor(Math.random() * 3), high = Math.random() < 0.4; for (let i = 0; i < 3; i++) g.gems.push({ lane: gl, x: x + 140 + i * 34, dy: high ? 120 : 50 }); }
+  g.next = rand(230, 330) - late * 60;
+}
 function updateLore(dt) {
   const g = S.game; if (!g || g.result) return;
-  g.t += dt; g.scroll += LORE_SP * dt;
+  const sp = loreSpeed(g);
+  g.t += dt; g.scroll += sp * dt;
   if (g.inv > 0) g.inv -= dt;
-  // new obstacles: holes in the track, rocks on the rails, glow bats above
-  g.next -= LORE_SP * dt;
-  if (g.next <= 0 && g.t < LORE_T - 100) {
-    const r = Math.random(), x = W + 40;
-    if (r < 0.4) { const w = rand(90, 130); g.obs.push({ type: 'gap', x, w }); for (let i = 0; i < 3; i++) g.gems.push({ x: x + w / 2 + (i - 1) * 30, y: RAIL_Y - 130 + Math.abs(i - 1) * 14 }); }
-    else if (r < 0.75) { g.obs.push({ type: 'rock', x, w: 40, h: 34 }); g.gems.push({ x: x + 20, y: RAIL_Y - 120 }); }
-    else { g.obs.push({ type: 'bat', x, w: 46, y: RAIL_Y - 170 + Math.random() * 20, t: 0 }); g.gems.push({ x: x + 23, y: RAIL_Y - 60 }); }
-    g.next = rand(300, 460);
-  }
-  for (const o of g.obs) { o.x -= LORE_SP * dt; if (o.type === 'bat') o.t = (o.t || 0) + dt; }
-  for (const gm of g.gems) gm.x -= LORE_SP * dt;
-  g.obs = g.obs.filter(o => o.x + o.w > -60); g.gems = g.gems.filter(gm => gm.x > -30 && !gm.done);
-  // the cart: on the rails or in the air
-  if (!g.ground) {
-    g.vy += CART_G * dt; g.y += g.vy * dt;
-    if (g.y >= RAIL_Y && !overGap(g)) { g.y = RAIL_Y; g.vy = 0; g.ground = true; Audio.play('land'); }
-  } else if (overGap(g)) { g.ground = false; g.vy = 1; }
-  if (g.y > RAIL_Y + 40) { crash(); g.y = RAIL_Y; g.vy = 0; g.ground = true; for (const o of g.obs) if (o.type === 'gap' && o.x < CART_X + 60) o.x = -999; }
-  const b = cartBox(g);
+  g.duck = g.duckKey || g.duckP.size > 0;
+  g.next -= sp * dt;
+  if (g.next <= 0 && g.t < LORE_T - 90) spawnLore(g);
   for (const o of g.obs) {
-    if (o.type === 'rock' && !o.hit && b.x2 > o.x && b.x1 < o.x + o.w && b.y2 > RAIL_Y - o.h) { o.hit = true; crash(); }
-    if (o.type === 'bat' && !o.hit && b.x2 > o.x && b.x1 < o.x + o.w && b.y1 < o.y + 14 && b.y2 > o.y - 14) { o.hit = true; crash(); }
+    if (o.type === 'cart' && o.warn > 0) { o.warn -= dt; if (o.warn > 0) continue; }
+    o.x -= (sp + (o.type === 'cart' ? 4 : 0)) * dt; if (o.type === 'bat') o.t += dt;
   }
-  for (const gm of g.gems) if (!gm.done && Math.abs(gm.x - CART_X) < 44 && gm.y > b.y1 - 10 && gm.y < b.y2 + 10) { gm.done = true; S.coins++; addScore(PTS.coin); g.got++; Audio.play('pearl'); }
+  for (const gm of g.gems) gm.x -= sp * dt;
+  g.obs = g.obs.filter(o => o.x + o.w > -80); g.gems = g.gems.filter(gm => gm.x > -30 && !gm.done);
+  // changing the track: the cart glides up / down
+  if (g.sw > 0) { g.sw -= dt; const u = 1 - Math.max(0, g.sw) / 12; g.y = laneY(g.from) + (laneY(g.lane) - laneY(g.from)) * u; if (g.sw <= 0) g.y = laneY(g.lane); }
+  // jumping (g.jy = height above the rail)
+  if (g.air) {
+    g.vy += CART_G * dt; g.jy += g.vy * dt;
+    if (g.jy >= 0 && !overGap(g, g.lane)) { g.jy = 0; g.vy = 0; g.air = false; Audio.play('land'); }
+  } else if (g.sw <= 0 && overGap(g, g.lane)) { g.air = true; g.vy = 1; }
+  // fell into a hole: crash, the cart is put back on the rail behind it
+  if (g.jy > 60) { crash(); g.jy = 0; g.vy = 0; g.air = false; for (const o of g.obs) if (o.type === 'gap' && o.lane === g.lane && o.x < CART_X + 60) o.x = -999; }
+  if (g.sw <= 0) {
+    const b = cartBox(g), ly = laneY(g.lane);
+    for (const o of g.obs) {
+      if (o.hit || o.lane !== g.lane || b.x2 < o.x || b.x1 > o.x + o.w) continue;
+      if (o.type === 'rock' && b.y2 > ly - o.h) { o.hit = true; crash(); }
+      if (o.type === 'beam' && b.y1 < ly - 74) { o.hit = true; crash(); }                           // a low beam: duck!
+      if (o.type === 'bat' && b.y1 < ly - 70 && b.y2 > ly - 100) { o.hit = true; crash(); }         // bat at head height: duck!
+      if (o.type === 'cart' && o.warn <= 0) { o.hit = true; crash(); }                              // oncoming cart: change the track!
+    }
+    for (const gm of g.gems) if (!gm.done && gm.lane === g.lane && Math.abs(gm.x - CART_X) < 44) {
+      const gy = ly - gm.dy; if (gy > b.y1 - 12 && gy < b.y2 + 6) { gm.done = true; S.coins++; addScore(PTS.coin); g.got++; Audio.play('pearl'); }
+    }
+  }
   if (g.crashes >= 3) { g.result = 'lose'; Audio.play('nomatch'); saveProgress(); }
   else if (g.t >= LORE_T) {
     g.result = 'win'; S.coins += 20; SAVE.mini.lore = true;
@@ -5367,9 +5434,9 @@ function drawKai() {
 }
 
 // ---------------- the mine cart ride (screen space) ----------------
-function drawCart(x, y, s, front) {
+function drawCart(x, y, s, front, col) {
   ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
-  ctx.fillStyle = '#6e6a66'; ctx.beginPath(); ctx.moveTo(-46, -46); ctx.lineTo(46, -46); ctx.lineTo(38, -8); ctx.lineTo(-38, -8); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = col || '#6e6a66'; ctx.beginPath(); ctx.moveTo(-46, -46); ctx.lineTo(46, -46); ctx.lineTo(38, -8); ctx.lineTo(-38, -8); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#8a8680'; ctx.fillRect(-46, -50, 92, 8); ctx.strokeRect(-46, -50, 92, 8);
   ctx.strokeStyle = 'rgba(30,20,20,0.4)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-20, -40); ctx.lineTo(-18, -14); ctx.moveTo(20, -40); ctx.lineTo(18, -14); ctx.stroke();
   ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.fillStyle = '#3a3a40';
@@ -5379,30 +5446,73 @@ function drawCart(x, y, s, front) {
 function drawLoreScene() {
   const g = S.game;
   drawCaveBack();
-  const off = g ? g.scroll : 0;
-  // ceiling beams rushing by
-  ctx.fillStyle = '#5a3a22'; for (let i = 0; i < 6; i++) { const x = ((i * 260 - off * 1.0) % 1560 + 1560) % 1560 - 100; ctx.fillRect(x, -DY, 16, DY + 70); ctx.fillRect(x - 30, 60, 76, 12); }
-  // rails with ties (holes are left out)
-  const isGap = x => g && g.obs.some(o => o.type === 'gap' && x > o.x && x < o.x + o.w);
-  ctx.fillStyle = BASALT; ctx.fillRect(0, RAIL_Y + 6, W, H - RAIL_Y);
-  if (g) for (const o of g.obs) if (o.type === 'gap') { const gg = ctx.createLinearGradient(0, RAIL_Y, 0, H); gg.addColorStop(0, '#1a0f10'); gg.addColorStop(1, LAVA); ctx.fillStyle = gg; ctx.fillRect(o.x, RAIL_Y + 6, o.w, H - RAIL_Y); }
-  ctx.fillStyle = '#7a5a3a';
-  for (let x = -((off) % 40); x < W; x += 40) if (!isGap(x + 8)) ctx.fillRect(x, RAIL_Y + 2, 18, 8);
-  ctx.strokeStyle = '#b8bec6'; ctx.lineWidth = 4;
-  ctx.beginPath(); let pen = false;
-  for (let x = 0; x <= W; x += 6) { if (isGap(x)) { pen = false; continue; } if (!pen) { ctx.moveTo(x, RAIL_Y + 2); pen = true; } else ctx.lineTo(x, RAIL_Y + 2); }
-  ctx.stroke();
   if (!g) return;
+  const off = g.scroll;
+  // three tracks above each other, on wooden scaffolding
+  for (let lane = 0; lane < 3; lane++) {
+    const ly = laneY(lane), gaps = g.obs.filter(o => o.type === 'gap' && o.lane === lane);
+    const isGap = x => gaps.some(o => x > o.x && x < o.x + o.w);
+    // scaffold posts (not under the holes)
+    ctx.fillStyle = '#5a3a22';
+    for (let x = -((off) % 160); x < W + 20; x += 160) if (!isGap(x + 6)) { ctx.fillRect(x, ly + 6, 12, lane === 0 ? H - ly : loreGap() - 8); }
+    ctx.fillStyle = '#7a5a3a';
+    ctx.beginPath(); let on = false;
+    for (let x = -((off) % 40); x < W; x += 40) if (!isGap(x + 8)) ctx.fillRect(x, ly + 2, 18, 7);
+    ctx.strokeStyle = '#c4cad2'; ctx.lineWidth = 4; ctx.beginPath(); on = false;
+    for (let x = 0; x <= W; x += 6) { if (isGap(x)) { on = false; continue; } if (!on) { ctx.moveTo(x, ly + 2); on = true; } else ctx.lineTo(x, ly + 2); }
+    ctx.stroke();
+    // holes: glowing lava far below
+    for (const o of gaps) { ctx.fillStyle = 'rgba(255,110,30,0.35)'; ctx.fillRect(o.x, ly + 4, o.w, 10); }
+  }
+  ctx.fillStyle = LAVA; ctx.fillRect(0, H - 8, W, 20);
+  // obstacles
   for (const o of g.obs) {
-    if (o.type === 'rock') { ctx.fillStyle = BASALT_L; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(o.x, RAIL_Y + 2); ctx.lineTo(o.x + 6, RAIL_Y - o.h + 4); ctx.lineTo(o.x + o.w * 0.6, RAIL_Y - o.h); ctx.lineTo(o.x + o.w, RAIL_Y + 2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
-    if (o.type === 'bat') drawBat(o.x + o.w / 2, o.y + Math.sin(o.t * 0.15) * 8, -1, o.t, 1.1, false);
+    const ly = laneY(o.lane);
+    if (o.type === 'rock') { ctx.fillStyle = BASALT_L; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(o.x, ly + 2); ctx.lineTo(o.x + 6, ly - o.h + 4); ctx.lineTo(o.x + o.w * 0.6, ly - o.h); ctx.lineTo(o.x + o.w, ly + 2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    if (o.type === 'beam') {
+      // a low wooden beam hanging down to head height – duck under it
+      ctx.fillStyle = '#8a5a32'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+      ctx.fillRect(o.x + o.w / 2 - 5, ly - loreGap() + 8, 10, loreGap() - 100); ctx.strokeRect(o.x + o.w / 2 - 5, ly - loreGap() + 8, 10, loreGap() - 100);
+      ctx.fillRect(o.x - 6, ly - 92, o.w + 12, 18); ctx.strokeRect(o.x - 6, ly - 92, o.w + 12, 18);
+      ctx.fillStyle = '#ffd23a'; ctx.fillRect(o.x, ly - 86, o.w, 5);
+    }
+    if (o.type === 'bat') drawBat(o.x + o.w / 2, ly - 85 + Math.sin(o.t * 0.2) * 4, -1, o.t, 1.1, false);
+    if (o.type === 'cart') {
+      if (o.warn > 0) {
+        // warning at the right edge: an oncoming cart on this track!
+        if (Math.floor(o.warn / 8) % 2 === 0) { ctx.fillStyle = '#ff3b30'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(W - 60, ly - 44, 22, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = 'bold 28px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', W - 60, ly - 43); }
+      } else {
+        ctx.save(); ctx.translate(o.x + o.w / 2, 0); ctx.scale(-1, 1); drawCart(0, ly + 4, 1, false, '#b8352c'); ctx.restore();
+        ctx.fillStyle = '#ffe14d'; ctx.beginPath(); ctx.arc(o.x + 6, ly - 30, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#8a8680'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(o.x + 20, ly - 66, 50, 22, 6); ctx.fill(); ctx.stroke();
+      }
+    }
   }
-  for (const gm of g.gems) if (!gm.done) { ctx.save(); ctx.translate(gm.x, gm.y); ctx.fillStyle = '#5ae0ff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(9, -2); ctx.lineTo(0, 10); ctx.lineTo(-9, -2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
-  // the cart with Kai
+  for (const gm of g.gems) if (!gm.done) { ctx.save(); ctx.translate(gm.x, laneY(gm.lane) - gm.dy); ctx.fillStyle = '#5ae0ff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(9, -2); ctx.lineTo(0, 10); ctx.lineTo(-9, -2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+  // the cart with Kai (ducking = squeezed down into the cart)
   if (g.result !== 'lose' && !(g.inv > 0 && Math.floor(g.inv / 5) % 2 === 0)) {
-    drawKaiFigure({ x: CART_X - 4, y: g.y - 30, tilt: g.ground ? 0 : -0.08, crouch: 6, push: 0, flip: 0, armsUp: !g.ground, wind: 0.9, outfit: SAVE.outfit });
-    drawCart(CART_X, g.y + 4, 1, true);
+    const cy = g.y + g.jy;
+    ctx.save(); ctx.translate(CART_X, cy - 30); if (g.duck) ctx.scale(1, 0.55); ctx.translate(-CART_X, -(cy - 30));
+    drawKaiFigure({ x: CART_X - 4, y: cy - 30, tilt: g.air ? -0.08 : 0, crouch: g.duck ? 8 : 6, push: 0, flip: 0, armsUp: g.air, wind: 0.9, outfit: SAVE.outfit });
+    ctx.restore();
+    drawCart(CART_X, cy + 4, 1, true);
   }
+  // buttons: ▲ ▼ left, SPRUNG and DUCKEN right
+  const b = loreBtn(), R = LBTN.R;
+  const btn = (c, label, icon, on, col) => {
+    ctx.save(); ctx.globalAlpha = on ? 0.95 : 0.75; ctx.fillStyle = on ? '#ffd23a' : col; ctx.strokeStyle = OUT; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = OUT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (icon === 'up' || icon === 'down') { const d = icon === 'up' ? -1 : 1; ctx.beginPath(); ctx.moveTo(c.x, c.y + d * 16); ctx.lineTo(c.x - 18, c.y - d * 10); ctx.lineTo(c.x + 18, c.y - d * 10); ctx.closePath(); ctx.fill(); }
+    else if (icon === 'jump') { ctx.beginPath(); ctx.moveTo(c.x, c.y - 24); ctx.lineTo(c.x + 16, c.y - 6); ctx.lineTo(c.x + 7, c.y - 6); ctx.lineTo(c.x + 7, c.y + 6); ctx.lineTo(c.x - 7, c.y + 6); ctx.lineTo(c.x - 7, c.y - 6); ctx.lineTo(c.x - 16, c.y - 6); ctx.closePath(); ctx.fill(); }
+    else { ctx.fillRect(c.x - 18, c.y - 4, 36, 8); ctx.beginPath(); ctx.moveTo(c.x - 8, c.y - 22); ctx.lineTo(c.x + 8, c.y - 22); ctx.lineTo(c.x, c.y - 10); ctx.closePath(); ctx.fill(); }
+    if (label) { ctx.font = 'bold 11px Arial'; ctx.fillText(label, c.x, c.y + 24); }
+    ctx.restore();
+  };
+  btn(b.up, '', 'up', false, '#e6ecf2'); btn(b.down, '', 'down', false, '#e6ecf2');
+  btn(b.jump, tx('SPRUNG'), 'jump', g.air, '#7fd0f4'); btn(b.duck, tx('DUCKEN'), 'duck', g.duck, '#f6b98a');
+  if (!isTouchDev()) { ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.fillText(tx('Tasten: ↑ ↓ = Gleis · Leertaste = springen · X halten = ducken'), W / 2, H - 14); ctx.restore(); }
+  // time and crashes
   ctx.save(); ctx.translate(0, -DY);
   ctx.fillStyle = 'rgba(20,10,10,0.6)'; ctx.beginPath(); ctx.roundRect(W / 2 - 170, 8, 340, 30, 12); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -5487,7 +5597,7 @@ function drawScreens() {
     panel(tx('ZURÜCK INS DINO-TAL?'), [tx('Durch die Röhre kommst du wieder hinauf ins Tal.')], '#9fe07a');
     button(BTN.yes, '▲ ' + tx('JA, HINAUF'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, HIERBLEIBEN'), '#8a96a8', '#5d6878');
   } else if (S.phase === 'ask') {
-    panel(tx('LORE-FAHRT'), [tx('Rase 25 Sekunden mit der Lore durch die Mine!'), tx('Tippen / Leertaste = springen: über Löcher und Steine, aber nicht in die Fledermäuse.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffb02e');
+    panel(tx('LORE-FAHRT'), [tx('Rase 30 Sekunden mit der Lore über drei Gleise – immer schneller!'), tx('▲ ▼ = Gleis wechseln · SPRUNG = über Löcher und Felsen · DUCKEN = unter Balken und Fledermäusen'), tx('Kommt eine Lore entgegen (rotes !), wechsle schnell das Gleis.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffb02e');
     button(BTN.yes, tx('JA, SPIELEN!'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'lore' && S.game && S.game.result) {

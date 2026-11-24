@@ -103,6 +103,9 @@ const GameMenu: React.FC<GameMenuProps> = ({
                         setUserName(e.target.value);
                         localStorage.setItem('invert-skate-username', e.target.value);
                     }}
+                    // the name is saved with every letter; "OK"/Enter only closes the phone keyboard
+                    enterKeyHint="done"
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                     placeholder={defaultName}
                     className="bg-transparent border-b border-gray-700 w-full text-white text-center font-bold text-xl py-2 focus:border-[#c52323] outline-none uppercase tracking-widest transition-colors placeholder-gray-600 focus:placeholder-gray-800"
                 />
