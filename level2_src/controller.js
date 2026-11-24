@@ -377,6 +377,8 @@ canvas.addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') CTRL.touch = true; else if (e.pointerType === 'mouse') CTRL.touch = false;
   // right mouse button never jumps – it shoots
   if (e.pointerType === 'mouse' && e.button === 2) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); mouseButtons(e); return; }
+  // 🔊 VORLESEN button (top right): reads all texts on the screen
+  if (!TRANS && !MENU.open && !CONFIRM.open && !PAUSE.on && readClick(p)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); return; }
   if (EXIT.btn && exitVisible() && inB(p, EXIT.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); toMainMenu(); return; }
   if (shootVisible() && inShootZone(p)) { e.stopImmediatePropagation(); e.preventDefault(); CTRL.shootP.add(e.pointerId); ctlShoot(); return; }
   if (jumpVisible() && inJumpZone(p)) CTRL.jumpP.add(e.pointerId);     // goes on to the world = normal jump
@@ -421,11 +423,12 @@ function updateScore(dt) {
 }
 function mainLoop(now) {
   const dt = Math.min((now - lastT) / 16.667, 3); lastT = now;
-  if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); }
+  if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); READ.btn = null; }
   else {
     if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); updateScore(dt); }
-    drawWorldFull(CUR);
-    if (!CUR.S.noHud && !MENU.open) { drawScoreBox(); ctx.save(); ctx.translate(0, DY); drawPops(); ctx.restore(); drawScoreToast(); } drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
+    readBegin(); drawWorldFull(CUR);
+    if (!CUR.S.noHud && !MENU.open) { drawScoreBox(); ctx.save(); ctx.translate(0, DY); drawPops(); ctx.restore(); drawScoreToast(); }
+    readEnd(); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm(); drawReadButton(!MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open);
   }   // paused while ITEMS is open or PAUSE
   requestAnimationFrame(mainLoop);
 }

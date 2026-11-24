@@ -788,6 +788,80 @@ function drawProgressBox(x, y) {
   ctx.restore();
   drawInvButton(x + w0 + 6 + lw + 6, y);
 }
+
+// =====================================================================
+//  VORLESEN (read aloud) – for children who can't read yet.
+//  Every text the game draws (panels, speech bubbles, messages) is noted. The 🔊 button at the top right
+//  reads everything that is on the screen right now – plus the big messages of the last 10 seconds,
+//  so short messages can still be heard. In the chosen language (de / en / es), with the phone's voice.
+// =====================================================================
+const READ = { on: false, frame: [], seen: new Map(), btn: null, newT: 0, lastBig: '' };
+(() => {
+  const fill = ctx.fillText.bind(ctx);
+  ctx.fillText = function (t, x, y, mw) {
+    if (READ.on && typeof t === 'string' && ctx.globalAlpha > 0.25) {
+      const m = /(\d+)px/.exec(ctx.font), size = m ? +m[1] : 10;
+      if (size >= 13 && /\p{L}{2}/u.test(t)) {
+        const tr = ctx.getTransform(), sc = Math.hypot(tr.a, tr.b) || 1;
+        READ.frame.push({ t: t.trim(), x: (tr.a * x + tr.c * y + tr.e) / dprR(), y: (tr.b * x + tr.d * y + tr.f) / dprR(), size: size * sc / dprR() });
+      }
+    }
+    return mw === undefined ? fill(t, x, y) : fill(t, x, y, mw);
+  };
+})();
+function dprR() { return typeof dpr !== 'undefined' ? dpr : 1; }
+function readBegin() { READ.frame = []; READ.on = true; }
+function readEnd() {
+  READ.on = false;
+  const now = performance.now();
+  for (const f of READ.frame) {
+    const old = READ.seen.get(f.t);
+    if (!old && f.size >= 20 && f.t !== READ.lastBig) { READ.newT = now; READ.lastBig = f.t; }
+    READ.seen.set(f.t, Object.assign({}, f, { at: now }));
+  }
+  for (const [k, v] of READ.seen) if (now - v.at > 10000) READ.seen.delete(k);
+}
+function readText() {
+  const now = performance.now(), list = [];
+  for (const v of READ.seen.values()) if (now - v.at < 400 || (v.size >= 20 && now - v.at < 10000)) list.push(v);
+  // big messages that are already gone first, then the screen from top to bottom, left to right
+  list.sort((a, b) => ((now - a.at < 400) - (now - b.at < 400)) || (Math.abs(a.y - b.y) < 8 ? a.x - b.x : a.y - b.y));
+  // language buttons (DE / EN / ES) are not read; lines of one wrapped text are joined into one sentence
+  const out = [];
+  let prev = null;
+  for (const v of list) {
+    if (/^(DE|EN|ES)$/.test(v.t) || out.some(o => o.t === v.t)) continue;
+    if (prev && Math.abs(prev.size - v.size) < 1 && v.y > prev.y && v.y - prev.y < v.size * 1.36 && !/[.!?:…]$/.test(prev.t)) { prev.t += ' ' + v.t; prev.y = v.y; continue; }
+    prev = { t: v.t, y: v.y, size: v.size }; out.push(prev);
+  }
+  return out.map(o => /[.!?:…]$/.test(o.t) ? o.t : o.t + '.').join(' ');
+}
+function readSpeak(text) {
+  try {
+    if (!window.speechSynthesis || !text) return;
+    const clean = text.replace(/[◀▶←→↑↓▲▼·=•|●×✓★]/g, ', ').replace(/[^\p{L}\p{N}\s.,!?¡¿:;'’"„“()%+–-]/gu, ' ').replace(/\s*,\s*(,\s*)+/g, ', ').replace(/([.!?])\s*\./g, '$1').replace(/\s+/g, ' ').trim();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean); u.lang = { de: 'de-DE', en: 'en-US', es: 'es-ES' }[SAVE.lang] || 'de-DE'; u.rate = 0.92;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+// the big 🔊 button (screen coordinates, top right under the coins)
+function drawReadButton(show) {
+  READ.btn = null;
+  if (!show || !window.speechSynthesis) return;
+  const b = READ.btn = { x: W - 82, y: 80, w: 70, h: 44 };
+  const fresh = performance.now() - READ.newT < 3000, pulse = fresh ? 1 + Math.sin(performance.now() / 120) * 0.08 : 1;
+  ctx.save(); ctx.translate(b.x + b.w / 2, b.y + b.h / 2); ctx.scale(pulse, pulse);
+  ctx.fillStyle = fresh ? '#ffd23a' : 'rgba(255,255,255,0.92)'; ctx.strokeStyle = '#14202e'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, 14); ctx.fill(); ctx.stroke();
+  ctx.font = '26px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#14202e'; ctx.fillText('🔊', 0, 2);
+  ctx.restore();
+}
+function readClick(p) {
+  const b = READ.btn; if (!b) return false;
+  if (p.x >= b.x - 6 && p.x <= b.x + b.w + 6 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6) { readSpeak(readText()); return true; }
+  return false;
+}
 // ================= AUDIO (Web Audio, everything generated – no files needed) =================
 const Audio = (() => {
   let ac = null, master, musicGain, sfxGain, musicFilter, delay, delayFb, noiseBuf;
@@ -6108,6 +6182,8 @@ canvas.addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') CTRL.touch = true; else if (e.pointerType === 'mouse') CTRL.touch = false;
   // right mouse button never jumps – it shoots
   if (e.pointerType === 'mouse' && e.button === 2) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); mouseButtons(e); return; }
+  // 🔊 VORLESEN button (top right): reads all texts on the screen
+  if (!TRANS && !MENU.open && !CONFIRM.open && !PAUSE.on && readClick(p)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); return; }
   if (EXIT.btn && exitVisible() && inB(p, EXIT.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); toMainMenu(); return; }
   if (L4.btn && l4Visible() && inB(p, L4.btn)) { e.stopImmediatePropagation(); e.preventDefault(); goToLevel4(); return; }
   if (shootVisible() && inShootZone(p)) { e.stopImmediatePropagation(); e.preventDefault(); CTRL.shootP.add(e.pointerId); ctlShoot(); return; }
@@ -6156,10 +6232,10 @@ Audio.setTheme(THEME[CUR.key]);
 let lastT = performance.now();
 function mainLoop(now) {
   const dt = Math.min((now - lastT) / 16.667, 3); lastT = now;
-  if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); }
+  if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); READ.btn = null; }
   else {
     if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); }
-    drawWorldFull(CUR); drawL4Button(); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
+    readBegin(); drawWorldFull(CUR); drawL4Button(); readEnd(); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm(); drawReadButton(!MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open);
   }   // paused while ITEMS is open or PAUSE
   requestAnimationFrame(mainLoop);
 }

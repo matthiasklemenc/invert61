@@ -488,6 +488,8 @@ canvas.addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') CTRL.touch = true; else if (e.pointerType === 'mouse') CTRL.touch = false;
   // right mouse button never jumps – it shoots
   if (e.pointerType === 'mouse' && e.button === 2) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); mouseButtons(e); return; }
+  // 🔊 VORLESEN button (top right): reads all texts on the screen
+  if (!TRANS && !MENU.open && !CONFIRM.open && !PAUSE.on && readClick(p)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); return; }
   // 🔊 read-aloud buttons (Level 4): before anything else
   if (!TRANS && !MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open && CUR && CUR.sayClick && CUR.sayClick(p)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); return; }
   if (EXIT.btn && exitVisible() && inB(p, EXIT.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); toMainMenu(); return; }
@@ -537,10 +539,10 @@ Audio.setTheme(THEME[CUR.key]);
 let lastT = performance.now();
 function mainLoop(now) {
   const dt = Math.min((now - lastT) / 16.667, 3); lastT = now;
-  if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); }
+  if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); READ.btn = null; }
   else {
     if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); }
-    drawWorldFull(CUR); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
+    readBegin(); drawWorldFull(CUR); readEnd(); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm(); drawReadButton(!MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open);
   }   // paused while ITEMS is open or PAUSE
   requestAnimationFrame(mainLoop);
 }
