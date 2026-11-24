@@ -346,7 +346,10 @@ function startHarp() {
   Audio.pauseBg(true);   // harp: background music off (it comes back when Kai leaves the sky)
   flash(tx('Hör gut zu und spiel die Melodie nach!'), 120);
 }
-function harpTempo() { return S.harp.fails >= 3 ? 52 : 36; }
+// 5 tries: from the 3rd try the angel plays slower, in the 4th each key glows briefly before it is due,
+// in the 5th (last) try each key glows until it is pressed (at most 5 seconds)
+const HARP_TRIES = 5;
+function harpTempo() { return S.harp.fails >= 2 ? 52 : 36; }
 function updateHarp(dt) {
   const h = S.harp;
   if (h.litT > 0) { h.litT -= dt; if (h.litT <= 0) h.lit = -1; }
@@ -366,8 +369,8 @@ function updateHarp(dt) {
 }
 function setHint() {
   const h = S.harp;
-  if (h.fails >= 8) { h.hint = h.melody[h.idx]; h.hintT = 99999; }          // long glow
-  else if (h.fails >= 6) { h.hint = h.melody[h.idx]; h.hintT = 22; }        // short glow
+  if (h.fails >= 4) { h.hint = h.melody[h.idx]; h.hintT = 300; }            // 5th try: glows until pressed (max. 5 s)
+  else if (h.fails >= 3) { h.hint = h.melody[h.idx]; h.hintT = 30; }        // 4th try: short, bright glow
   else { h.hint = -1; h.hintT = 0; }
 }
 function harpClick(p) {
@@ -385,10 +388,10 @@ function harpKey(i) {
     } else setHint();
   } else {
     h.fails++; Audio.play('denied');
-    if (h.fails >= 10) { h.mode = 'end'; h.timer = 150; h.done = false; flash(tx('Wir üben nächstes Mal weiter!'), 150); }
+    if (h.fails >= HARP_TRIES) { h.mode = 'end'; h.timer = 150; h.done = false; flash(tx('Wir üben nächstes Mal weiter!'), 150); }
     else {
       h.mode = 'wrong'; h.timer = 70;
-      flash(h.fails === 3 ? tx('Ich spiele langsamer…') : h.fails === 6 ? tx('Ich helfe dir ein bisschen…') : tx('Falsch – hör nochmal zu!'), 70);
+      flash(h.fails === 2 ? tx('Ich spiele langsamer…') : h.fails === 3 ? tx('Ich helfe dir ein bisschen…') : h.fails === 4 ? tx('Letzter Versuch – ich zeige dir jede Taste!') : tx('Falsch – hör nochmal zu!'), 90);
     }
   }
 }

@@ -583,7 +583,7 @@ function drawScreens() {
     const r = S.ask === 'rodeo';
     panel(r ? tx('DINO-RODEO') : tx('FOSSILIEN AUSGRABEN'), r
       ? [tx('Kannst du dich 15 Sekunden auf dem wilden Triceratops halten?'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')]
-      : [tx('Finde alle 6 Knochen eines Dino-Skeletts im Sand.'), tx('Ein leeres Loch zeigt, wie viele Knochen direkt daneben liegen.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffd23a');
+      : [tx('Im Sand liegen 6 Knochen eines Dino-Skeletts versteckt. Du hast 15 Grabungen.'), tx('Tippe auf ein Feld zum Graben. Ist dort kein Knochen, zeigt eine Zahl,'), tx('wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). Gelb = 1, Orange = 2, Rot = 3.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffd23a');
     button(BTN.yes, tx('JA, SPIELEN!'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'rodeo') drawRodeo();
@@ -642,7 +642,18 @@ function drawFossil() {
       ctx.beginPath(); ctx.roundRect(-18, -4, 36, 8, 4); ctx.fill(); ctx.stroke();
       for (const [bx, by] of [[-18, -4], [-18, 4], [18, -4], [18, 4]]) { ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
       ctx.restore();
-    } else { ctx.fillStyle = cl.n ? '#fff' : 'rgba(255,255,255,0.5)'; ctx.font = 'bold 20px Arial'; ctx.fillText(cl.n ? String(cl.n) : '·', x + FOS.cw / 2, y + FOS.ch / 2 + 1); }
+    } else {
+      // the number = how many bones lie in the 8 fields right around it; the colour shows "how warm" it is
+      ctx.fillStyle = ['rgba(255,255,255,0.55)', '#ffe066', '#ffa63a', '#ff5a3a', '#ff2a6a'][Math.min(cl.n, 4)];
+      ctx.strokeStyle = OUT; ctx.lineWidth = 3; ctx.font = 'bold 22px Arial';
+      ctx.strokeText(String(cl.n), x + FOS.cw / 2, y + FOS.ch / 2 + 1); ctx.fillText(String(cl.n), x + FOS.cw / 2, y + FOS.ch / 2 + 1);
+    }
+  }
+  // how it works (always visible under the sand field)
+  if (!g.result) {
+    ctx.fillStyle = '#fff6e8'; ctx.font = 'bold 13px Arial';
+    ctx.fillText(tx('So geht\'s: Tippe auf ein Feld = graben. Findest du keinen Knochen, zeigt eine Zahl,'), W / 2, FOS.y + FOS.rows * FOS.ch + 16);
+    ctx.fillText(tx('wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). 0 = rundherum ist nichts.'), W / 2, FOS.y + FOS.rows * FOS.ch + 34);
   }
   ctx.restore();
   if (g.result) { ctx.save(); ctx.fillStyle = 'rgba(30,18,10,0.7)'; ctx.fillRect(0, -VH, W, 3 * VH); ctx.restore(); }

@@ -347,6 +347,13 @@ const TR = {
   'Tippe auf ein Feld zum Graben. Ist dort kein Knochen, zeigt eine Zahl,': ['Tap a field to dig. If there is no bone, a number shows', 'Toca un campo para excavar. Si no hay hueso, un número muestra'],
   'wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). Gelb = 1, Orange = 2, Rot = 3.': ['how many bones lie in the 8 fields around it (diagonals too). Yellow = 1, orange = 2, red = 3.', 'cuántos huesos hay en los 8 campos de alrededor (también en diagonal). Amarillo = 1, naranja = 2, rojo = 3.'],
   // ---------- LEVEL 3 · LAVAHÖHLEN ----------
+  'Rase 30 Sekunden mit der Lore über drei Gleise – immer schneller!': ['Race the cart over three tracks for 30 seconds – faster and faster!', '¡Corre 30 segundos con la vagoneta por tres vías – cada vez más rápido!'],
+  '▲ ▼ = Gleis wechseln · SPRUNG = über Löcher und Felsen · DUCKEN = unter Balken und Fledermäusen': ['▲ ▼ = change track · JUMP = over holes and rocks · DUCK = under beams and bats', '▲ ▼ = cambiar de vía · SALTO = sobre hoyos y rocas · AGACHAR = bajo vigas y murciélagos'],
+  'Kommt eine Lore entgegen (rotes !), wechsle schnell das Gleis.': ['A cart coming towards you (red !)? Change the track quickly.', '¿Viene una vagoneta (! rojo)? Cambia rápido de vía.'],
+  '▲ ▼ = Gleis wechseln · SPRUNG · DUCKEN halten': ['▲ ▼ = change track · JUMP · hold DUCK', '▲ ▼ = cambiar de vía · SALTO · mantén AGACHAR'],
+  '↑ ↓ = Gleis · Leertaste = springen · X halten = ducken': ['↑ ↓ = track · Space = jump · hold X = duck', '↑ ↓ = vía · Espacio = saltar · mantén X = agacharse'],
+  'Tasten: ↑ ↓ = Gleis · Leertaste = springen · X halten = ducken': ['Keys: ↑ ↓ = track · Space = jump · hold X = duck', 'Teclas: ↑ ↓ = vía · Espacio = saltar · mantén X = agacharse'],
+  'DUCKEN': ['DUCK', 'AGACHAR'],
   'DIE LAVAHÖHLEN': ['THE LAVA CAVES', 'LAS CUEVAS DE LAVA'], 'LAVAHÖHLEN': ['LAVA CAVES', 'CUEVAS DE LAVA'], 'VULKAN': ['VOLCANO', 'VOLCÁN'],
   'Wasserbomben': ['Water bombs', 'Bombas de agua'], 'nur in den Lavahöhlen': ['only in the lava caves', 'solo en las cuevas de lava'], 'WURF': ['THROW', 'LANZAR'],
   'Du hast WASSERBOMBEN! Wurf-Taste rechts unten.': ['You got WATER BOMBS! Throw button at the bottom right.', '¡Tienes BOMBAS DE AGUA! Botón de lanzar abajo a la derecha.'],

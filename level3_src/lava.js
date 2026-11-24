@@ -480,7 +480,7 @@ canvas.addEventListener('pointerdown', e => {
     else if (inRect(p, BTN.no)) { S.ask = null; S.phase = 'play'; Audio.play('tink'); }
     return;
   }
-  if (S.phase === 'lore') { lorePointer(p); return; }
+  if (S.phase === 'lore') { lorePointer(p, e.pointerId); return; }
   if (S.phase === 'gameover') { if (inRect(p, BTN.goYes)) resetGame(); else if (inRect(p, BTN.goNo)) { resetGame(); toMainMenu(); } return; }
   if (S.phase === 'won') { if (inRect(p, BTN.up)) leaveUp(); else if (inRect(p, BTN.menu)) toMainMenu(); return; }
 });

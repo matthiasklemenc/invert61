@@ -353,9 +353,9 @@ function drawKai() {
 }
 
 // ---------------- the mine cart ride (screen space) ----------------
-function drawCart(x, y, s, front) {
+function drawCart(x, y, s, front, col) {
   ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
-  ctx.fillStyle = '#6e6a66'; ctx.beginPath(); ctx.moveTo(-46, -46); ctx.lineTo(46, -46); ctx.lineTo(38, -8); ctx.lineTo(-38, -8); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = col || '#6e6a66'; ctx.beginPath(); ctx.moveTo(-46, -46); ctx.lineTo(46, -46); ctx.lineTo(38, -8); ctx.lineTo(-38, -8); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#8a8680'; ctx.fillRect(-46, -50, 92, 8); ctx.strokeRect(-46, -50, 92, 8);
   ctx.strokeStyle = 'rgba(30,20,20,0.4)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-20, -40); ctx.lineTo(-18, -14); ctx.moveTo(20, -40); ctx.lineTo(18, -14); ctx.stroke();
   ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.fillStyle = '#3a3a40';
@@ -365,30 +365,73 @@ function drawCart(x, y, s, front) {
 function drawLoreScene() {
   const g = S.game;
   drawCaveBack();
-  const off = g ? g.scroll : 0;
-  // ceiling beams rushing by
-  ctx.fillStyle = '#5a3a22'; for (let i = 0; i < 6; i++) { const x = ((i * 260 - off * 1.0) % 1560 + 1560) % 1560 - 100; ctx.fillRect(x, -DY, 16, DY + 70); ctx.fillRect(x - 30, 60, 76, 12); }
-  // rails with ties (holes are left out)
-  const isGap = x => g && g.obs.some(o => o.type === 'gap' && x > o.x && x < o.x + o.w);
-  ctx.fillStyle = BASALT; ctx.fillRect(0, RAIL_Y + 6, W, H - RAIL_Y);
-  if (g) for (const o of g.obs) if (o.type === 'gap') { const gg = ctx.createLinearGradient(0, RAIL_Y, 0, H); gg.addColorStop(0, '#1a0f10'); gg.addColorStop(1, LAVA); ctx.fillStyle = gg; ctx.fillRect(o.x, RAIL_Y + 6, o.w, H - RAIL_Y); }
-  ctx.fillStyle = '#7a5a3a';
-  for (let x = -((off) % 40); x < W; x += 40) if (!isGap(x + 8)) ctx.fillRect(x, RAIL_Y + 2, 18, 8);
-  ctx.strokeStyle = '#b8bec6'; ctx.lineWidth = 4;
-  ctx.beginPath(); let pen = false;
-  for (let x = 0; x <= W; x += 6) { if (isGap(x)) { pen = false; continue; } if (!pen) { ctx.moveTo(x, RAIL_Y + 2); pen = true; } else ctx.lineTo(x, RAIL_Y + 2); }
-  ctx.stroke();
   if (!g) return;
+  const off = g.scroll;
+  // three tracks above each other, on wooden scaffolding
+  for (let lane = 0; lane < 3; lane++) {
+    const ly = laneY(lane), gaps = g.obs.filter(o => o.type === 'gap' && o.lane === lane);
+    const isGap = x => gaps.some(o => x > o.x && x < o.x + o.w);
+    // scaffold posts (not under the holes)
+    ctx.fillStyle = '#5a3a22';
+    for (let x = -((off) % 160); x < W + 20; x += 160) if (!isGap(x + 6)) { ctx.fillRect(x, ly + 6, 12, lane === 0 ? H - ly : loreGap() - 8); }
+    ctx.fillStyle = '#7a5a3a';
+    ctx.beginPath(); let on = false;
+    for (let x = -((off) % 40); x < W; x += 40) if (!isGap(x + 8)) ctx.fillRect(x, ly + 2, 18, 7);
+    ctx.strokeStyle = '#c4cad2'; ctx.lineWidth = 4; ctx.beginPath(); on = false;
+    for (let x = 0; x <= W; x += 6) { if (isGap(x)) { on = false; continue; } if (!on) { ctx.moveTo(x, ly + 2); on = true; } else ctx.lineTo(x, ly + 2); }
+    ctx.stroke();
+    // holes: glowing lava far below
+    for (const o of gaps) { ctx.fillStyle = 'rgba(255,110,30,0.35)'; ctx.fillRect(o.x, ly + 4, o.w, 10); }
+  }
+  ctx.fillStyle = LAVA; ctx.fillRect(0, H - 8, W, 20);
+  // obstacles
   for (const o of g.obs) {
-    if (o.type === 'rock') { ctx.fillStyle = BASALT_L; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(o.x, RAIL_Y + 2); ctx.lineTo(o.x + 6, RAIL_Y - o.h + 4); ctx.lineTo(o.x + o.w * 0.6, RAIL_Y - o.h); ctx.lineTo(o.x + o.w, RAIL_Y + 2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
-    if (o.type === 'bat') drawBat(o.x + o.w / 2, o.y + Math.sin(o.t * 0.15) * 8, -1, o.t, 1.1, false);
+    const ly = laneY(o.lane);
+    if (o.type === 'rock') { ctx.fillStyle = BASALT_L; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(o.x, ly + 2); ctx.lineTo(o.x + 6, ly - o.h + 4); ctx.lineTo(o.x + o.w * 0.6, ly - o.h); ctx.lineTo(o.x + o.w, ly + 2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    if (o.type === 'beam') {
+      // a low wooden beam hanging down to head height – duck under it
+      ctx.fillStyle = '#8a5a32'; ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+      ctx.fillRect(o.x + o.w / 2 - 5, ly - loreGap() + 8, 10, loreGap() - 100); ctx.strokeRect(o.x + o.w / 2 - 5, ly - loreGap() + 8, 10, loreGap() - 100);
+      ctx.fillRect(o.x - 6, ly - 92, o.w + 12, 18); ctx.strokeRect(o.x - 6, ly - 92, o.w + 12, 18);
+      ctx.fillStyle = '#ffd23a'; ctx.fillRect(o.x, ly - 86, o.w, 5);
+    }
+    if (o.type === 'bat') drawBat(o.x + o.w / 2, ly - 85 + Math.sin(o.t * 0.2) * 4, -1, o.t, 1.1, false);
+    if (o.type === 'cart') {
+      if (o.warn > 0) {
+        // warning at the right edge: an oncoming cart on this track!
+        if (Math.floor(o.warn / 8) % 2 === 0) { ctx.fillStyle = '#ff3b30'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(W - 60, ly - 44, 22, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = 'bold 28px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', W - 60, ly - 43); }
+      } else {
+        ctx.save(); ctx.translate(o.x + o.w / 2, 0); ctx.scale(-1, 1); drawCart(0, ly + 4, 1, false, '#b8352c'); ctx.restore();
+        ctx.fillStyle = '#ffe14d'; ctx.beginPath(); ctx.arc(o.x + 6, ly - 30, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#8a8680'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(o.x + 20, ly - 66, 50, 22, 6); ctx.fill(); ctx.stroke();
+      }
+    }
   }
-  for (const gm of g.gems) if (!gm.done) { ctx.save(); ctx.translate(gm.x, gm.y); ctx.fillStyle = '#5ae0ff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(9, -2); ctx.lineTo(0, 10); ctx.lineTo(-9, -2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
-  // the cart with Kai
+  for (const gm of g.gems) if (!gm.done) { ctx.save(); ctx.translate(gm.x, laneY(gm.lane) - gm.dy); ctx.fillStyle = '#5ae0ff'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(9, -2); ctx.lineTo(0, 10); ctx.lineTo(-9, -2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+  // the cart with Kai (ducking = squeezed down into the cart)
   if (g.result !== 'lose' && !(g.inv > 0 && Math.floor(g.inv / 5) % 2 === 0)) {
-    drawKaiFigure({ x: CART_X - 4, y: g.y - 30, tilt: g.ground ? 0 : -0.08, crouch: 6, push: 0, flip: 0, armsUp: !g.ground, wind: 0.9, outfit: SAVE.outfit });
-    drawCart(CART_X, g.y + 4, 1, true);
+    const cy = g.y + g.jy;
+    ctx.save(); ctx.translate(CART_X, cy - 30); if (g.duck) ctx.scale(1, 0.55); ctx.translate(-CART_X, -(cy - 30));
+    drawKaiFigure({ x: CART_X - 4, y: cy - 30, tilt: g.air ? -0.08 : 0, crouch: g.duck ? 8 : 6, push: 0, flip: 0, armsUp: g.air, wind: 0.9, outfit: SAVE.outfit });
+    ctx.restore();
+    drawCart(CART_X, cy + 4, 1, true);
   }
+  // buttons: ▲ ▼ left, SPRUNG and DUCKEN right
+  const b = loreBtn(), R = LBTN.R;
+  const btn = (c, label, icon, on, col) => {
+    ctx.save(); ctx.globalAlpha = on ? 0.95 : 0.75; ctx.fillStyle = on ? '#ffd23a' : col; ctx.strokeStyle = OUT; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = OUT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (icon === 'up' || icon === 'down') { const d = icon === 'up' ? -1 : 1; ctx.beginPath(); ctx.moveTo(c.x, c.y + d * 16); ctx.lineTo(c.x - 18, c.y - d * 10); ctx.lineTo(c.x + 18, c.y - d * 10); ctx.closePath(); ctx.fill(); }
+    else if (icon === 'jump') { ctx.beginPath(); ctx.moveTo(c.x, c.y - 24); ctx.lineTo(c.x + 16, c.y - 6); ctx.lineTo(c.x + 7, c.y - 6); ctx.lineTo(c.x + 7, c.y + 6); ctx.lineTo(c.x - 7, c.y + 6); ctx.lineTo(c.x - 7, c.y - 6); ctx.lineTo(c.x - 16, c.y - 6); ctx.closePath(); ctx.fill(); }
+    else { ctx.fillRect(c.x - 18, c.y - 4, 36, 8); ctx.beginPath(); ctx.moveTo(c.x - 8, c.y - 22); ctx.lineTo(c.x + 8, c.y - 22); ctx.lineTo(c.x, c.y - 10); ctx.closePath(); ctx.fill(); }
+    if (label) { ctx.font = 'bold 11px Arial'; ctx.fillText(label, c.x, c.y + 24); }
+    ctx.restore();
+  };
+  btn(b.up, '', 'up', false, '#e6ecf2'); btn(b.down, '', 'down', false, '#e6ecf2');
+  btn(b.jump, tx('SPRUNG'), 'jump', g.air, '#7fd0f4'); btn(b.duck, tx('DUCKEN'), 'duck', g.duck, '#f6b98a');
+  if (!isTouchDev()) { ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.fillText(tx('Tasten: ↑ ↓ = Gleis · Leertaste = springen · X halten = ducken'), W / 2, H - 14); ctx.restore(); }
+  // time and crashes
   ctx.save(); ctx.translate(0, -DY);
   ctx.fillStyle = 'rgba(20,10,10,0.6)'; ctx.beginPath(); ctx.roundRect(W / 2 - 170, 8, 340, 30, 12); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -473,7 +516,7 @@ function drawScreens() {
     panel(tx('ZURÜCK INS DINO-TAL?'), [tx('Durch die Röhre kommst du wieder hinauf ins Tal.')], '#9fe07a');
     button(BTN.yes, '▲ ' + tx('JA, HINAUF'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, HIERBLEIBEN'), '#8a96a8', '#5d6878');
   } else if (S.phase === 'ask') {
-    panel(tx('LORE-FAHRT'), [tx('Rase 25 Sekunden mit der Lore durch die Mine!'), tx('Tippen / Leertaste = springen: über Löcher und Steine, aber nicht in die Fledermäuse.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffb02e');
+    panel(tx('LORE-FAHRT'), [tx('Rase 30 Sekunden mit der Lore über drei Gleise – immer schneller!'), tx('▲ ▼ = Gleis wechseln · SPRUNG = über Löcher und Felsen · DUCKEN = unter Balken und Fledermäusen'), tx('Kommt eine Lore entgegen (rotes !), wechsle schnell das Gleis.'), tx('Belohnung: 20 Münzen und ein Pokal-Stern.')], '#ffb02e');
     button(BTN.yes, tx('JA, SPIELEN!'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, WEITER'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'lore' && S.game && S.game.result) {
