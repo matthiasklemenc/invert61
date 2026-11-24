@@ -229,6 +229,7 @@ function update(dt) {
   if (S.shopMsgT > 0) S.shopMsgT -= dt;
   if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
   if (playing()) S.wtime += dt;                       // time played in this world (frames)
+  S.saveT = (S.saveT || 0) + dt; if (S.saveT > 120 && playing()) { S.saveT = 0; saveProgress(); }   // keep the points safe every 2 s
   for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
@@ -458,9 +459,12 @@ function updateSites() {
     S.asked.down = true; S.ask = 'down'; S.phase = 'ask'; k.vx = 0; k.dir = 0; Audio.play('chime'); return;
   }
   for (const [id, x] of Object.entries(SITES)) {
-    const gate = x + 120;
-    if (Math.abs(k.x - gate) > 160) S.asked[id] = false;      // ride a bit away and back = asked again
-    if (!S.asked[id] && Math.abs(k.x - gate) < 30 && k.ground && !k.platform) {
+    // the question comes when Kai passes the entrance – also in the air or on a log above it: then as soon as he lands
+    const gate = x + 120, d = Math.abs(k.x - gate);
+    S.near = S.near || {};
+    if (d > 300) { S.asked[id] = false; S.near[id] = false; }
+    if (d < 60) S.near[id] = true;
+    if (!S.asked[id] && S.near[id] && k.ground && d < 300) {
       S.asked[id] = true; S.ask = id; S.phase = 'ask';
       k.vx = 0; k.dir = 0; Audio.play('chime');
     }

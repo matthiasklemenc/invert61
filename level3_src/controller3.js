@@ -10,8 +10,8 @@
 // ======================================================================
 let CUR = null, TRANS = null;
 // LEVEL 3 – DINOLAND: the dino valley and the Felsenhöhe above it (the Lavahöhlen follow).
-const FACTORY = { tal: makeTal, hoehe: makeHoehe };
-const THEME = { tal: 'dino', hoehe: 'hoehe' };
+const FACTORY = { tal: makeTal, hoehe: makeHoehe, lava: makeLava };
+const THEME = { tal: 'dino', hoehe: 'hoehe', lava: 'lava' };
 const worldKey = file => (file || 'tal').replace('.html', '');
 function makeWorld(file, query) { const key = worldKey(file); const w = FACTORY[key](new URLSearchParams(query || '')); w.key = key; w.fromFinal = /from=replay/.test(query || ''); return w; }
 function activate(w) {
@@ -27,7 +27,8 @@ const lerp = (a, b, u) => a + (b - a) * u;
 function beginTransition(file, query) {
   if (TRANS) return;
   const from = CUR, toKey = worldKey(file);
-  const kind = (from.key === 'stadt' && toKey === 'himmel') || (from.key === 'tal' && toKey === 'hoehe') ? 'up'
+  const kind = from.key === 'tal' && toKey === 'lava' ? 'pipe'
+    : (from.key === 'stadt' && toKey === 'himmel') || (from.key === 'tal' && toKey === 'hoehe') || (from.key === 'lava' && toKey === 'tal') ? 'up'
     : (from.key === 'himmel' && toKey === 'stadt') || (from.key === 'hoehe' && toKey === 'tal') ? 'down'
     : /final=1/.test(query) ? 'cut'
     : from.key === 'stadt' && toKey === 'tiefsee' ? (/pipe=1/.test(query) ? 'pipe' : 'dive')
@@ -39,7 +40,7 @@ function beginTransition(file, query) {
   // Kai's start / end point ON THE SCREEN (the dino worlds scroll, so the camera is taken off)
   const x1 = next.S.kai && next.S.cam != null ? next.S.kai.x - next.S.cam : 250;
   TRANS = { kind, splash: /splash=1/.test(query || ''), from, to: next, t: 0, T: kind === 'up' ? 140 : kind === 'down' ? 130 : kind === 'pipe' ? 170 : 150, x0: k.x - (from.S.cam || 0), x1, y0: k.y, splashed: false,
-    climb: from.key === 'tal' || from.key === 'hoehe' };
+    climb: kind !== 'pipe' && ['tal', 'hoehe', 'lava'].includes(from.key), lava: toKey === 'lava' || from.key === 'lava' };
   from.S.hideKai = true; from.S.noHud = true; next.S.hideKai = true; next.S.noHud = true;
   next.S.phase = 'transit';
 }
@@ -93,9 +94,10 @@ function transKai(tr, p) {
     o.wings = undefined; o.diver = p < 0.55; o.armsUp = p > 0.45 && p < 0.9; o.crouch = p > 0.93 ? 7 : 3;
   } else if (tr.kind === 'pipe') {
     // sinks into the tube, slides down the underground, comes out at the top of the sea
-    y = p < 0.12 ? lerp(tr.y0, tr.y0 + 70, easeIn(p / 0.12)) : lerp(tr.y0 + 70, 210, ease((p - 0.12) / 0.88));
-    o.wings = undefined; o.diver = p > 0.75; o.armsUp = p > 0.08 && p < 0.8; o.crouch = 5;
-    return { x: p < 0.78 ? tr.x0 : lerp(tr.x0, 250, ease((p - 0.78) / 0.22)), y, o };
+    const endY = tr.lava ? FLOOR : 210;
+    y = p < 0.12 ? lerp(tr.y0, tr.y0 + 70, easeIn(p / 0.12)) : lerp(tr.y0 + 70, endY, ease((p - 0.12) / 0.88));
+    o.wings = undefined; o.diver = !tr.lava && p > 0.75; o.armsUp = p > 0.08 && p < 0.8; o.crouch = 5;
+    return { x: p < 0.78 ? tr.x0 : lerp(tr.x0, tr.lava ? tr.x1 : 250, ease((p - 0.78) / 0.22)), y, o };
   } else if (tr.splash) {
     // came off the harbor pier: already in the water – straight down to where the sea game starts
     y = lerp(tr.y0, 210, ease(p));
@@ -112,10 +114,16 @@ function drawSeam(tr, y) {
   if (tr.kind === 'pipe') {
     // underground: earth, stones, and the green tube going straight down
     const y2 = y + PIPE_GAP;
-    const g = ctx.createLinearGradient(0, y, 0, y2); g.addColorStop(0, '#6b4a2e'); g.addColorStop(0.5, '#4a321f'); g.addColorStop(1, '#2a3f4f');
+    const g = ctx.createLinearGradient(0, y, 0, y2); g.addColorStop(0, '#6b4a2e'); g.addColorStop(0.5, '#4a321f'); g.addColorStop(1, tr.lava ? '#3a1c14' : '#2a3f4f');
     ctx.fillStyle = g; ctx.fillRect(0, y, W, PIPE_GAP);
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     for (let i = 0; i < 40; i++) { ctx.beginPath(); ctx.ellipse((i * 137) % W, y + 20 + (i * 53) % (PIPE_GAP - 40), 10 + i % 4 * 4, 6 + i % 3 * 2, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore(); return;
+  }
+  if (tr.lava) {
+    // between the valley and the lava caves: a band of rock and earth
+    const g = ctx.createLinearGradient(0, y - 60, 0, y + 60); g.addColorStop(0, '#6b4a2e'); g.addColorStop(0.5, '#3a281c'); g.addColorStop(1, '#2a1810');
+    ctx.fillStyle = g; ctx.fillRect(0, y - 60, W, 120);
     ctx.restore(); return;
   }
   if (tr.kind === 'dive' || tr.kind === 'surface') {
@@ -139,7 +147,7 @@ function drawSeam(tr, y) {
 // the open space above each world (the screen is taller than the world): matching sky / water colour
 function drawBand(w) {
   if (DY <= 0) return;
-  const S2 = w.S, cols = w.key === 'tal' ? ['#f2a65a', '#f7c47e'] : w.key === 'hoehe' ? ['#4fa8e6', '#5fb3ea'] : w.key === 'stadt' ? ['#479fdc', '#5fb8ec'] : w.key === 'tiefsee' ? ['#47bde3', '#1a8fbf']
+  const S2 = w.S, cols = w.key === 'tal' ? ['#f2a65a', '#f7c47e'] : w.key === 'hoehe' ? ['#4fa8e6', '#5fb3ea'] : w.key === 'lava' ? ['#140a0a', '#1a0f10'] : w.key === 'stadt' ? ['#479fdc', '#5fb8ec'] : w.key === 'tiefsee' ? ['#47bde3', '#1a8fbf']
     : S2.phase === 'foot' ? ['#7cc9f4', '#7cc9f4'] : ['#55b3ec', '#6cc3f2'];
   const g = ctx.createLinearGradient(0, 0, 0, DY + 1); g.addColorStop(0, cols[0]); g.addColorStop(1, cols[1]);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, DY + 1);
@@ -174,7 +182,9 @@ function drawTransition() {
     // the tube from the city street down through the earth into the sea
     const top = tr.y0 + DY + off.from, bot = off.seam + PIPE_GAP + 50, x1 = tr.x0 - 40, x2 = tr.x0 + 40;
     tube = { top, bot, x1, x2 };
-    const g = ctx.createLinearGradient(x1, 0, x2, 0); g.addColorStop(0, '#1f7a34'); g.addColorStop(0.3, '#4fc45f'); g.addColorStop(0.55, '#2f9e45'); g.addColorStop(1, '#165c27');
+    const g = ctx.createLinearGradient(x1, 0, x2, 0);
+    if (tr.lava) { g.addColorStop(0, '#5a4a48'); g.addColorStop(0.3, '#b8a69c'); g.addColorStop(0.55, '#8a7a74'); g.addColorStop(1, '#3a2c2a'); }
+    else { g.addColorStop(0, '#1f7a34'); g.addColorStop(0.3, '#4fc45f'); g.addColorStop(0.55, '#2f9e45'); g.addColorStop(1, '#165c27'); }
     ctx.fillStyle = g; ctx.fillRect(x1, Math.max(off.seam, top + 20), x2 - x1, bot - Math.max(off.seam, top + 20));
     ctx.fillStyle = 'rgba(10,40,20,0.55)'; ctx.fillRect(x1 + 8, top + 6, x2 - x1 - 16, bot - top - 6);
     ctx.fillStyle = '#165c27'; ctx.beginPath(); ctx.roundRect(x1 - 6, bot - 14, x2 - x1 + 12, 16, 4); ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.stroke();
@@ -182,7 +192,7 @@ function drawTransition() {
   drawKaiFigure(Object.assign({ x: kk.x, y: kk.y + DY, push: 0, flip: 0, wind: 0.8, outfit: SAVE.outfit, prop: tr.t * 0.3 }, kk.o));
   if (tube) {
     // the front of the tube is see-through, so Kai is visible sliding inside
-    ctx.fillStyle = 'rgba(60,180,80,0.38)'; ctx.fillRect(tube.x1, tube.top + 20, tube.x2 - tube.x1, tube.bot - tube.top - 34);
+    ctx.fillStyle = TRANS && TRANS.lava ? 'rgba(200,170,150,0.25)' : 'rgba(60,180,80,0.38)'; ctx.fillRect(tube.x1, tube.top + 20, tube.x2 - tube.x1, tube.bot - tube.top - 34);
     ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(tube.x1, tube.top + 20); ctx.lineTo(tube.x1, tube.bot - 14); ctx.moveTo(tube.x2, tube.top + 20); ctx.lineTo(tube.x2, tube.bot - 14); ctx.stroke();
   }
 }
@@ -191,7 +201,7 @@ function drawTransition() {
 // Progress is saved automatically (browser storage on this device).
 // With a saved game the page opens with WEITERSPIELEN (big) and "Komplett neu anfangen" (small, asks first).
 const MENU = { open: false, btns: {} }, CONFIRM = { open: false, btns: {} };
-const hasProgress = () => !!(SAVE.started || SAVE.done.tal || SAVE.done.hoehe || SAVE.done.lava || SAVE.items.magmaBoard || SAVE.seenHoehe);
+const hasProgress = () => !!(SAVE.started || SAVE.done.tal || SAVE.done.hoehe || SAVE.done.lava || SAVE.items.magmaBoard || SAVE.seenHoehe || SAVE.seenLava);
 function askNewGame() { CONFIRM.open = true; Audio.play('warn'); }
 function doNewGame() {
   const keep = { char: SAVE.char, outfit: SAVE.outfit, outfitKai: SAVE.outfitKai, outfitBali: SAVE.outfitBali, owned: SAVE.owned, importedL2: true, best: SAVE.best || 0 };
@@ -233,7 +243,10 @@ function drawMenu() {
   // little overview: worlds + coins
   drawWorldIcon('tal', W / 2 - 60, cy - 26, SAVE.done.tal); drawWorldIcon('hoehe', W / 2 - 30, cy - 26, SAVE.done.hoehe); drawWorldIcon('lava', W / 2, cy - 26, SAVE.done.lava);
   ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left'; ctx.fillText('● ' + SAVE.coins, W / 2 + 50, cy - 26);
+  const stars = ['rodeo', 'fossil', 'ptero', 'lore'].filter(m => SAVE.mini[m] === true).length;
+  ctx.fillStyle = '#ffd23a'; ctx.fillText('★ ' + stars + '/4', W / 2 + 110, cy - 26);
   ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial';
+  if (stars === 4 && SAVE.done.tal && SAVE.done.hoehe && SAVE.done.lava) ctx.fillText(tx('100 % – POKAL! Alles geschafft!'), W / 2, cy + (hasProgress() ? 186 : 146));
   ctx.fillText(tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score || 0), r: fmtNum(SAVE.best || 0) }), W / 2, cy + (hasProgress() ? 166 : 126));
   ctx.restore();
   const prog = hasProgress();
@@ -349,6 +362,12 @@ function ctlButton(c, pressed, label, icon) {
     ctx.beginPath(); ctx.moveTo(x, y - 20); ctx.lineTo(x + 17, y); ctx.lineTo(x + 7, y); ctx.lineTo(x + 7, y + 14); ctx.lineTo(x - 7, y + 14); ctx.lineTo(x - 7, y); ctx.lineTo(x - 17, y); ctx.closePath(); ctx.fill();
   } else if (icon === 'sling') {
     drawSlingIcon(x, y - 1, 1.18);
+  } else if (icon === 'bomb') {
+    ctx.save(); ctx.translate(x, y + 2); ctx.scale(1.6, 1.6); ctx.strokeStyle = OUT; ctx.lineWidth = 1.6;
+    ctx.fillStyle = '#3aa0f0'; ctx.beginPath(); ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(-3, -4, 2.6, 3.4, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1f6fb8'; ctx.beginPath(); ctx.moveTo(-3, 10); ctx.lineTo(3, 10); ctx.lineTo(0, 14); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
   } else if (icon === 'left' || icon === 'right') {
     const d = icon === 'left' ? -1 : 1;
     ctx.beginPath(); ctx.moveTo(x + d * 20, y + 8); ctx.lineTo(x - d * 12, y - 12); ctx.lineTo(x - d * 12, y + 28); ctx.closePath(); ctx.fill();
@@ -388,7 +407,7 @@ function drawControls() {
     ctlButton(leftC(), want < 0, '', 'left'); ctlButton(rightC(), want > 0, '', 'right');
   }
   if (jumpVisible()) ctlButton(jumpC(), CTRL.jumpP.size > 0, tx('SPRUNG'), 'jump');
-  if (shootVisible()) ctlButton(shootC(), CTRL.shootP.size > 0 || CTRL.right, tx(CUR.ctl.icon === 'stick' ? 'SCHLAG' : 'SCHUSS'), CUR.ctl.icon);
+  if (shootVisible()) ctlButton(shootC(), CTRL.shootP.size > 0 || CTRL.right, tx(CUR.ctl.icon === 'stick' ? 'SCHLAG' : CUR.ctl.icon === 'bomb' ? 'WURF' : 'SCHUSS'), CUR.ctl.icon);
 }
 function updateControls() {
   // holding the shoot button (or the right mouse button) keeps shooting – the weapon's own cooldown sets the pace

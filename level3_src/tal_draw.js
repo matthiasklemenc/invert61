@@ -17,6 +17,7 @@ function draw() {
   for (const l of LEDGES) if (onScreen(l.x, l.w)) drawLedge(l);
   for (const r of ROCKS) if (onScreen(r.x, r.w)) drawBoulder(r);
   drawLianas();
+  for (const pp of PIPES) if (onScreen(pp.x - 20, pp.w + 40)) drawPipe(pp);
   drawFireShadows();
   for (const o of S.objects) if (!o.done && onScreen(o.x - 20, 40)) { if (o.type === 'coin') drawCoin(o); else drawFruitHeart(o); }
   for (const d of S.dinos) if (onScreen(d.x - 200, 400)) drawDino(d);
@@ -194,6 +195,17 @@ function drawSites() {
     drawSign(x + 120, FLOOR - 70, tx('FOSSILIEN'), '#e3c88f');
     ctx.restore();
   }
+}
+// a stone pipe glowing orange inside: the way down into the lava caves
+function drawPipe(pp) {
+  const x = pp.x, top = FLOOR - pp.h;
+  ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+  const g = ctx.createLinearGradient(x, 0, x + pp.w, 0); g.addColorStop(0, '#6a5a58'); g.addColorStop(0.4, '#b8a69c'); g.addColorStop(1, '#4a3c3a');
+  ctx.fillStyle = g; ctx.fillRect(x + 6, top + 14, pp.w - 12, pp.h - 14); ctx.strokeRect(x + 6, top + 14, pp.w - 12, pp.h - 14);
+  ctx.fillStyle = '#9a8a84'; ctx.beginPath(); ctx.roundRect(x - 4, top, pp.w + 8, 18, 4); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = `rgba(255,${120 + Math.sin(S.t * 0.08) * 30},30,0.9)`; ctx.beginPath(); ctx.ellipse(x + pp.w / 2, top + 4, pp.w / 2 - 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  drawSign(x + pp.w + 50, FLOOR - 64, '▼ ' + tx('LAVAHÖHLEN'), '#ff9a2a');
 }
 function drawLianas() {
   for (const lx of LIANAS) {
@@ -520,15 +532,8 @@ function drawHUD() {
     icon(b.x + b.w / 2 - 1, b.y + b.h / 2, on);
   }
   drawProgressBox(12, 44);
-  // way to the T-Rex
-  if (S.phase === 'play') {
-    const bx = W / 2 - 160, bw = 320, u = clamp(S.kai.x / BOSS_X, 0, 1);
-    ctx.fillStyle = 'rgba(20,30,50,0.55)'; ctx.beginPath(); ctx.roundRect(bx - 10, 8, bw + 54, 26, 12); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.roundRect(bx, 17, bw, 8, 4); ctx.fill();
-    ctx.fillStyle = '#7dd35a'; ctx.beginPath(); ctx.roundRect(bx, 17, bw * u, 8, 4); ctx.fill();
-    for (const c of CHECKPOINTS) { ctx.fillStyle = S.cpX >= c ? '#34c759' : '#d8352c'; ctx.fillRect(bx + bw * c / BOSS_X - 1, 13, 3, 16); }
-    ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ffd23a'; ctx.textAlign = 'left'; ctx.fillText('T-REX', bx + bw + 6, 21);
-  }
+  // way to the T-Rex (with the places on the way)
+  if (S.phase === 'play') drawWayBar(S.kai.x, BOSS_X, CHECKPOINTS, S.cpX, [['liana', LIANAS[0]], ['rodeo', SITES.rodeo], ['pipe', PIPES[0].x], ['fossil', SITES.fossil], ['liana', LIANAS[1]], ['pipe', PIPES[1].x]], 'T-REX', '#ffd23a');
   if (S.boss && S.phase === 'boss') drawBossBar('T-REX', S.boss.bar ?? 1);
   drawScoreBox(S.score);
   if (S.msgTimer > 0) {
@@ -568,7 +573,10 @@ function drawScreens() {
     ], '#ffb25a');
     button(BTN.start, '▶  ' + tx('LOS GEHT\'S'), '#34c759', '#1f8f3c');
   }
-  if (S.phase === 'ask' && S.ask === 'liana') {
+  if (S.phase === 'ask' && S.ask === 'pipe') {
+    panel(tx('HINUNTER IN DIE LAVAHÖHLEN?'), [tx('Mit dem Magma-Board durch die Röhre nach unten.'), tx('Unten warten Lava, Feuer-Salamander, der Magma-Ankylosaurus und der Riesenvulkan.')], '#ff9a2a');
+    button(BTN.yes, '▼ ' + tx('JA, HINUNTER'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, HIERBLEIBEN'), '#8a96a8', '#5d6878');
+  } else if (S.phase === 'ask' && S.ask === 'liana') {
     panel(tx('HINAUF ZUR FELSENHÖHE?'), [tx('Kai hält sich an der Liane fest.'), tx('Oben warten Flugsaurier, bröckelnde Felsen, das OXXO im Baumhaus und die Flugsaurier-Mama.')], '#9fe07a');
     button(BTN.yes, '▲ ' + tx('JA, HOCHKLETTERN!'), '#34c759', '#1f8f3c'); button(BTN.no, tx('NEIN, LOSLASSEN'), '#8a96a8', '#5d6878');
   } else if (S.phase === 'ask') {

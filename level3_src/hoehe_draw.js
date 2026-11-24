@@ -414,15 +414,7 @@ function drawHUD() {
     icon(b.x + b.w / 2 - 1, b.y + b.h / 2, on);
   }
   drawProgressBox(12, 44);
-  if (S.phase === 'play') {
-    const bx = W / 2 - 160, bw = 320, u = clamp(S.kai.x / BOSS_X, 0, 1);
-    ctx.fillStyle = 'rgba(20,30,50,0.55)'; ctx.beginPath(); ctx.roundRect(bx - 10, 8, bw + 54, 26, 12); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.roundRect(bx, 17, bw, 8, 4); ctx.fill();
-    ctx.fillStyle = '#7dd35a'; ctx.beginPath(); ctx.roundRect(bx, 17, bw * u, 8, 4); ctx.fill();
-    for (const c of CHECKPOINTS) { ctx.fillStyle = S.cpX >= c ? '#34c759' : '#d8352c'; ctx.fillRect(bx + bw * c / BOSS_X - 1, 13, 3, 16); }
-    ctx.fillStyle = '#ffd23a'; ctx.fillRect(bx + bw * SITES.oxxo / BOSS_X - 1, 13, 3, 16);
-    ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ff9ad0'; ctx.textAlign = 'left'; ctx.fillText(tx('MAMA'), bx + bw + 6, 21);
-  }
+  if (S.phase === 'play') drawWayBar(S.kai.x, BOSS_X, CHECKPOINTS, S.cpX, [['liana', 0], ['oxxo', SITES.oxxo], ['ride', SITES.ptero]], tx('MAMA'), '#ff9ad0');
   if (S.boss && S.phase === 'boss') drawBossBar(tx('FLUGSAURIER-MAMA'), S.boss.bar ?? 1);
   drawScoreBox(S.score);
   if (S.msgTimer > 0) {

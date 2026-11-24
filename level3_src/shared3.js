@@ -5,7 +5,7 @@
 const SAVE_KEY = 'invert61-level3';
 const SAVE_DEFAULT = {
   lang: 'de', hearts: 5, lives: 3, coins: 0, pearls: 0, starfish: 0,
-  items: { magmaBoard: false, slingshot: false, sling2: false },
+  items: { magmaBoard: false, slingshot: false, sling2: false, bombs: false },
   weapon: {},
   outfit: { char: 'kai', tee: '#1f3c6e', cap: '#1e4fa3', beanie: false, backpack: false, shoes: '#1b1b22', halo: false },
   // two playable characters, each with her / his own clothes. SAVE.outfit is always the one being played.
@@ -18,7 +18,7 @@ const SAVE_DEFAULT = {
   checkpoint: null,                            // snapshot at the start of the current world
   score: 0, best: 0,                           // points of this game / personal record on this device
   pts: {},                                     // what already gave its one-time points (mini games, bosses)
-  wtime: { tal: 0, hoehe: 0 },                 // seconds played in each world (for the time bonus)
+  wtime: { tal: 0, hoehe: 0, lava: 0 },        // frames played in each world (for the time bonus)
 };
 function loadSave() {
   try {
@@ -66,7 +66,7 @@ function spendCoins(n) { for (const c of new Set([SAVE.checkpoint, ...Object.val
 // ---------------- points ----------------
 // Points are for comparing (coins are money for the OXXO). Defeated dinos stay gone, mini games and bosses
 // give their big points only once per game – so nobody can farm millions. A boss can be fought again and again.
-const PTS = { coin: 10, raptor: 100, compy: 100, baby: 50, ptero: 200, trike: 300, stego: 300, mini: 1000, boss: 5000 };
+const PTS = { coin: 10, raptor: 100, compy: 100, salamander: 100, baby: 50, bat: 150, ptero: 200, trike: 300, stego: 300, mini: 1000, miniboss: 2000, boss: 5000 };
 // time bonus: starts at 10'000 and shrinks by 25 per second played in that world – never below 0 (no countdown!)
 const TIME_BONUS_MAX = 10000, TIME_BONUS_PER_S = 25;
 const timeBonus = sec => Math.max(0, Math.round((TIME_BONUS_MAX - sec * TIME_BONUS_PER_S) / 10) * 10);
@@ -103,6 +103,35 @@ function drawBossBar(name, frac) {
   ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(bx, 14, bw, 16, 8); ctx.stroke();
   ctx.restore();
 }
+// little symbols in the way bar at the top: where the lianas, pipes, mini games, shop and middle boss are
+function drawBarIcon(type, x, y) {
+  ctx.save(); ctx.translate(x, y); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const col = { liana: '#4caf50', pipe: '#ff7a2a', rodeo: '#ffb02e', fossil: '#e3c88f', oxxo: '#d8231f', ride: '#ff9ad0', lore: '#9aa0a8', anky: '#e2541c' }[type] || '#fff';
+  ctx.fillStyle = col; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = OUT; ctx.fillStyle = OUT; ctx.lineWidth = 1.8;
+  if (type === 'liana') { ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(0, -5); ctx.moveTo(-4, -1); ctx.lineTo(0, -5); ctx.lineTo(4, -1); ctx.stroke(); }
+  else if (type === 'pipe') { ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, 5); ctx.moveTo(-4, 1); ctx.lineTo(0, 5); ctx.lineTo(4, 1); ctx.stroke(); }
+  else if (type === 'rodeo') { ctx.beginPath(); ctx.arc(0, 0, 4.5, Math.PI * 0.15, Math.PI * 0.85, true); ctx.stroke(); }
+  else if (type === 'fossil') { ctx.beginPath(); ctx.moveTo(-4, 3); ctx.lineTo(4, -3); ctx.stroke(); for (const [bx, by] of [[-4, 3], [4, -3]]) { ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, Math.PI * 2); ctx.fill(); } }
+  else if (type === 'oxxo') { ctx.fillStyle = '#ffd23a'; ctx.fillRect(-6, -2, 12, 4); }
+  else if (type === 'ride') { ctx.beginPath(); ctx.moveTo(-6, -2); ctx.quadraticCurveTo(-3, 2, 0, -1); ctx.quadraticCurveTo(3, 2, 6, -2); ctx.stroke(); }
+  else if (type === 'lore') { ctx.fillRect(-5, -4, 10, 5); ctx.beginPath(); ctx.arc(-3, 3, 1.8, 0, Math.PI * 2); ctx.arc(3, 3, 1.8, 0, Math.PI * 2); ctx.fill(); }
+  else if (type === 'anky') { ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', 0, 1); }
+  ctx.restore();
+}
+// the way bar (top middle): progress to the boss, checkpoints, and the symbols of the places on the way
+function drawWayBar(kx, bossX, cps, cpX, icons, label, labelCol) {
+  ctx.save(); ctx.textBaseline = 'middle';
+  const bx = W / 2 - 170, bw = 340, u = clamp(kx / bossX, 0, 1);
+  ctx.fillStyle = 'rgba(20,30,50,0.55)'; ctx.beginPath(); ctx.roundRect(bx - 14, 4, bw + 90, 34, 12); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.roundRect(bx, 17, bw, 8, 4); ctx.fill();
+  ctx.fillStyle = '#7dd35a'; ctx.beginPath(); ctx.roundRect(bx, 17, bw * u, 8, 4); ctx.fill();
+  for (const c of cps) { ctx.fillStyle = cpX >= c ? '#34c759' : '#d8352c'; ctx.fillRect(bx + bw * c / bossX - 1, 13, 3, 16); }
+  for (const [type, x] of icons) drawBarIcon(type, bx + bw * clamp(x / bossX, 0, 1), 21);
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(bx + bw * u, 21, 5, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.font = 'bold 12px Arial'; ctx.fillStyle = labelCol; ctx.textAlign = 'left'; ctx.fillText(label, bx + bw + 10, 21);
+  ctx.restore();
+}
 // the end-of-world summary lines (boss beaten)
 function summaryLines(sm) {
   if (!sm) return [];
@@ -134,6 +163,7 @@ const INV_WEAPONS = [
   { id: 'sling', name: 'Steinschleuder', where: 'Felsenhöhe', world: 'hoehe', owned: () => !!SAVE.items.slingshot, worn: () => !(SAVE.items.sling2 && SAVE.weapon.hoehe !== 'sling'), pick: () => { SAVE.weapon.hoehe = 'sling'; } },
   { id: 'sling2', name: 'Super-Schleuder', where: 'Felsenhöhe', world: 'hoehe', owned: () => !!SAVE.items.sling2, worn: () => !!SAVE.items.sling2 && SAVE.weapon.hoehe !== 'sling', pick: () => { SAVE.weapon.hoehe = 'sling2'; } },
   { id: 'magma', name: 'Magma-Board', where: 'Lavahöhlen', world: 'lava', owned: () => !!SAVE.items.magmaBoard, worn: () => true, pick: () => {} },
+  { id: 'bombs', name: 'Wasserbomben', where: 'Lavahöhlen', world: 'lava', owned: () => !!SAVE.items.bombs, worn: () => true, pick: () => {} },
 ];
 const OUTFIT_GROUPS = [
   { label: 'Kopf', opts: [
@@ -190,6 +220,7 @@ function drawInvButton(x, y) {
 function drawInvSwatch(id, sw, cx, cy) {
   ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = OUT; ctx.lineWidth = 1.3; ctx.fillStyle = sw;
   if (id === 'sling' || id === 'sling2') { ctx.strokeStyle = '#7a4f2c'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, 1); ctx.lineTo(-5, -7); ctx.moveTo(0, 1); ctx.lineTo(5, -7); ctx.stroke(); ctx.strokeStyle = '#d8352c'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-5, -7); ctx.lineTo(0, -3); ctx.lineTo(5, -7); ctx.stroke(); if (id === 'sling2') { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 8px Arial'; ctx.fillText('2', 5, 6); } }
+  else if (id === 'bombs') { ctx.fillStyle = '#3aa0f0'; ctx.beginPath(); ctx.ellipse(0, -1, 6, 7, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(-2, -3, 1.6, 0, Math.PI * 2); ctx.fill(); }
   else if (id === 'magma') { ctx.rotate(-0.3); ctx.fillStyle = '#3a2a26'; ctx.beginPath(); ctx.roundRect(-10, -3, 20, 6, 3); ctx.fill(); ctx.stroke(); ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(7, 0); ctx.stroke(); }
   else if (id === 'arrow') { ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(7, 0); ctx.stroke(); ctx.fillStyle = '#fff6b0'; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(3, -4); ctx.lineTo(3, 4); ctx.closePath(); ctx.fill(); }
   else if (id === 'starSea') { ctx.strokeStyle = '#c9d3dc'; ctx.lineWidth = 2; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 3, Math.sin(a) * 3); ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9); ctx.stroke(); } }
@@ -251,7 +282,7 @@ function drawInventoryPanel() {
       let fs = 11; ctx.font = `bold ${fs}px Arial`; const nm = c.figure ? c.it.name : tx(c.it.name);   // the names Kai / Bali are never swapped
       while (ctx.measureText(nm).width > chipW - 40 && fs > 8) { fs--; ctx.font = `bold ${fs}px Arial`; }
       ctx.fillText(nm, cx + 32, y + (c.weapon ? 11 : chipH / 2));
-      if (c.weapon) { ctx.font = '9px Arial'; ctx.fillStyle = on ? '#eafff0' : 'rgba(255,255,255,0.6)'; ctx.fillText(here ? tx(c.it.where) : tx(c.it.world === 'hoehe' ? 'nur auf der Felsenhöhe' : 'für die Lavahöhlen'), cx + 32, y + 22); }
+      if (c.weapon) { ctx.font = '9px Arial'; ctx.fillStyle = on ? '#eafff0' : 'rgba(255,255,255,0.6)'; ctx.fillText(here ? tx(c.it.where) : tx(c.it.world === 'hoehe' ? 'nur auf der Felsenhöhe' : 'nur in den Lavahöhlen'), cx + 32, y + 22); }
       if (on) { ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'right'; ctx.fillText('✓', cx + chipW - 8, y + chipH / 2 + 1); }
       ctx.globalAlpha = 1;
     });
@@ -310,6 +341,38 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  // ---------- LEVEL 3 · LAVAHÖHLEN ----------
+  'DIE LAVAHÖHLEN': ['THE LAVA CAVES', 'LAS CUEVAS DE LAVA'], 'LAVAHÖHLEN': ['LAVA CAVES', 'CUEVAS DE LAVA'], 'VULKAN': ['VOLCANO', 'VOLCÁN'],
+  'Wasserbomben': ['Water bombs', 'Bombas de agua'], 'nur in den Lavahöhlen': ['only in the lava caves', 'solo en las cuevas de lava'], 'WURF': ['THROW', 'LANZAR'],
+  'Du hast WASSERBOMBEN! Wurf-Taste rechts unten.': ['You got WATER BOMBS! Throw button at the bottom right.', '¡Tienes BOMBAS DE AGUA! Botón de lanzar abajo a la derecha.'],
+  'Du hast WASSERBOMBEN! Werfen: X oder rechte Maustaste.': ['You got WATER BOMBS! Throw: X or right mouse button.', '¡Tienes BOMBAS DE AGUA! Lanzar: X o botón derecho del ratón.'],
+  'Neu: WASSERBOMBEN – Wurf-Taste rechts unten': ['New: WATER BOMBS – throw button at the bottom right', 'Nuevo: BOMBAS DE AGUA – botón de lanzar abajo a la derecha'],
+  'Neu: WASSERBOMBEN – X oder rechte Maustaste': ['New: WATER BOMBS – X or right mouse button', 'Nuevo: BOMBAS DE AGUA – X o botón derecho del ratón'],
+  'Das Magma-Board fährt kurz über Lava – aber nicht zu lange, sonst wird es zu heiß!': ['The Magma Board can ride over lava for a moment – not too long, or it gets too hot!', 'La Tabla de Magma rueda un momento sobre la lava – ¡no mucho, o se calienta demasiado!'],
+  'Eine Wasserbombe auf Lava macht für kurze Zeit einen Stein-Weg.': ['A water bomb on lava makes a stone path for a short time.', 'Una bomba de agua en la lava hace un camino de piedra por un rato.'],
+  'In der Mitte: der MAGMA-ANKYLOSAURUS. Am Ende: der RIESENVULKAN.': ['In the middle: the MAGMA ANKYLOSAURUS. At the end: the GIANT VOLCANO.', 'En medio: el ANQUILOSAURIO DE MAGMA. Al final: el VOLCÁN GIGANTE.'],
+  'Zu heiß! Nicht so lange auf der Lava fahren.': ['Too hot! Don\'t ride on the lava so long.', '¡Demasiado caliente! No ruedes tanto sobre la lava.'],
+  'Weiter nach links = zurück ins Tal': ['Keep riding left = back to the valley', 'Sigue a la izquierda = volver al valle'],
+  'Durch die Röhre kommst du wieder hinauf ins Tal.': ['Through the pipe you get back up into the valley.', 'Por el tubo vuelves a subir al valle.'], 'JA, HINAUF': ['YES, UP', 'SÍ, SUBIR'],
+  'LORE-FAHRT': ['MINE CART RIDE', 'VIAJE EN VAGONETA'],
+  'Rase 25 Sekunden mit der Lore durch die Mine!': ['Race through the mine in the cart for 25 seconds!', '¡Corre 25 segundos en la vagoneta por la mina!'],
+  'Tippen / Leertaste = springen: über Löcher und Steine, aber nicht in die Fledermäuse.': ['Tap / Space = jump: over holes and rocks, but not into the bats.', 'Toca / Espacio = saltar: sobre hoyos y piedras, pero no contra los murciélagos.'],
+  'Tippen = mit der Lore springen!': ['Tap = jump with the cart!', '¡Toca = saltar con la vagoneta!'], 'Leertaste / Klick = mit der Lore springen!': ['Space / click = jump with the cart!', '¡Espacio / clic = saltar con la vagoneta!'],
+  'Unfälle: {n} / 3': ['Crashes: {n} / 3', 'Choques: {n} / 3'], 'Super gefahren!': ['Great ride!', '¡Gran viaje!'], 'Zu viele Unfälle! Versuch es nochmal.': ['Too many crashes! Try again.', '¡Demasiados choques! Inténtalo otra vez.'],
+  'MAGMA-ANKYLOSAURUS': ['MAGMA ANKYLOSAURUS', 'ANQUILOSAURIO DE MAGMA'], 'RIESENVULKAN': ['GIANT VOLCANO', 'VOLCÁN GIGANTE'],
+  'Der MAGMA-ANKYLOSAURUS! Kühl ihn mit Wasserbomben ab und spring auf ihn drauf!': ['The MAGMA ANKYLOSAURUS! Cool him with water bombs and jump on him!', '¡El ANQUILOSAURIO DE MAGMA! ¡Enfríalo con bombas de agua y salta encima!'],
+  'Er glüht wieder!': ['He is glowing again!', '¡Vuelve a brillar!'], 'Abgekühlt! JETZT draufspringen!': ['Cooled down! Jump on him NOW!', '¡Enfriado! ¡Salta encima AHORA!'],
+  'MAGMA-ANKYLOSAURUS BESIEGT!': ['MAGMA ANKYLOSAURUS DEFEATED!', '¡ANQUILOSAURIO DE MAGMA VENCIDO!'],
+  'Der Weg ist frei! +{n} Punkte': ['The way is free! +{n} points', '¡El camino está libre! +{n} puntos'], 'Der Weg ist frei!': ['The way is free!', '¡El camino está libre!'],
+  'Der RIESENVULKAN! Wirf eine Wasserbombe in den glühenden Krater!': ['The GIANT VOLCANO! Throw a water bomb into the glowing crater!', '¡El VOLCÁN GIGANTE! ¡Lanza una bomba de agua al cráter brillante!'],
+  'VOLLTREFFER!': ['BULLSEYE!', '¡EN EL BLANCO!'], 'DER RIESENVULKAN IST AUS!': ['THE GIANT VOLCANO IS OUT!', '¡EL VOLCÁN GIGANTE SE APAGÓ!'],
+  'Die Lavahöhlen sind geschafft! +30 Münzen': ['The lava caves are done! +30 coins', '¡Cuevas de lava superadas! +30 monedas'],
+  'Alle drei Bosse besiegt – Level 3 ist geschafft!': ['All three bosses beaten – Level 3 is done!', '¡Los tres jefes vencidos – Nivel 3 superado!'], 'Noch offen:': ['Still to do:', 'Aún falta:'],
+  '100 % – POKAL! Alles geschafft!': ['100 % – TROPHY! Everything done!', '100 % – ¡TROFEO! ¡Todo superado!'],
+  'Du brauchst das Magma-Board aus dem OXXO auf der Felsenhöhe!': ['You need the Magma Board from the OXXO on the Rocky Heights!', '¡Necesitas la Tabla de Magma del OXXO en las Alturas Rocosas!'],
+  'HINUNTER IN DIE LAVAHÖHLEN?': ['DOWN INTO THE LAVA CAVES?', '¿BAJAR A LAS CUEVAS DE LAVA?'],
+  'Mit dem Magma-Board durch die Röhre nach unten.': ['Down through the pipe with the Magma Board.', 'Baja por el tubo con la Tabla de Magma.'],
+  'Unten warten Lava, Feuer-Salamander, der Magma-Ankylosaurus und der Riesenvulkan.': ['Down there: lava, fire salamanders, the Magma Ankylosaurus and the Giant Volcano.', 'Abajo esperan lava, salamandras de fuego, el Anquilosaurio de Magma y el Volcán Gigante.'],
   // ---------- LEVEL 3 · FELSENHÖHE ----------
   'PUNKTE': ['POINTS', 'PUNTOS'], 'Punkte': ['points', 'puntos'], 'NOCHMAL': ['AGAIN', 'OTRA VEZ'], 'NEUER REKORD!': ['NEW RECORD!', '¡NUEVO RÉCORD!'],
   'Punkte: {p}   ·   Rekord: {r}': ['Points: {p}   ·   Record: {r}', 'Puntos: {p}   ·   Récord: {r}'],

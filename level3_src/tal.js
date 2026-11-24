@@ -44,6 +44,11 @@ const CHECKPOINTS = [3500, 7000, 10300];
 const SITES = { rodeo: 4400 - 0, fossil: 8100 };     // mini-game places (start of the corral / dig site)
 // lianas hanging from the cliffs above: jump up, grab one and climb to the Felsenhöhe
 const LIANAS = [2830, 8480], LIANA_BOTTOM = 120;
+// two pipes down into the lava caves (only with the Magma-Board): stand on top of one
+const PIPES = [{ x: 5380, w: 84, h: 74, pipe: true }, { x: 9700, w: 84, h: 74, pipe: true }];
+const SOLIDS = ROCKS.concat(PIPES);                  // everything solid on the ground (Kai and the dinos bump into it)
+// where Kai comes back from the other worlds
+const ARRIVE = { hoehe: LIANAS[0], lava: PIPES[0].x + PIPES[0].w + 120 };
 
 const S = {
   phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0, score: SAVE.score || 0, pops: [], wtime: SAVE.wtime.tal || 0, combo: 0,
@@ -55,7 +60,8 @@ const S = {
 };
 window.__S = S; window.__T = () => TEST; window.__V = () => [VH, DY, SAVE];
 // back down from the Felsenhöhe: Kai arrives at the foot of the liana
-if (QUERY.get('from') === 'hoehe') { S.kai.x = LIANAS[0]; S.kai.safeX = LIANAS[0]; S.cam = clamp(LIANAS[0] - W * 0.4, 0, BOSS_X); S.lianaCool = 60; }
+const FROM = ARRIVE[QUERY.get('from')];
+if (FROM) { S.kai.x = FROM; S.kai.safeX = FROM; S.cam = clamp(FROM - W * 0.4, 0, BOSS_X); S.lianaCool = 60; }
 
 function resetDinos() {
   S.dinos = DINO_PLAN.map((d, i) => {
@@ -69,7 +75,7 @@ function resetDinos() {
 // boulders are walls for the dinos too (like the Goombas in Super Mario): they bump into them and turn around
 function rockBlock(d) {
   const hw = d.w / 2 - 10;
-  for (const r of ROCKS) {
+  for (const r of SOLIDS) {
     if (d.x + hw > r.x && d.x - hw < r.x + r.w) {
       if (d.x < r.x + r.w / 2) { d.x = r.x - hw; d.dir = -1; } else { d.x = r.x + r.w + hw; d.dir = 1; }
       if (d.state === 'charge') d.state = 'walk';
@@ -161,12 +167,12 @@ window.addEventListener('keyup', e => {
 
 // ---------------- start / checkpoints ----------------
 function beginWorld() {
-  const cont = QUERY.get('from') === 'continue' && SAVE.cpX, fromH = QUERY.get('from') === 'hoehe' && !S.begun;
+  const cont = QUERY.get('from') === 'continue' && SAVE.cpX, fromH = !!FROM && !S.begun;
   S.phase = 'play'; S.noHud = false; SAVE.started = true;
   S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
-  const k = S.kai; k.x = fromH ? LIANAS[0] : cont ? SAVE.cpX : 160; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.safeX = k.x;
+  const k = S.kai; k.x = fromH ? FROM : cont ? SAVE.cpX : 160; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.safeX = k.x;
   S.cpX = fromH ? Math.max(SAVE.cpX || 160, 160) : k.x; S.cam = clamp(k.x - W * (fromH ? 0.4 : 0.38), 0, BOSS_X); S.begun = true;
-  if (fromH) { useCheckpoint('tal'); writeSave(); Audio.init(); Audio.setTheme('dino'); flash('Zurück im Dino-Tal!', 110); return; }
+  if (fromH) { useCheckpoint('tal'); writeSave(); Audio.init(); Audio.setTheme('dino'); flash('Zurück im Dino-Tal!', 110); S.onPipe = true; return; }
   if (!cont) setCheckpoint('tal');
   writeSave(); Audio.init(); Audio.setTheme('dino');
   flash(isTouchDev() ? 'Halte ▶ gedrückt – los geht\'s!' : 'Halte den Pfeil nach rechts – los geht\'s!', 150);
@@ -233,6 +239,7 @@ function update(dt) {
   if (S.heartFlash > 0) S.heartFlash -= dt;
   if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
   if (playing()) S.wtime += dt;                       // time played in this world (frames)
+  S.saveT = (S.saveT || 0) + dt; if (S.saveT > 120 && playing()) { S.saveT = 0; saveProgress(); }   // keep the points safe every 2 s
   for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
@@ -246,6 +253,7 @@ function update(dt) {
   if (!playing()) { if (S.phase === 'won') updateBossDead(dt); return; }
   updateKai(dt);
   updateLianas(dt);
+  updatePipes();
   updateDinos(dt);
   updateVolcanoes(dt);
   updatePickups();
@@ -282,7 +290,7 @@ function updateKai(dt) {
   if (k.platform && k.platform.dino) k.x += k.platform.dino.vx * dt;
   let nx = k.x + k.vx * dt;
   // boulders block from the side
-  for (const r of ROCKS) {
+  for (const r of SOLIDS) {
     const top = FLOOR - r.h;
     if (k.y > top + 4 && nx + 20 > r.x && nx - 20 < r.x + r.w) {
       if (k.x <= r.x + r.w / 2) nx = r.x - 20; else nx = r.x + r.w + 20;
@@ -331,7 +339,7 @@ function landOn(pl, top) {
 function platformsNear(x) {
   const list = [];
   for (const l of LEDGES) if (x > l.x - 60 && x < l.x + l.w + 60) list.push({ x1: () => l.x, x2: () => l.x + l.w, top: () => l.y });
-  for (const r of ROCKS) if (x > r.x - 60 && x < r.x + r.w + 60) list.push({ x1: () => r.x, x2: () => r.x + r.w, top: () => FLOOR - r.h });
+  for (const r of SOLIDS) if (x > r.x - 60 && x < r.x + r.w + 60) list.push({ x1: () => r.x, x2: () => r.x + r.w, top: () => FLOOR - r.h, pipe: r.pipe ? r : null });
   for (const d of S.dinos) if (d.type === 'brachio' && Math.abs(x - d.x) < 160) list.push({ dino: d, x1: () => d.x - 80, x2: () => d.x + 80, top: () => brachioTop(d) });
   return list;
 }
@@ -443,6 +451,16 @@ function updateLianas(dt) {
     }
   }
 }
+// standing on top of a pipe: down into the lava caves (only with the Magma-Board)
+function updatePipes() {
+  const k = S.kai, on = k.ground && k.platform && k.platform.pipe;
+  if (!on) { S.onPipe = false; return; }
+  if (S.onPipe || S.phase !== 'play') return;
+  S.onPipe = true;
+  if (!SAVE.items.magmaBoard) { flash('Du brauchst das Magma-Board aus dem OXXO auf der Felsenhöhe!', 160); Audio.play('denied'); return; }
+  S.ask = 'pipe'; S.phase = 'ask'; k.vx = 0; k.dir = 0; Audio.play('chime');
+}
+function enterPipe() { saveProgress(); S.phase = 'leaving'; Audio.play('pipe'); goToWorld('lava.html', 'from=tal'); }
 function climbUp() { S.phase = 'climb'; S.climbT = 0; Audio.play('swish'); }
 function letGo() { const k = S.kai; S.phase = 'play'; k.ground = false; k.platform = null; k.vy = 0; S.lianaCool = 70; Audio.play('tink'); }
 
@@ -450,9 +468,12 @@ function letGo() { const k = S.kai; S.phase = 'play'; k.ground = false; k.platfo
 function updateSites() {
   const k = S.kai;
   for (const [id, x] of Object.entries(SITES)) {
-    const gate = x + 120;
-    if (Math.abs(k.x - gate) > 160) S.asked[id] = false;            // re-arm when Kai has ridden a bit away (so the game can be played again)
-    if (!S.asked[id] && Math.abs(k.x - gate) < 30 && k.ground) {
+    // the question comes when Kai passes the entrance – also in the air or on a log above it: then as soon as he lands
+    const gate = x + 120, d = Math.abs(k.x - gate);
+    S.near = S.near || {};
+    if (d > 300) { S.asked[id] = false; S.near[id] = false; }
+    if (d < 60) S.near[id] = true;
+    if (!S.asked[id] && S.near[id] && k.ground && d < 300) {
       S.asked[id] = true; S.ask = id; S.phase = 'ask';
       k.vx = 0; k.dir = 0; Audio.play('chime');
     }
@@ -481,7 +502,7 @@ canvas.addEventListener('pointerdown', e => {
   if (inRect(hp, BTN.sfx)) { Audio.toggleSfx(); return; }
   if (S.phase === 'start') { beginWorld(); return; }
   if (S.phase === 'ask') {
-    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; if (id === 'liana') climbUp(); else startGame(id); }
+    if (inRect(p, BTN.yes)) { const id = S.ask; S.ask = null; if (id === 'liana') climbUp(); else if (id === 'pipe') enterPipe(); else startGame(id); }
     else if (inRect(p, BTN.no)) { const id = S.ask; S.ask = null; if (id === 'liana') letGo(); else { S.phase = 'play'; Audio.play('tink'); } }
     return;
   }
@@ -495,6 +516,7 @@ function enterFromMenu() { S.noHud = S.phase === 'start'; }   // the start panel
 const TEST = {
   setX(x) { const k = S.kai; k.x = x; k.safeX = x; S.cam = clamp(x - W * 0.36, 0, BOSS_X); },
   startBoss() { TEST.setX(BOSS_X + 300); },
+  pipe(i = 0) { const k = S.kai, pp = PIPES[i]; TEST.setX(pp.x + pp.w / 2); k.y = FLOOR - pp.h - 60; k.ground = false; k.vy = 1; },
   liana(i = 0) { const k = S.kai; TEST.setX(LIANAS[i]); k.ground = false; k.y = LIANA_BOTTOM + 100; k.vy = -1; },
   startGame(id) { startGame(id); },
 };

@@ -42,7 +42,8 @@ const Audio = (() => {
   const CHORDS_SKY = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]]; // Fmaj7 – Em7 – Dm7 – Cmaj7 (dreamy)
   const CHORDS_DINO = [[45, 48, 52], [43, 47, 50], [41, 45, 48], [40, 44, 47]];                 // Am – G – F – E (jungle adventure)
   const CHORDS_HOEHE = [[50, 54, 57], [48, 52, 55], [43, 47, 50], [45, 49, 52]];                // D – C – G – A (high up, heroic)
-  function stepDur() { return 60 / (boss ? 132 : fast ? BPM_FAST : theme === 'city' ? 116 : theme === 'dino' ? 108 : theme === 'hoehe' ? 112 : theme === 'sky' ? 100 : BPM_NORMAL) / 4; }
+  const CHORDS_LAVA = [[40, 43, 47], [36, 40, 43], [38, 42, 45], [35, 39, 42]];                 // Em – C – D – B (deep down, a bit dangerous)
+  function stepDur() { return 60 / (boss ? 132 : fast ? BPM_FAST : theme === 'city' ? 116 : theme === 'dino' ? 108 : theme === 'hoehe' ? 112 : theme === 'lava' ? 100 : theme === 'sky' ? 100 : BPM_NORMAL) / 4; }
   function schedule() {
     if (!ac) return;
     delay.delayTime.setTargetAtTime(stepDur() * 3, ac.currentTime, 0.05);
@@ -66,7 +67,7 @@ const Audio = (() => {
   }
   function playStep(s, t) {
     if (bgPaused) return;
-    const bar = Math.floor(s / 16) % 4, st = s % 16, ch = (boss ? CHORDS_BOSS : theme === 'city' ? CHORDS_CITY : theme === 'dino' ? CHORDS_DINO : theme === 'hoehe' ? CHORDS_HOEHE : theme === 'sky' ? CHORDS_SKY : CHORDS)[bar], sd = stepDur();
+    const bar = Math.floor(s / 16) % 4, st = s % 16, ch = (boss ? CHORDS_BOSS : theme === 'city' ? CHORDS_CITY : theme === 'dino' ? CHORDS_DINO : theme === 'hoehe' ? CHORDS_HOEHE : theme === 'lava' ? CHORDS_LAVA : theme === 'sky' ? CHORDS_SKY : CHORDS)[bar], sd = stepDur();
     const fast = intense() || theme === 'city';
     // jungle drums (toms) for the dino world
     if (theme === 'dino' && !boss && [0, 3, 6, 10, 12].includes(st)) {
@@ -81,6 +82,13 @@ const Audio = (() => {
       o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.5, t + 0.25);
       g.gain.setValueAtTime(0.24, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
       o.connect(g); g.connect(musicFilter); o.start(t); o.stop(t + 0.32);
+    }
+    // Lavahöhlen: deep rumbling drums
+    if (theme === 'lava' && !boss && [0, 6, 8, 14].includes(st)) {
+      const o = ac.createOscillator(), g = ac.createGain(), f0 = st === 8 ? 70 : 55;
+      o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.5, t + 0.3);
+      g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.connect(g); g.connect(musicFilter); o.start(t); o.stop(t + 0.38);
     }
     if (theme === 'hoehe' && !boss && st % 8 === 4) tone(mtof(ch[(bar + st / 4) % ch.length] + 24), t, sd * 6, 'sine', 0.03, musicFilter, 0.03);
     if (theme === 'sky' && st % 4 === 0 && !boss) tone(mtof(ch[(st / 4) % ch.length] + 24), t, sd * 5, 'sine', 0.035, musicFilter, 0.02);   // sparkling bells
@@ -110,11 +118,11 @@ const Audio = (() => {
   }
   function setTheme(t) {
     theme = t;
-    if (ac) musicFilter.frequency.setTargetAtTime(t === 'city' ? 5200 : t === 'dino' ? 3800 : t === 'hoehe' ? 4200 : t === 'sky' ? 4200 : 2200, ac.currentTime, 0.2);
+    if (ac) musicFilter.frequency.setTargetAtTime(t === 'city' ? 5200 : t === 'dino' ? 3800 : t === 'hoehe' ? 4200 : t === 'lava' ? 3000 : t === 'sky' ? 4200 : 2200, ac.currentTime, 0.2);
   }
   function setBoss(on) {
     boss = on;
-    if (ac) musicFilter.frequency.setTargetAtTime(on ? 4200 : (fast ? 6500 : theme === 'city' ? 5200 : theme === 'dino' ? 3800 : theme === 'hoehe' ? 4200 : 2200), ac.currentTime, 0.3);
+    if (ac) musicFilter.frequency.setTargetAtTime(on ? 4200 : (fast ? 6500 : theme === 'city' ? 5200 : theme === 'dino' ? 3800 : theme === 'hoehe' ? 4200 : theme === 'lava' ? 3000 : 2200), ac.currentTime, 0.3);
   }
   function setFast(on) {
     if (on === fast) return;
