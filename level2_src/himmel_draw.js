@@ -249,6 +249,11 @@ function drawShop() {
   ctx.fillStyle = '#d8241f'; ctx.beginPath(); ctx.roundRect(W / 2 - 90, 8, 180, 34, 10); ctx.fill(); ctx.fillStyle = '#ffd23a'; ctx.fillRect(W / 2 - 90, 8, 180, 5); ctx.fillRect(W / 2 - 90, 37, 180, 5);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 22px Arial Black, Arial'; ctx.fillText('OXXO', W / 2, 26);
   ctx.textAlign = 'left'; ctx.font = 'bold 15px Arial'; drawCoin({ x: W / 2 + 140, y: 25, p: 0 }); ctx.fillStyle = '#fff'; ctx.fillText(String(S.coins), W / 2 + 156, 26);
+  // the angel who works in the cloud OXXO stands behind the counter on the left
+  ctx.save(); ctx.textAlign = 'left'; drawAngel(50, 190, 1.05, false);
+  ctx.strokeStyle = OUT; ctx.lineWidth = 2.5; ctx.fillStyle = '#f4efe6'; ctx.fillRect(8, 160, 86, 46); ctx.strokeRect(8, 160, 86, 46);
+  ctx.fillStyle = '#d8241f'; ctx.fillRect(8, 160, 86, 10); ctx.fillStyle = '#ffd23a'; ctx.fillRect(8, 168, 86, 3);
+  ctx.restore();
   shopList().forEach((it, i) => {
     const r = shopCardRect(i), owned = shopOwned(it), afford = S.coins >= it.price;
     const worn = it.kind === 'cloth' && owned && isWorn(it.id);

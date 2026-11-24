@@ -440,6 +440,22 @@ const ctlRelease = e => {
 window.addEventListener('pointerup', ctlRelease); window.addEventListener('pointercancel', ctlRelease);
 window.addEventListener('blur', () => { CTRL.jumpP.clear(); CTRL.shootP.clear(); CTRL.right = false; CTRL.pad.clear(); CTRL.keyL = CTRL.keyR = false; });
 
+// LEVEL 4: when all three Dinoland bosses are beaten, the end screen gets a rocket button to Level 4 (Weltraum)
+const L4 = { btn: null };
+const l4Visible = () => !TRANS && CUR && CUR.S.phase === 'won' && allBossesDone() && !MENU.open && !CONFIRM.open && !PAUSE.on;
+function drawL4Button() {
+  if (!l4Visible()) { L4.btn = null; return; }
+  const b = L4.btn = { x: W / 2 - 170, y: DY + 292, w: 340, h: 42 };
+  const pulse = 1 + Math.sin(performance.now() / 160) * 0.03;
+  ctx.save(); ctx.translate(b.x + b.w / 2, b.y + b.h / 2); ctx.scale(pulse, pulse);
+  const g = ctx.createLinearGradient(0, -b.h / 2, 0, b.h / 2); g.addColorStop(0, '#7a5cff'); g.addColorStop(1, '#3a2a9a');
+  ctx.fillStyle = g; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, 14); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 17px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('🚀  ' + tx('ZU LEVEL 4: WELTRAUM'), 0, 1);
+  ctx.restore();
+}
+function goToLevel4() { writeSave(); Audio.pauseBg(true); location.href = new URL('level4.html', location.href).href; }
+
 // EXIT (next to PAUSE, in every world): back to the title menu of the game
 const EXIT = { btn: null };
 const exitVisible = () => !TRANS && CUR && !CUR.S.noHud && !MENU.open && !CONFIRM.open;
@@ -463,6 +479,7 @@ canvas.addEventListener('pointerdown', e => {
   // right mouse button never jumps – it shoots
   if (e.pointerType === 'mouse' && e.button === 2) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); mouseButtons(e); return; }
   if (EXIT.btn && exitVisible() && inB(p, EXIT.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); toMainMenu(); return; }
+  if (L4.btn && l4Visible() && inB(p, L4.btn)) { e.stopImmediatePropagation(); e.preventDefault(); goToLevel4(); return; }
   if (shootVisible() && inShootZone(p)) { e.stopImmediatePropagation(); e.preventDefault(); CTRL.shootP.add(e.pointerId); ctlShoot(); return; }
   if (padVisible() && inPadZone(p)) {
     e.stopImmediatePropagation(); e.preventDefault(); Audio.init();
@@ -512,7 +529,7 @@ function mainLoop(now) {
   if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); }
   else {
     if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); }
-    drawWorldFull(CUR); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
+    drawWorldFull(CUR); drawL4Button(); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
   }   // paused while ITEMS is open or PAUSE
   requestAnimationFrame(mainLoop);
 }

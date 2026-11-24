@@ -448,7 +448,7 @@ const TR = {
   'Weiter geht es an den Lianen hinauf zur Felsenhöhe!': ['Next: climb the lianas up to the Rocky Heights!', '¡Sigue: sube por las lianas a las Alturas Rocosas!'],
   'Zurück im Dino-Tal!': ['Back in Dino Valley!', '¡De vuelta en el Valle Dino!'],
   // ---------- LEVEL 3 · DINOLAND ----------
-  'INVERT – LEVEL 3': ['INVERT – LEVEL 3', 'INVERT – NIVEL 3'], 'DINOLAND': ['DINOLAND', 'DINOLANDIA'],
+  'INVERT – LEVEL 3': ['INVERT – LEVEL 3', 'INVERT – NIVEL 3'], 'ZU LEVEL 4: WELTRAUM': ['TO LEVEL 4: SPACE', 'AL NIVEL 4: ESPACIO'], 'DINOLAND': ['DINOLAND', 'DINOLANDIA'],
   'T-Rex im Dino-Tal besiegen': ['Beat the T-Rex in Dino Valley', 'Vence al T-Rex en el Valle Dino'],
   'Flugsaurier-Mama auf der Felsenhöhe besiegen': ['Beat Mama Pterosaur on Rock Heights', 'Vence a Mamá Pterosaurio en las Alturas'],
   'Riesenvulkan in den Lavahöhlen besiegen': ['Beat the giant volcano in the Lava Caves', 'Vence al volcán gigante en las Cuevas de Lava'],

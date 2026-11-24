@@ -19,6 +19,8 @@ interface GameMenuProps {
     level3Unlocked?: boolean;
     onLevel3?: () => void;
     level3Done?: boolean;
+    onLevel4?: () => void;
+    level4Done?: boolean;
     onStartOver?: () => void;
 }
 
@@ -35,6 +37,8 @@ const GameMenu: React.FC<GameMenuProps> = ({
     level3Unlocked,
     onLevel3,
     level3Done,
+    onLevel4,
+    level4Done,
     onStartOver
 }) => {
     const [confirmStartOver, setConfirmStartOver] = useState(false);
@@ -118,7 +122,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
                     { level: 1, state: 'open', done: !!level2Unlocked, onPlay: startGame },
                     { level: 2, state: level2Unlocked ? 'open' : 'locked', done: !!level3Unlocked, onPlay: onLevel2 },
                     { level: 3, state: level3Unlocked ? 'open' : 'locked', done: !!level3Done, onPlay: onLevel3 },
-                    { level: 4, state: 'soon' },
+                    { level: 4, state: level3Done ? 'open' : 'locked', done: !!level4Done, onPlay: onLevel4 },
                 ]}
             />
             <div className="mb-auto pb-8 flex justify-center">
@@ -138,7 +142,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setConfirmStartOver(false)}>
                     <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="text-white font-black text-xl mb-2">Start over?</div>
-                        <div className="text-gray-400 text-sm mb-5">Level 1 points, Level 2, Level 3 and the whole saved game will be deleted. You start again at Level 1.</div>
+                        <div className="text-gray-400 text-sm mb-5">Level 1 points, Level 2, Level 3, Level 4 and the whole saved game will be deleted. You start again at Level 1.</div>
                         <div className="flex justify-center gap-3">
                             <button
                                 onClick={() => { setConfirmStartOver(false); onStartOver(); }}

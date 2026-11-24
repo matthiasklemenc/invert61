@@ -217,6 +217,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             localStorage.removeItem(LEVEL1_DONE_KEY);
             localStorage.removeItem('invert61-level2');
             localStorage.removeItem('invert61-level3');
+            localStorage.removeItem('invert61-level4');
         } catch { /* ignore */ }
         wrapperRef.current?.requestFullscreen?.().catch(() => {});
         playAgainFromLevelOne();
@@ -238,6 +239,16 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     })();
     const startLevel3 = () => {
         window.location.href = `${import.meta.env.BASE_URL}level3.html`;
+    };
+    // ---- Level 4 (Weltraum): open when Level 3 is finished; done = all 3 space bosses beaten ----
+    const level4Done = (() => {
+        try {
+            const d = (JSON.parse(localStorage.getItem('invert61-level4') || '{}').done) || {};
+            return !!(d.mond && d.aurora && d.unter);
+        } catch { return false; }
+    })();
+    const startLevel4 = () => {
+        window.location.href = `${import.meta.env.BASE_URL}level4.html`;
     };
     const startLevel2 = () => {
         try { localStorage.setItem(LEVEL1_DONE_KEY, '1'); } catch { /* ignore */ }
@@ -418,6 +429,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     level3Unlocked={level3Unlocked}
                     onLevel3={startLevel3}
                     level3Done={level3Done}
+                    onLevel4={startLevel4}
+                    level4Done={level4Done}
                     onStartOver={startOver}
                     highScore={highScore}
                     userName={userName}

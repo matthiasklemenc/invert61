@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>INVERT – Level 4</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #020c18; height: 100%; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; font-family: Arial, Helvetica, sans-serif; }
+  canvas { display: block; width: 100vw; height: auto; max-height: 100vh; object-fit: contain; touch-action: none; user-select: none; -webkit-user-select: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(() => {
+'use strict';
+const W = 1280, H = 340;      // world space of every game scene
+const FLOOR = 300;            // street / cloud floor / sand line
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+// The view is as tall as the screen allows (landscape phone ≈ 2.1:1 → ~600 high).
+// The world sits at the bottom; the extra height (DY) is open space above it (more sky / more water).
+let VH = H, DY = 0;
+function fitView() {
+  const a = Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight);
+  VH = Math.round(Math.min(760, Math.max(H, W / a))); DY = VH - H;
+  canvas.width = W * dpr; canvas.height = VH * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+fitView();
+window.addEventListener('resize', fitView); window.addEventListener('orientationchange', () => setTimeout(fitView, 200));
+
+const OUT = '#14202e';        // outline colour (matches Kai's flat style)
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+

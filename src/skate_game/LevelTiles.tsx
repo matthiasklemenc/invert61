@@ -36,6 +36,8 @@ const TXT: Record<string, Record<Lang, string>> = {
 export function getGameLang(): Lang {
     const ok = (l: any): l is Lang => l === 'de' || l === 'en' || l === 'es';
     try {
+        const l4 = JSON.parse(localStorage.getItem('invert61-level4') || 'null');
+        if (l4 && ok(l4.lang)) return l4.lang;
         const l3 = JSON.parse(localStorage.getItem('invert61-level3') || 'null');
         if (l3 && ok(l3.lang)) return l3.lang;
         const l2 = JSON.parse(localStorage.getItem('invert61-level2') || 'null');
