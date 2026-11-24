@@ -571,51 +571,35 @@ function drawProgressBox(x, y) {
 
 // =====================================================================
 //  VORLESEN (read aloud) – for children who can't read yet.
-//  Every text the game draws (panels, speech bubbles, messages) is noted. The 🔊 button at the top right
-//  reads everything that is on the screen right now – plus the big messages of the last 10 seconds,
-//  so short messages can still be heard. In the chosen language (de / en / es), with the phone's voice.
+//  The 🔊 button at the top right switches the reading mode ON / OFF (remembered on this device).
+//  Mode ON: tap on any text → only THAT text is read (a wrapped speech bubble as a whole).
+//  Tapping the same text again right away does what the text does (e.g. a button).
+//  Switching OFF stops the voice at once; a new world stops it too.
+//  While the mode is ON, the short messages stay three times longer on the screen.
 // =====================================================================
-const READ = { on: false, frame: [], seen: new Map(), btn: null, newT: 0, lastBig: '' };
+const READ = { on: false, frame: [], last: [], btn: null, mode: false, lastTap: null, world: null };
+try { READ.mode = localStorage.getItem('invert-read-mode') === 'on'; } catch (e) {}
 (() => {
   const fill = ctx.fillText.bind(ctx);
   ctx.fillText = function (t, x, y, mw) {
     if (READ.on && typeof t === 'string' && ctx.globalAlpha > 0.25) {
       const m = /(\d+)px/.exec(ctx.font), size = m ? +m[1] : 10;
-      if (size >= 13 && /\p{L}{2}/u.test(t)) {
-        const tr = ctx.getTransform(), sc = Math.hypot(tr.a, tr.b) || 1;
-        READ.frame.push({ t: t.trim(), x: (tr.a * x + tr.c * y + tr.e) / dprR(), y: (tr.b * x + tr.d * y + tr.f) / dprR(), size: size * sc / dprR() });
+      if (size >= 11 && /\p{L}{2}/u.test(t)) {
+        const tr = ctx.getTransform(), d = typeof dpr !== 'undefined' ? dpr : 1, sc = Math.hypot(tr.a, tr.b) / d;
+        const w = Math.min(mw || 1e9, ctx.measureText(t).width) * sc, h = size * sc;
+        const al = ctx.textAlign, bl = ctx.textBaseline;
+        const ax = (tr.a * x + tr.c * y + tr.e) / d, ay = (tr.b * x + tr.d * y + tr.f) / d;
+        const left = al === 'center' ? ax - w / 2 : al === 'right' || al === 'end' ? ax - w : ax;
+        const top = bl === 'top' || bl === 'hanging' ? ay : bl === 'middle' ? ay - h / 2 : ay - h * 0.8;
+        READ.frame.push({ t: t.trim(), ax, x: left, y: top, w, h, al });
       }
     }
     return mw === undefined ? fill(t, x, y) : fill(t, x, y, mw);
   };
 })();
-function dprR() { return typeof dpr !== 'undefined' ? dpr : 1; }
 function readBegin() { READ.frame = []; READ.on = true; }
-function readEnd() {
-  READ.on = false;
-  const now = performance.now();
-  for (const f of READ.frame) {
-    const old = READ.seen.get(f.t);
-    if (!old && f.size >= 20 && f.t !== READ.lastBig) { READ.newT = now; READ.lastBig = f.t; }
-    READ.seen.set(f.t, Object.assign({}, f, { at: now }));
-  }
-  for (const [k, v] of READ.seen) if (now - v.at > 10000) READ.seen.delete(k);
-}
-function readText() {
-  const now = performance.now(), list = [];
-  for (const v of READ.seen.values()) if (now - v.at < 400 || (v.size >= 20 && now - v.at < 10000)) list.push(v);
-  // big messages that are already gone first, then the screen from top to bottom, left to right
-  list.sort((a, b) => ((now - a.at < 400) - (now - b.at < 400)) || (Math.abs(a.y - b.y) < 8 ? a.x - b.x : a.y - b.y));
-  // language buttons (DE / EN / ES) are not read; lines of one wrapped text are joined into one sentence
-  const out = [];
-  let prev = null;
-  for (const v of list) {
-    if (/^(DE|EN|ES)$/.test(v.t) || out.some(o => o.t === v.t)) continue;
-    if (prev && Math.abs(prev.size - v.size) < 1 && v.y > prev.y && v.y - prev.y < v.size * 1.36 && !/[.!?:…]$/.test(prev.t)) { prev.t += ' ' + v.t; prev.y = v.y; continue; }
-    prev = { t: v.t, y: v.y, size: v.size }; out.push(prev);
-  }
-  return out.map(o => /[.!?:…]$/.test(o.t) ? o.t : o.t + '.').join(' ');
-}
+function readEnd() { READ.on = false; READ.last = READ.frame; }
+function readStop() { try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {} }
 function readSpeak(text) {
   try {
     if (!window.speechSynthesis || !text) return;
@@ -625,20 +609,57 @@ function readSpeak(text) {
     speechSynthesis.speak(u);
   } catch (e) {}
 }
-// the big 🔊 button (screen coordinates, top right under the coins)
+// the text under the finger – with the other lines of the same wrapped text (same size, same alignment, close together)
+function readTextAt(p) {
+  const L = READ.last;
+  let hit = null, best = 1e9;
+  for (const f of L) {
+    const pad = 8;
+    if (p.x >= f.x - pad && p.x <= f.x + f.w + pad && p.y >= f.y - pad && p.y <= f.y + f.h + pad) { const a = f.w * f.h; if (a < best) { best = a; hit = f; } }
+  }
+  if (!hit) return null;
+  const same = f => Math.abs(f.h - hit.h) < 1 && f.al === hit.al && Math.abs((f.al === 'left' || f.al === 'start' ? f.x : f.ax) - (hit.al === 'left' || hit.al === 'start' ? hit.x : hit.ax)) < 6;
+  const block = [hit];
+  let cur = hit;
+  for (;;) { const up = L.find(f => same(f) && !block.includes(f) && f.y < cur.y && cur.y - f.y < f.h * 1.36); if (!up) break; block.unshift(up); cur = up; }
+  cur = hit;
+  for (;;) { const dn = L.find(f => same(f) && !block.includes(f) && f.y > cur.y && f.y - cur.y < f.h * 1.36); if (!dn) break; block.push(dn); cur = dn; }
+  const out = []; for (const f of block) if (!out.includes(f.t)) out.push(f.t);
+  return out.join(' ');
+}
+// the 🔊 switch (screen coordinates, top right under the coins)
 function drawReadButton(show) {
   READ.btn = null;
+  if (typeof CUR !== 'undefined' && CUR && READ.world !== CUR.key) { READ.world = CUR.key; readStop(); }
   if (!show || !window.speechSynthesis) return;
   const b = READ.btn = { x: W - 82, y: 80, w: 70, h: 44 };
-  const fresh = performance.now() - READ.newT < 3000, pulse = fresh ? 1 + Math.sin(performance.now() / 120) * 0.08 : 1;
+  const on = READ.mode, pulse = on ? 1 + Math.sin(performance.now() / 260) * 0.04 : 1;
   ctx.save(); ctx.translate(b.x + b.w / 2, b.y + b.h / 2); ctx.scale(pulse, pulse);
-  ctx.fillStyle = fresh ? '#ffd23a' : 'rgba(255,255,255,0.92)'; ctx.strokeStyle = '#14202e'; ctx.lineWidth = 2.5;
+  ctx.fillStyle = on ? '#ffd23a' : 'rgba(255,255,255,0.75)'; ctx.strokeStyle = on ? '#ffffff' : '#14202e'; ctx.lineWidth = on ? 3.5 : 2;
   ctx.beginPath(); ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, 14); ctx.fill(); ctx.stroke();
-  ctx.font = '26px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#14202e'; ctx.fillText('🔊', 0, 2);
+  ctx.globalAlpha = on ? 1 : 0.55;
+  ctx.font = '24px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#14202e'; ctx.fillText(on ? '🔊' : '🔈', -8, 2);
+  ctx.font = '18px Arial'; ctx.fillText('👆', 18, 6);
+  if (!on) { ctx.globalAlpha = 1; ctx.strokeStyle = '#d8352c'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-26, -14); ctx.lineTo(26, 14); ctx.stroke(); }
   ctx.restore();
 }
+// returns true when the tap was used for reading (then the game does not get it)
 function readClick(p) {
   const b = READ.btn; if (!b) return false;
-  if (p.x >= b.x - 6 && p.x <= b.x + b.w + 6 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6) { readSpeak(readText()); return true; }
-  return false;
+  if (p.x >= b.x - 6 && p.x <= b.x + b.w + 6 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6) {
+    READ.mode = !READ.mode; READ.lastTap = null;
+    try { localStorage.setItem('invert-read-mode', READ.mode ? 'on' : 'off'); } catch (e) {}
+    readStop(); if (typeof Audio !== 'undefined') Audio.play('tink');
+    return true;
+  }
+  if (!READ.mode) return false;
+  const t = readTextAt(p); if (!t) return false;
+  const now = performance.now();
+  // the same text tapped again quickly: let the game have the tap (a button still works)
+  if (READ.lastTap && READ.lastTap.t === t && now - READ.lastTap.at < 2500) { READ.lastTap = null; return false; }
+  READ.lastTap = { t, at: now };
+  readSpeak(t);
+  return true;
 }
+// reading mode ON: the messages stay longer on the screen (called every frame by the controller)
+function readSlowMessages(dt) { if (READ.mode && typeof CUR !== 'undefined' && CUR && CUR.S && CUR.S.msgTimer > 0) CUR.S.msgTimer += dt * 0.66; }

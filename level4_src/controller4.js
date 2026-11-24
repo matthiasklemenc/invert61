@@ -541,7 +541,7 @@ function mainLoop(now) {
   const dt = Math.min((now - lastT) / 16.667, 3); lastT = now;
   if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); READ.btn = null; }
   else {
-    if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); }
+    if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); readSlowMessages(dt); }
     readBegin(); drawWorldFull(CUR); readEnd(); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm(); drawReadButton(!MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open);
   }   // paused while ITEMS is open or PAUSE
   requestAnimationFrame(mainLoop);
