@@ -4,6 +4,7 @@ import Carousel3D from '../Carousel3D';
 import { CHARACTERS } from './DrawingHelpers';
 import { CharacterType } from './GameTypes';
 import { formatScore, GAME_LOGO_URL, CHARACTER_IMAGE_URLS } from './GameConstants';
+import LevelTiles, { getGameLang } from './LevelTiles';
 
 interface GameMenuProps {
     highScore: number;
@@ -17,6 +18,7 @@ interface GameMenuProps {
     onLevel2?: () => void;
     level3Unlocked?: boolean;
     onLevel3?: () => void;
+    level3Done?: boolean;
     onStartOver?: () => void;
 }
 
@@ -32,9 +34,11 @@ const GameMenu: React.FC<GameMenuProps> = ({
     onLevel2,
     level3Unlocked,
     onLevel3,
+    level3Done,
     onStartOver
 }) => {
     const [confirmStartOver, setConfirmStartOver] = useState(false);
+    const [lang] = useState(getGameLang);
     const currentCharacterInfo = CHARACTERS.find(c => c.id === character);
     const defaultName = currentCharacterInfo ? currentCharacterInfo.defaultName.toUpperCase() : "PLAYER";
     const currentCharacterIndex = CHARACTERS.findIndex(c => c.id === character);
@@ -87,37 +91,24 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 }}
             />
             
-            {/* Level 1 done: choose Level 1 again, Level 2, or start everything over */}
-            {level2Unlocked && onLevel2 && (
-                <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+            {/* Level selection: square tiles for all levels (open / locked / coming soon) */}
+            <LevelTiles
+                lang={lang}
+                tiles={[
+                    { level: 1, state: 'open', done: !!level2Unlocked, onPlay: startGame },
+                    { level: 2, state: level2Unlocked ? 'open' : 'locked', done: !!level3Unlocked, onPlay: onLevel2 },
+                    { level: 3, state: level3Unlocked ? 'open' : 'locked', done: !!level3Done, onPlay: onLevel3 },
+                    { level: 4, state: 'soon' },
+                ]}
+            />
+            {level2Unlocked && onStartOver && (
+                <div className="mb-6 flex justify-center">
                     <button
-                        onClick={startGame}
-                        className="bg-[#c52323] hover:bg-[#e03030] text-white font-black py-3 px-6 rounded-xl shadow-lg tracking-wider"
+                        onClick={() => setConfirmStartOver(true)}
+                        className="text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 font-bold py-2 px-4 rounded-xl text-xs tracking-wider"
                     >
-                        ▶ LEVEL 1 AGAIN
+                        ↺ START OVER
                     </button>
-                    <button
-                        onClick={onLevel2}
-                        className="bg-yellow-400 hover:bg-yellow-300 text-black font-black py-3 px-8 rounded-xl shadow-lg tracking-wider"
-                    >
-                        ▶ LEVEL 2
-                    </button>
-                    {level3Unlocked && onLevel3 && (
-                        <button
-                            onClick={onLevel3}
-                            className="bg-orange-500 hover:bg-orange-400 text-black font-black py-3 px-8 rounded-xl shadow-lg tracking-wider"
-                        >
-                            ▶ LEVEL 3
-                        </button>
-                    )}
-                    {onStartOver && (
-                        <button
-                            onClick={() => setConfirmStartOver(true)}
-                            className="text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 font-bold py-3 px-4 rounded-xl text-sm tracking-wider"
-                        >
-                            ↺ START OVER
-                        </button>
-                    )}
                 </div>
             )}
 

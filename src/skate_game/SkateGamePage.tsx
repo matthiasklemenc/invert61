@@ -229,6 +229,13 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
             return !!(l2.level3Unlocked || (d.city && d.heaven && d.sea));
         } catch { return false; }
     })();
+    // Level 3 finished = all 3 Dinoland bosses beaten (green check on the tile)
+    const level3Done = (() => {
+        try {
+            const d = (JSON.parse(localStorage.getItem('invert61-level3') || '{}').done) || {};
+            return !!(d.tal && d.hoehe && d.lava);
+        } catch { return false; }
+    })();
     const startLevel3 = () => {
         window.location.href = `${import.meta.env.BASE_URL}level3.html`;
     };
@@ -409,6 +416,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     onLevel2={startLevel2}
                     level3Unlocked={level3Unlocked}
                     onLevel3={startLevel3}
+                    level3Done={level3Done}
                     onStartOver={startOver}
                     highScore={highScore}
                     userName={userName}
