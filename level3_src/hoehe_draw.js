@@ -21,12 +21,14 @@ function draw() {
   drawStoneShadows();
   for (const o of S.objects) if (!o.done && onScreen(o.x - 20, 40)) { if (o.type === 'coin') drawCoin(o); else drawFruitHeart(o); }
   for (const c of S.compys) if (onScreen(c.x - 60, 120) && !(c.dead && c.deadT > 60)) drawCompy(c);
-  for (const p of S.pteros) if (onScreen(p.x - 80, 160) && !(p.dead && p.y > FLOOR + 400)) drawPtero(p.x, p.y, p.dir, p.t, 1, p.state === 'warn' || p.state === 'dive', p.dead);
+  for (const p of S.pteros) if (onScreen(p.x - 80, 160) && !(p.dead && p.y > FLOOR + 400)) drawPtero(p.x, p.y, p.dir, p.t, p.baby ? 0.58 : 1, p.state === 'warn' || p.state === 'dive', p.dead);
+  for (const e of S.eggs) drawEgg(e);
   if (S.boss) drawMama(S.boss);
   for (const s of S.stones) drawStone(s);
   for (const s of S.shots) { ctx.fillStyle = '#8f8a84'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   for (const p of S.particles) { ctx.globalAlpha = Math.max(0, Math.min(1, p.life)); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
   ctx.globalAlpha = 1;
+  drawPops(S.pops);
   ctx.restore();
   if (!S.hideKai) drawKai();
   ctx.restore();
@@ -251,6 +253,16 @@ function drawStone(s) {
   ctx.restore();
 }
 
+// ---------------- the Mama's eggs ----------------
+function drawEgg(e) {
+  ctx.save(); ctx.translate(e.x, e.y); ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+  const wob = e.landed ? Math.sin(e.t * 0.6) * (e.t / 45) * 0.25 : e.rot; ctx.rotate(wob);
+  ctx.fillStyle = '#f6efd8'; ctx.beginPath(); ctx.ellipse(0, -11, 9, 12, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#d29ac0'; for (const [sx, sy] of [[-3, -16], [3, -8], [-2, -4]]) { ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI * 2); ctx.fill(); }
+  if (e.landed && e.t > 20) { ctx.beginPath(); ctx.moveTo(-8, -12); ctx.lineTo(-3, -9); ctx.lineTo(0, -14); ctx.lineTo(4, -9); ctx.lineTo(8, -12); ctx.stroke(); }
+  ctx.restore();
+}
+
 // ---------------- creatures ----------------
 function drawCompy(c) {
   ctx.save(); ctx.translate(c.x, FLOOR);
@@ -299,6 +311,7 @@ function drawPtero(x, y, dir, t, sc, angry, dead, calm) {
 function drawMama(b) {
   if (b.state === 'dead' && b.t > 140) return;
   const sitting = b.state === 'landed' || b.state === 'hit' || b.state === 'dead';
+  if (b.state === 'falling') { drawPtero(b.x, b.y, b.face, b.flap * 0.2, 2.6, false, false); return; }
   ctx.save();
   if (b.flash > 0 && Math.floor(b.flash / 5) % 2 === 0) ctx.globalAlpha = 0.45;
   if (sitting) {
@@ -377,10 +390,10 @@ function drawRideScene() {
     ctx.restore();
   }
   // bumps left
-  ctx.save(); ctx.translate(0, 0);
-  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W / 2 - 170, 48, 340, 30, 12); ctx.fill();
+  ctx.save(); ctx.translate(0, -DY);
+  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W / 2 - 170, 8, 340, 30, 12); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(tx('Noch {s} s', { s: Math.max(0, Math.ceil((RIDE_T - g.t) / 60)) }) + '   ·   ' + tx('Zusammenstöße: {n} / 3', { n: g.bumps }), W / 2, 64);
+  ctx.fillText(tx('Noch {s} s', { s: Math.max(0, Math.ceil((RIDE_T - g.t) / 60)) }) + '   ·   ' + tx('Zusammenstöße: {n} / 3', { n: g.bumps }), W / 2, 24);
   ctx.restore();
 }
 
@@ -410,12 +423,8 @@ function drawHUD() {
     ctx.fillStyle = '#ffd23a'; ctx.fillRect(bx + bw * SITES.oxxo / BOSS_X - 1, 13, 3, 16);
     ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ff9ad0'; ctx.textAlign = 'left'; ctx.fillText(tx('MAMA'), bx + bw + 6, 21);
   }
-  if (S.boss && S.phase === 'boss') {
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(40,20,40,0.75)'; ctx.beginPath(); ctx.roundRect(W / 2 - 150, 8, 300, 28, 12); ctx.fill();
-    ctx.fillStyle = '#ffd0ec'; ctx.font = 'bold 13px Arial'; ctx.fillText(tx('FLUGSAURIER-MAMA'), W / 2 - 40, 22);
-    for (let i = 0; i < 3; i++) drawHeart(W / 2 + 64 + i * 24, 21, 8, i < S.boss.hp);
-  }
+  if (S.boss && S.phase === 'boss') drawBossBar(tx('FLUGSAURIER-MAMA'), S.boss.bar ?? 1);
+  drawScoreBox(S.score);
   if (S.msgTimer > 0) {
     ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
@@ -488,7 +497,7 @@ function drawScreens() {
     button(BTN.goYes, tx('NOCHMAL VERSUCHEN'), '#36c6f4', '#1677a8'); button(BTN.goNo, tx('NEIN – ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'won') {
-    panel(tx('FLUGSAURIER-MAMA BESIEGT!'), [tx('Die Felsenhöhe ist geschafft! +30 Münzen'),
+    panel(tx('FLUGSAURIER-MAMA BESIEGT!'), [tx('Die Felsenhöhe ist geschafft! +30 Münzen'), ...summaryLines(S.summary),
       SAVE.items.magmaBoard ? tx('Mit dem Magma-Board geht es durch die Röhre im Tal in die Lavahöhlen.') : tx('Hol dir noch das Magma-Board im OXXO – ohne kommst du nicht in die Lavahöhlen.')], '#7dffa0');
     button(BTN.down, '▼ ' + tx('ZURÜCK INS TAL'), '#34c759', '#1f8f3c'); button(BTN.menu, tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
@@ -497,9 +506,10 @@ function resultPanel(text, win) {
   ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 26px Arial';
   ctx.strokeText(text, W / 2, 190); ctx.fillText(text, W / 2, 190);
-  if (win) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(tx('+20 Münzen · Pokal-Stern!'), W / 2, 222); ctx.fillText(tx('+20 Münzen · Pokal-Stern!'), W / 2, 222); }
+  if (win) { const t = tx('+20 Münzen · Pokal-Stern!') + (S.game && S.game.pts ? '  ·  +' + fmtNum(PTS.mini) + ' ' + tx('Punkte') : ''); ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(t, W / 2, 222); ctx.fillText(t, W / 2, 222); }
   ctx.restore();
-  button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
 }
 
 // ---------------- the shop ----------------

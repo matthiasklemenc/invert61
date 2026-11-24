@@ -46,7 +46,7 @@ const SITES = { rodeo: 4400 - 0, fossil: 8100 };     // mini-game places (start 
 const LIANAS = [2830, 8480], LIANA_BOTTOM = 120;
 
 const S = {
-  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0,
+  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0, score: SAVE.score || 0, pops: [], wtime: SAVE.wtime.tal || 0, combo: 0,
   kai: { x: 160, y: FLOOR, vx: 0, vy: 0, dir: 0, face: 1, faceAnim: 1, ground: true, platform: null, inv: 0, pushT: 0, landT: 0, safeX: 160, jumpHeld: false, hurtT: 0 },
   objects: [], dinos: [], fireballs: [], particles: [], waves: [],
   volcT: VOLCANOES.map((_, i) => 80 + i * 70),
@@ -85,8 +85,8 @@ function stomp(d) {
   k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
   burst(k.x, top, '#ffd23a', 10, 3.5);
   S.shake = Math.max(S.shake, 3);
-  if (d.hp <= 0) { d.dead = true; d.deadT = 0; d.stun = 0; Audio.play('stomp'); burst(d.x, top + 10, '#fbf3df', 12, 4); }
-  else { d.stun = 75; Audio.play('boing'); }
+  if (d.hp <= 0) { d.dead = true; d.deadT = 0; d.stun = 0; Audio.play('stomp'); burst(d.x, top + 10, '#fbf3df', 12, 4); comboScore(PTS[d.type] || 100, d.x, top - 20); }
+  else { d.stun = 75; Audio.play('boing'); S.combo++; }
 }
 function buildObjects() {
   const o = [];
@@ -163,7 +163,7 @@ window.addEventListener('keyup', e => {
 function beginWorld() {
   const cont = QUERY.get('from') === 'continue' && SAVE.cpX, fromH = QUERY.get('from') === 'hoehe' && !S.begun;
   S.phase = 'play'; S.noHud = false; SAVE.started = true;
-  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
   const k = S.kai; k.x = fromH ? LIANAS[0] : cont ? SAVE.cpX : 160; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.safeX = k.x;
   S.cpX = fromH ? Math.max(SAVE.cpX || 160, 160) : k.x; S.cam = clamp(k.x - W * (fromH ? 0.4 : 0.38), 0, BOSS_X); S.begun = true;
   if (fromH) { useCheckpoint('tal'); writeSave(); Audio.init(); Audio.setTheme('dino'); flash('Zurück im Dino-Tal!', 110); return; }
@@ -172,7 +172,20 @@ function beginWorld() {
   flash(isTouchDev() ? 'Halte ▶ gedrückt – los geht\'s!' : 'Halte den Pfeil nach rechts – los geht\'s!', 150);
 }
 const isTouchDev = () => CTRL.touch;
-function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; writeSave(); }
+function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.score = S.score; SAVE.wtime.tal = S.wtime; bumpBest(); writeSave(); }
+// points: n points, shown as a little "+n" at (x, y) when given
+function addScore(n, x, y, big) { S.score += n; if (x != null) S.pops.push({ x, y, text: '+' + fmtNum(n), t: 0, big }); }
+// jumping from one enemy onto the next without touching the ground: ×2, ×4, ×8 (like Super Mario)
+function comboScore(base, x, y) { S.combo++; const m = Math.min(8, 2 ** (S.combo - 1)); addScore(base * m, x, y, m > 1); if (m > 1) S.pops.push({ x, y: y - 24, text: '×' + m, t: 0, col: '#ff9ad0' }); }
+// end of the world: the boss gives its 5000 points and the time bonus only the first time
+function bossSummary(id) {
+  if (SAVE.pts['boss_' + id]) { S.summary = { repeat: true }; return; }
+  SAVE.pts['boss_' + id] = true;
+  const sec = S.wtime / 60, tb = timeBonus(sec);
+  S.score += PTS.boss + tb;
+  SAVE.score = S.score; const rec = bumpBest();
+  S.summary = { boss: PTS.boss, time: tb, sec, record: rec };
+}
 function reachCheckpoint(x) {
   if (x <= S.cpX) return;
   S.cpX = x; SAVE.cpX = x; saveProgress(); setCheckpoint('tal');
@@ -207,7 +220,7 @@ function fallInTar() {
 }
 function resetGame() {
   restartWorldSave();
-  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
   resetDinos(); buildObjects(); S.fireballs = []; S.waves = []; S.boss = null; Audio.setBoss(false);
   const k = S.kai; k.x = SAVE.cpX || 160; k.y = FLOOR; k.vx = 0; k.vy = 0; k.dir = 0; k.face = 1; k.inv = 60; k.ground = true; k.platform = null; k.safeX = k.x;
   S.phase = 'play';
@@ -219,6 +232,8 @@ function update(dt) {
   if (S.msgTimer > 0) S.msgTimer -= dt;
   if (S.heartFlash > 0) S.heartFlash -= dt;
   if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
+  if (playing()) S.wtime += dt;                       // time played in this world (frames)
+  for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
   if (S.phase === 'rodeo' || S.phase === 'fossil') { updateGame(dt); return; }
@@ -309,7 +324,7 @@ function updateKai(dt) {
 }
 function landOn(pl, top) {
   const k = S.kai;
-  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8;
+  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8; S.combo = 0;
   Audio.play('land');
 }
 // everything Kai can stand on (besides the ground)
@@ -401,7 +416,7 @@ function updatePickups() {
     if (Math.abs(o.x - k.x) > 90) continue;
     if (kb.x1 - o.r < o.x && kb.x2 + o.r > o.x && kb.y1 - o.r < o.y && kb.y2 + 8 > o.y) {
       o.done = true;
-      if (o.type === 'coin') { S.coins++; burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
+      if (o.type === 'coin') { S.coins++; addScore(PTS.coin); burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
       if (o.type === 'heart') { S.hearts++; S.heartFlash = -30; burst(o.x, o.y, '#ff3b5c', 14, 3); Audio.play('chest'); flash('+1 HERZ', 50); }
     }
   }
@@ -436,7 +451,7 @@ function updateSites() {
   const k = S.kai;
   for (const [id, x] of Object.entries(SITES)) {
     const gate = x + 120;
-    if (Math.abs(k.x - gate) > 400) S.asked[id] = false;            // re-arm when Kai has left
+    if (Math.abs(k.x - gate) > 160) S.asked[id] = false;            // re-arm when Kai has ridden a bit away (so the game can be played again)
     if (!S.asked[id] && Math.abs(k.x - gate) < 30 && k.ground) {
       S.asked[id] = true; S.ask = id; S.phase = 'ask';
       k.vx = 0; k.dir = 0; Audio.play('chime');

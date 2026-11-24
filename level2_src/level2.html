@@ -53,11 +53,14 @@ const SAVE_DEFAULT = {
   done: { city: false, heaven: false, sea: false },
   mini: { pinata: null, whale: null, football: null, harp: null },
   checkpoint: null,                            // snapshot at the start of the current world
+  score: 0, best: 0,                           // points of this game / personal record on this device
+  pts: {},                                     // what already gave its one-time points (mini games, bosses)
+  wtime: { stadt: 0, himmel: 0, tiefsee: 0 },  // frames played in each world (for the time bonus)
 };
 function loadSave() {
   try {
     const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
+    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { pts: Object.assign({}, raw.pts), wtime: Object.assign({}, SAVE_DEFAULT.wtime, raw.wtime), items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
   } catch (e) {}
   return JSON.parse(JSON.stringify(SAVE_DEFAULT));
 }
@@ -79,16 +82,63 @@ function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)
 function resetSave(keepLang = true) { const lang = SAVE.lang; Object.assign(SAVE, JSON.parse(JSON.stringify(SAVE_DEFAULT))); if (keepLang) SAVE.lang = lang; writeSave(); }
 // remember the state at the start of a world, so a game over only restarts that world
 function setCheckpoint(world) {
-  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
+  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, score: SAVE.score || 0, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
   SAVE.cps = Object.assign({}, SAVE.cps, { [world]: SAVE.checkpoint }); writeSave();
 }
 // back in a world that was already started (e.g. the city after the sky): use that world's own checkpoint again
 function useCheckpoint(world) { if (SAVE.cps && SAVE.cps[world]) { SAVE.checkpoint = SAVE.cps[world]; writeSave(); } else setCheckpoint(world); }
 // world restart (all lives lost): hearts, coins, pearls and starfish go back to the world start –
 // but bought things STAY, and coins spent on them stay spent (see spendCoins)
-function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), pearls: c.pearls, starfish: c.starfish }); writeSave(); }
+function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), score: c.score ?? SAVE.score, pearls: c.pearls, starfish: c.starfish }); writeSave(); }
 // a purchase also lowers the coins the checkpoint would give back
 function spendCoins(n) { for (const c of new Set([SAVE.checkpoint, ...Object.values(SAVE.cps || {})])) if (c) c.coins = Math.max(0, c.coins - n); writeSave(); }
+// ---------------- points (same system as in Level 3) ----------------
+// Points are for comparing (coins / starfish are money). Mini games and bosses give their big points only once
+// per game, a boss can still be fought again and again. Time bonus: 10'000 minus 25 per second, never below 0.
+const PTS = { coin: 10, star: 10, pearl: 10, trick: 100, grind: 10, sail: 200, chest: 100, enemy: 100, devil: 200, shark: 200, storm: 100, fork: 50, bossHit: 500, mini: 1000, boss: 5000 };
+const TIME_BONUS_MAX = 10000, TIME_BONUS_PER_S = 25;
+const timeBonus = sec => Math.max(0, Math.round((TIME_BONUS_MAX - sec * TIME_BONUS_PER_S) / 10) * 10);
+const fmtNum = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+const fmtTime = sec => Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+function bumpBest() { if ((SAVE.score || 0) > (SAVE.best || 0)) { SAVE.best = SAVE.score; return true; } return false; }
+const SC = { pops: [], toast: null };          // floating "+100" (world / screen coordinates) and the boss summary
+function gainPts(n, x, y, big) { SAVE.score = (SAVE.score || 0) + n; bumpBest(); if (x != null) SC.pops.push({ x, y, text: '+' + fmtNum(n), t: 0, big }); }
+// a mini game won: 1000 points the first time
+function miniPts(id) { if (SAVE.pts['mini_' + id]) return false; SAVE.pts['mini_' + id] = true; gainPts(PTS.mini, W / 2, 150, true); writeSave(); return true; }
+// a boss beaten: 5000 + time bonus the first time; a summary appears at the top for a few seconds
+function bossPts(id) {
+  if (SAVE.pts['boss_' + id]) { SC.toast = { lines: [tx('Schon einmal besiegt – diesmal gibt es keine Punkte, nur den Spaß.')], t: 360 }; return; }
+  SAVE.pts['boss_' + id] = true;
+  const sec = (SAVE.wtime[id] || 0) / 60, tb = timeBonus(sec);
+  SAVE.score = (SAVE.score || 0) + PTS.boss + tb; const rec = bumpBest(); writeSave();
+  SC.toast = { lines: [tx('Boss besiegt: +{b}   ·   Zeitbonus ({t}): +{z}', { b: fmtNum(PTS.boss), t: fmtTime(sec), z: fmtNum(tb) }),
+    (rec ? tx('NEUER REKORD!') + '  ' : '') + tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score), r: fmtNum(SAVE.best || 0) })], t: 480 };
+}
+function drawScoreBox() {
+  ctx.save(); ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W - 168, 46, 156, 26, 10); ctx.fill();
+  ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left'; ctx.fillText(tx('PUNKTE'), W - 158, 59);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'right'; ctx.fillText(fmtNum(SAVE.score || 0), W - 20, 60);
+  ctx.restore();
+}
+function drawPops() {
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  for (const p of SC.pops) {
+    const u = p.t / 60; ctx.globalAlpha = Math.max(0, 1 - u * u);
+    ctx.font = `bold ${p.big ? 22 : 16}px Arial`; ctx.strokeStyle = OUT; ctx.lineWidth = 4; ctx.fillStyle = '#ffe14d';
+    ctx.strokeText(p.text, p.x, p.y - u * 40); ctx.fillText(p.text, p.x, p.y - u * 40);
+  }
+  ctx.restore();
+}
+function drawScoreToast() {
+  const t = SC.toast; if (!t) return;
+  ctx.save(); ctx.globalAlpha = Math.min(1, t.t / 30); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const h = 18 + t.lines.length * 24;
+  ctx.fillStyle = 'rgba(16,26,44,0.85)'; ctx.beginPath(); ctx.roundRect(W / 2 - 330, 84, 660, h, 14); ctx.fill();
+  ctx.fillStyle = '#ffe14d'; ctx.font = 'bold 16px Arial';
+  t.lines.forEach((l, i) => ctx.fillText(l, W / 2, 84 + 21 + i * 24));
+  ctx.restore();
+}
 // ---------------- lives ----------------
 // 3 lives: when all hearts are gone one life is lost and Kai simply carries on right there with full hearts.
 // Only when all 3 lives are gone the current world starts again (from its checkpoint).
@@ -287,6 +337,11 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  // ---------- points ----------
+  'PUNKTE': ['POINTS', 'PUNTOS'], 'NEUER REKORD!': ['NEW RECORD!', '¡NUEVO RÉCORD!'],
+  'Punkte: {p}   ·   Rekord: {r}': ['Points: {p}   ·   Record: {r}', 'Puntos: {p}   ·   Récord: {r}'],
+  'Boss besiegt: +{b}   ·   Zeitbonus ({t}): +{z}': ['Boss beaten: +{b}   ·   Time bonus ({t}): +{z}', 'Jefe vencido: +{b}   ·   Bono de tiempo ({t}): +{z}'],
+  'Schon einmal besiegt – diesmal gibt es keine Punkte, nur den Spaß.': ['Beaten before – no points this time, just the fun.', 'Ya lo venciste antes – esta vez no hay puntos, solo la diversión.'],
   // ---------- general ----------
   'JA': ['YES', 'SÍ'], 'NEIN': ['NO', 'NO'],
   // ---------- on-screen buttons · exit · main menu ----------
@@ -1383,7 +1438,7 @@ function sayAhoi() {
 function sailBoing(b) {
   const k = S.kai;
   k.y = SAIL_Y; k.vy = -16.5; k.rampJump = true; k.ground = false; k.platform = null;
-  b.hits++; b.rock = 1; S.coins += 20; S.sailBoings = (S.sailBoings || 0) + 1;
+  b.hits++; b.rock = 1; S.coins += 20; S.sailBoings = (S.sailBoings || 0) + 1; gainPts(PTS.sail, k.x, SAIL_Y - 40, true);
   Audio.play('boing'); Audio.play('coin');
   for (let i = 0; i < 16; i++) S.particles.push({ x: k.x + rand(-30, 30), y: SAIL_Y + rand(-10, 10), vx: rand(-3, 3), vy: rand(-4, 1), r: rand(2, 4), color: i % 2 ? '#ffffff' : '#ffd23a', life: 1, g: 0.15 });
   flash(S.sailBoings > 1 ? tx('{n}× SEGEL-BOING! +20', { n: S.sailBoings }) : tx('SEGEL-BOING! +20'), 70);
@@ -1619,7 +1674,7 @@ function landed(surface) {
   if (k.natas) { updateNatas(dt); return; }
   if (k.flipping) { k.flipping = false; k.flip = 0; }
   k.ollieT = null;
-  if (k.combo > 0) { const bonus = k.combo * 3; S.coins += bonus; flash(k.combo > 1 ? tx('{k}× KICKFLIP! +{n}', { k: k.combo, n: bonus }) : tx('KICKFLIP! +{n}', { n: bonus }), 60); Audio.play('coin'); }
+  if (k.combo > 0) { const bonus = k.combo * 3; S.coins += bonus; gainPts(PTS.trick * k.combo, k.x, k.y - 130, k.combo > 1); flash(k.combo > 1 ? tx('{k}× KICKFLIP! +{n}', { k: k.combo, n: bonus }) : tx('KICKFLIP! +{n}', { n: bonus }), 60); Audio.play('coin'); }
   k.combo = 0;
   if (surface !== 'grind') { Audio.play('land'); k.landT = 10; }
 }
@@ -1630,7 +1685,7 @@ function launchFromRamp(o, boost) {
   if (o.wings) { startAscend(); return; }
   if (o.pierRamp) {
     // big jump off the end of the pier into the water: +10 coins
-    jump(RAMP_V * 1.08); k.rampJump = true; S.coins += 10;
+    jump(RAMP_V * 1.08); k.rampJump = true; S.coins += 10; gainPts(PTS.trick, k.x, k.y - 130);
     Audio.play('ramp'); Audio.play('coin'); flash(tx('HAFEN-SPRUNG! +10'), 90);
     return;
   }
@@ -1665,7 +1720,7 @@ function updateKai(dt) {
       if (k.grind) {
         k.grindT += dt;
         if (Math.random() < 0.7 * dt) S.particles.push({ x: k.x + rand(-25, 25), y: k.y - 2, vx: rand(-3, -1), vy: rand(-2, 0), r: rand(1, 2.5), color: '#ffd25a', life: 0.8, g: 0.1 });
-        if (k.grindT > 14) { k.grindT = 0; S.coins++; Audio.play('coin'); }
+        if (k.grindT > 14) { k.grindT = 0; S.coins++; gainPts(PTS.grind); Audio.play('coin'); }
       }
     }
   }
@@ -1746,7 +1801,7 @@ function updateNatas(dt) {
   const done = Math.floor(n.rot / (Math.PI * 2));
   if (done > n.spins) {
     n.spins = done;
-    S.coins += 3; burst(k.x, k.y - 60, '#ffd23a', 10, 4); Audio.play('coin');
+    S.coins += 3; gainPts(PTS.trick, k.x, k.y - 140); burst(k.x, k.y - 60, '#ffd23a', 10, 4); Audio.play('coin');
     if (n.spins === 3) { S.hearts++; S.heartFlash = -40; burst(k.x, k.y - 60, '#ff5a7a', 14, 5); Audio.play('taco'); flash(tx('3 SPINS! +1 Herz'), 90); }
     else flash(tx('{n}× SPIN! +3', { n: n.spins }), 50);
   }
@@ -1788,12 +1843,12 @@ function bossRoofCheck(prevY) {
     burst(k.x, roof.y, '#9be08a', 20, 6); burst(k.x, roof.y, '#ffffff', 10, 4);
     for (let i = 0; i < 6; i++) S.particles.push({ x: k.x + rand(-40, 40), y: roof.y, vx: rand(-4, 4), vy: rand(-8, -3), r: rand(3, 6), color: ['#8a6a3a', '#6b7884', '#c9c9c9'][i % 3], life: 1.4, g: 0.35, shard: true, rot: rand(0, 6) });
     Audio.play('stomp'); Audio.play('horn');
-    S.coins += 5;
+    S.coins += 5; gainPts(PTS.bossHit, k.x, roof.y - 40, true);
     // bounce back to the street
     k.vy = -11; let y = k.y, vy = k.vy, t = 0;
     while (t < 200) { vy += GRAV; y += vy; t++; if (vy > 0 && y >= FLOOR) break; }
     k.vx = (250 - k.x) / t;
-    if (b.hp <= 0) { b.state = 'dying'; b.t = 0; Audio.setBoss(false); flash(tx('DER MÜLLWAGEN IST ERLEDIGT!'), 160); S.coins += 20; }
+    if (b.hp <= 0) { b.state = 'dying'; b.t = 0; Audio.setBoss(false); flash(tx('DER MÜLLWAGEN IST ERLEDIGT!'), 160); S.coins += 20; bossPts('stadt'); }
     else flash(tx('VOLLTREFFER! Noch {n}×', { n: b.hp }), 90);
   }
 }
@@ -1937,7 +1992,7 @@ function update(dt) {
   const body = { x1: k.x - 14, x2: k.x + 22, y1: k.y - 100, y2: k.y - 4 };
   for (const o of S.objects) {
     if (o.done) continue;
-    if (o.type === 'coin') { if (o.x + o.r > k.x - 43 && o.x - o.r < k.x + 44 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; S.coins++; burst(o.x, o.y, '#ffd23a', 8, 3); Audio.play('coin'); } continue; }
+    if (o.type === 'coin') { if (o.x + o.r > k.x - 43 && o.x - o.r < k.x + 44 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; S.coins++; gainPts(PTS.coin); burst(o.x, o.y, '#ffd23a', 8, 3); Audio.play('coin'); } continue; }
     if (o.type === 'icecream' && !o.coneTaken) {
       const cx = o.x + 160, cy = o.top - 26;
       if (cx + 14 > k.x - 43 && cx - 14 < k.x + 44 && cy + 18 > k.y - 114 && cy - 14 < k.y + 4) {
@@ -2085,7 +2140,7 @@ function hitPinata(pp) {
   const cols = ['#ff5fa2', '#ffd23a', '#36c6f4', '#7fcf8a', '#b59de0', '#ff8a3a'];
   for (let i = 0; i < 10; i++) S.particles.push({ x: pp.x, y: pp.y, vx: rand(-1, 5), vy: rand(-5, 1), r: rand(2, 4), color: cols[i % cols.length], life: 1.2, g: 0.25, shard: true, rot: rand(0, 6) });
   if (pin.hits >= PINATA_HITS) {
-    pin.done = true; pin.result = 'win'; pin.end = 200; SAVE.mini.pinata = true; writeSave();
+    pin.done = true; pin.result = 'win'; pin.end = 200; SAVE.mini.pinata = true; miniPts('pinata'); writeSave();
     Audio.stopSong(); Audio.play('pinataPop'); setTimeout(() => Audio.play('cheer'), 300);
     S.coins += 15; S.hearts += 1; S.heartFlash = -40; S.shake = 14;
     for (let i = 0; i < 46; i++) {
@@ -3188,7 +3243,7 @@ function hurt(text, x, y) {
   burst(x, y, '#ffffff', 14); S.shake = 8; Audio.play('crash'); flash(tx(text), 60);
   loseHeart(); return true;
 }
-function coinGot(n, x, y) { S.coins += n; burst(x, y, '#ffd23a', 6 + n * 2, 3); Audio.play('coin'); }
+function coinGot(n, x, y) { S.coins += n; gainPts(PTS.coin * n); burst(x, y, '#ffd23a', 6 + n * 2, 3); Audio.play('coin'); }
 
 // leaving the OXXO / the football cloud: Kai flaps up first, so he doesn't touch the cloud floor
 function liftOff() { const k = S.kai; S.floorWarn = 0; k.y = Math.min(k.y, FLOOR - 80); k.vy = -3; S.lowWarned = false; flapFx(); }
@@ -3357,7 +3412,7 @@ function updateFootball(dt) {
       f.ball = null;
       if (f.goals >= 3 || f.shots >= 5 || f.goals + (5 - f.shots) < 3) {
         const won = f.goals >= 3; f.done = 1;
-        if (won) { S.coins += 15; S.hearts++; S.heartFlash = -40; Audio.play('win'); flash(tx('GEWONNEN! +15 Münzen · +1 Herz'), 150); }
+        if (won) { S.coins += 15; S.hearts++; S.heartFlash = -40; miniPts('football'); Audio.play('win'); flash(tx('GEWONNEN! +15 Münzen · +1 Herz'), 150); }
         else flash(tx('Knapp verloren – weiter geht\'s!'), 120);
         setTimeout(() => endFootball(won), 1400);
       }
@@ -3465,7 +3520,7 @@ function update(dt) {
     // Kai walks down the glowing stairway
     const u = Math.min(1, S.stairsT / 200); k.x = 250 + u * 380; k.y = 160 + u * 140;
     updateParticles(dt, 0);
-    if (S.stairsT > 200 && !S.leaving) { S.leaving = true; SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.done.heaven = true; SAVE.mini.harp = SAVE.mini.harp === true || !!(S.harp && S.harp.done); goToWorld('stadt.html', 'from=himmel'); }
+    if (S.stairsT > 200 && !S.leaving) { S.leaving = true; bossPts('himmel'); SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.done.heaven = true; SAVE.mini.harp = SAVE.mini.harp === true || !!(S.harp && S.harp.done); goToWorld('stadt.html', 'from=himmel'); }
     return;
   }
 
@@ -3564,8 +3619,8 @@ function update(dt) {
       if (o.done || (o.type !== 'devil' && o.type !== 'storm')) continue;
       if (Math.hypot(a.x - o.x, a.y - o.y) < (o.r || 20) + 8) {
         a.life = 0; o.done = true;
-        if (o.type === 'devil') { burst(o.x, o.y, '#ff5a3a', 20, 5); Audio.play('devilHit'); coinGot(3, o.x, o.y); flash(tx('TREFFER! +3'), 40); }
-        else { burst(o.x, o.y, '#9aa6b1', 16, 4); Audio.play('pop'); }
+        if (o.type === 'devil') { burst(o.x, o.y, '#ff5a3a', 20, 5); Audio.play('devilHit'); coinGot(3, o.x, o.y); gainPts(PTS.devil, o.x, o.y - 30); flash(tx('TREFFER! +3'), 40); }
+        else { burst(o.x, o.y, '#9aa6b1', 16, 4); Audio.play('pop'); gainPts(PTS.storm, o.x, o.y - 30); }
       }
     }
     // arrows also shoot down the pitchforks the devils throw (shaft or prongs)
@@ -3574,7 +3629,7 @@ function update(dt) {
       const tipX = s.x + Math.cos(s.rot) * 16, tipY = s.y + Math.sin(s.rot) * 16;
       if (Math.hypot(a.x - s.x, a.y - s.y) < 18 || Math.hypot(a.x - tipX, a.y - tipY) < 14) {
         s.dead = true; a.life = 0;
-        burst(s.x, s.y, '#ffd23a', 12, 4); burst(s.x, s.y, '#c8352c', 8, 3); Audio.play('clank'); coinGot(1, s.x, s.y);
+        burst(s.x, s.y, '#ffd23a', 12, 4); burst(s.x, s.y, '#c8352c', 8, 3); Audio.play('clank'); coinGot(1, s.x, s.y); gainPts(PTS.fork, s.x, s.y - 20);
         break;
       }
     }
@@ -4567,7 +4622,7 @@ function memoryClick(p) {
           if (m.pairs === m.n) {
             // bonus: more pairs and fewer moves = more
             const bonusStars = 10 + Math.max(0, m.n * 2 + 2 - m.moves) * 2, bonusPearls = 5 + Math.max(0, m.n * 2 - m.moves);
-            S.stars += bonusStars; S.pearls += bonusPearls; m.done = 150;
+            S.stars += bonusStars; S.pearls += bonusPearls; m.done = 150; miniPts('whale');
             SAVE.mini.whale = true; writeSave();   // won once = stays green on the final screen
             m.result = tx('GESCHAFFT! +{s} Seesterne · +{p} Perlen', { s: bonusStars + m.n * 2, p: bonusPearls });
             Audio.play('win');
@@ -4675,14 +4730,14 @@ function hitBoss(h) {
       b.hp--; b.hurt = 60; b.eyeOpen = false; b.eye = 0; b.eyeTimer = 170; S.shake = 14;
       burst(e.x, e.y, '#ff6a8a', 26, 7); burst(e.x, e.y, '#ffffff', 12, 5);
       Audio.play('bossHit');
-      S.stars += 5;
+      S.stars += 5; gainPts(PTS.bossHit, e.x, e.y - 40, true);
       S.oxygen = Math.min(100, S.oxygen + 30); flash(tx('TREFFER! + LUFT'), 60);   // a hit into the eye = fresh air
       if (b.hp <= 0) {
         b.state = 'dying'; b.slam = null; Audio.play('bossDie'); Audio.setBoss(false);
         squirtInkBig(e.x, e.y);
         for (const o of S.objects) if (o.fromBoss && !o.done) { o.done = true; burst(o.x, o.y, '#ffb0d0', 8); }
         flash(tx('VOLLTREFFER! Der Kalmar ist besiegt!'), 160);
-        S.stars += 20; S.pearls += 10;
+        S.stars += 20; S.pearls += 10; bossPts('tiefsee');
       } else flash(tx('TREFFER! Noch {n}×', { n: b.hp }), 100);
     } else { Audio.play('tink'); burst(e.x, e.y, '#cfd8e8', 8); flash(tx('Das Auge ist zu!'), 60); }
     return true;
@@ -4822,8 +4877,8 @@ function update(dt) {
         const tp = harpoonTip(h, 22);
         if (h.life > 0 && Math.abs(tp.x - o.x) < o.r + 16 && Math.abs(tp.y - o.y) < o.r + 8) {
           h.life = 0; o.done = true;
-          if (o.type === 'mine') { explode(o.x, o.y); S.stars += 2; flash(tx('TREFFER! +2')); }
-          else { burst(o.x, o.y, o.type === 'shark' ? '#9fb3c8' : o.type === 'puffer' ? '#ffe08a' : '#f0a3ff', 22, 5); Audio.play('pop'); S.stars += o.type === 'shark' ? 3 : 1; }
+          if (o.type === 'mine') { explode(o.x, o.y); S.stars += 2; flash(tx('TREFFER! +2')); gainPts(PTS.enemy, o.x, o.y - 30); }
+          else { burst(o.x, o.y, o.type === 'shark' ? '#9fb3c8' : o.type === 'puffer' ? '#ffe08a' : '#f0a3ff', 22, 5); Audio.play('pop'); S.stars += o.type === 'shark' ? 3 : 1; gainPts(o.type === 'shark' ? PTS.shark : PTS.enemy, o.x, o.y - 30); }
         }
       }
       if (o.done) continue;
@@ -4834,13 +4889,13 @@ function update(dt) {
       } else {
         o.done = true;
         if (o.type === 'chest') {
-          o.done = true; o.opened = true; S.hearts += 2; S.pearls += 3; S.heartFlash = -40;
+          o.done = true; o.opened = true; S.hearts += 2; S.pearls += 3; S.heartFlash = -40; gainPts(PTS.chest, o.x, o.y - 50);
           burst(o.x, o.y - 20, '#ffd25a', 30, 6); burst(o.x, o.y - 20, '#ff5a7a', 10, 4);
           Audio.play('chest'); flash(tx('SCHATZTRUHE! +2 Herzen · +3 Perlen'), 110);
         }
         if (o.type === 'air') { S.oxygen = Math.min(100, S.oxygen + 35); burst(o.x, o.y, '#bff4ff', 14); Audio.play('air'); flash(tx('+ LUFT'), 50); }
-        if (o.type === 'star') { S.stars++; burst(o.x, o.y, '#ffb35c', 12); Audio.play('star'); }
-        if (o.type === 'pearl' || o.type === 'clam') { S.pearls++; burst(o.x, o.y - 6, '#ffffff', 12); Audio.play('pearl'); }
+        if (o.type === 'star') { S.stars++; gainPts(PTS.star); burst(o.x, o.y, '#ffb35c', 12); Audio.play('star'); }
+        if (o.type === 'pearl' || o.type === 'clam') { S.pearls++; gainPts(PTS.pearl); burst(o.x, o.y - 6, '#ffffff', 12); Audio.play('pearl'); }
         if (o.type === 'turbo') {
           S.turbo = TURBO_FRAMES; Audio.setFast(true); Audio.play('turbo'); burst(o.x, o.y, '#ffe14d', 30, 7);
           flash(tx('TURBO! Doppelt schnell – jetzt schießen!'));
@@ -6379,8 +6434,8 @@ const MENU = { open: false, btns: {} }, CONFIRM = { open: false, btns: {} };
 const hasProgress = () => !!(SAVE.started || SAVE.done.city || SAVE.done.heaven || SAVE.done.sea || SAVE.items.harpoon);
 function askNewGame() { CONFIRM.open = true; Audio.play('warn'); }
 function doNewGame() {
-  const l3 = SAVE.level3Unlocked;
-  resetSave(true); if (l3) SAVE.level3Unlocked = true; writeSave();
+  const l3 = SAVE.level3Unlocked, best = SAVE.best || 0;
+  resetSave(true); if (l3) SAVE.level3Unlocked = true; SAVE.best = best; writeSave();
   CONFIRM.open = false; MENU.open = false; PAUSE.on = false; Audio.pauseBg(false); INV.open = false;
   TRANS = null; activate(makeWorld('stadt.html', ''));          // fresh city start screen
 }
@@ -6419,6 +6474,8 @@ function drawMenu() {
   drawWorldIcon('city', W / 2 - 60, cy - 26, SAVE.done.city); drawWorldIcon('heaven', W / 2 - 30, cy - 26, SAVE.done.heaven); drawWorldIcon('sea', W / 2, cy - 26, SAVE.done.sea);
   if (SAVE.items.harpoon) drawWorldIcon('harpoon', W / 2 + 30, cy - 26, true);
   ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left'; ctx.fillText('● ' + SAVE.coins, W / 2 + 50, cy - 26);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial';
+  ctx.fillText(tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score || 0), r: fmtNum(SAVE.best || 0) }), W / 2, cy + (hasProgress() ? 166 : 126));
   ctx.restore();
   const prog = hasProgress();
   MENU.btns.cont = { x: W / 2 - 150, y: cy + 4, w: 300, h: 54 };
@@ -6605,12 +6662,21 @@ else if (hasProgress()) {
 } else { activate(makeWorld('stadt', '')); MENU.open = true; CUR.S.noHud = true; }
 Audio.setTheme(THEME[CUR.key]);
 let lastT = performance.now();
+// points: time played in the world (only while really playing), the "+100" fly up, the boss summary fades
+const PLAY_PHASES = new Set(['play', 'boss', 'fall']);
+function updateScore(dt) {
+  if (CUR && PLAY_PHASES.has(CUR.S.phase)) SAVE.wtime[CUR.key] = (SAVE.wtime[CUR.key] || 0) + dt;
+  for (const p of SC.pops) p.t += dt; SC.pops = SC.pops.filter(p => p.t < 60);
+  if (SC.toast) { SC.toast.t -= dt; if (SC.toast.t <= 0) SC.toast = null; }
+  SC.saveT = (SC.saveT || 0) + dt; if (SC.saveT > 120) { SC.saveT = 0; writeSave(); }   // keep the points safe every 2 s
+}
 function mainLoop(now) {
   const dt = Math.min((now - lastT) / 16.667, 3); lastT = now;
   if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); }
   else {
-    if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); }
-    drawWorldFull(CUR); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
+    if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); updateScore(dt); }
+    drawWorldFull(CUR);
+    if (!CUR.S.noHud && !MENU.open) { drawScoreBox(); ctx.save(); ctx.translate(0, DY); drawPops(); ctx.restore(); drawScoreToast(); } drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
   }   // paused while ITEMS is open or PAUSE
   requestAnimationFrame(mainLoop);
 }

@@ -53,11 +53,14 @@ const SAVE_DEFAULT = {
   done: { tal: false, hoehe: false, lava: false },
   mini: { rodeo: null, fossil: null, ptero: null, lore: null },
   checkpoint: null,                            // snapshot at the start of the current world
+  score: 0, best: 0,                           // points of this game / personal record on this device
+  pts: {},                                     // what already gave its one-time points (mini games, bosses)
+  wtime: { tal: 0, hoehe: 0 },                 // seconds played in each world (for the time bonus)
 };
 function loadSave() {
   try {
     const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
+    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { pts: Object.assign({}, raw.pts), wtime: Object.assign({}, SAVE_DEFAULT.wtime, raw.wtime), items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
   } catch (e) {}
   return JSON.parse(JSON.stringify(SAVE_DEFAULT));
 }
@@ -87,16 +90,63 @@ function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)
 function resetSave(keepLang = true) { const lang = SAVE.lang; Object.assign(SAVE, JSON.parse(JSON.stringify(SAVE_DEFAULT))); if (keepLang) SAVE.lang = lang; writeSave(); }
 // remember the state at the start of a world, so a game over only restarts that world
 function setCheckpoint(world) {
-  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
+  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, score: SAVE.score || 0, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
   SAVE.cps = Object.assign({}, SAVE.cps, { [world]: SAVE.checkpoint }); writeSave();
 }
 // back in a world that was already started (e.g. the city after the sky): use that world's own checkpoint again
 function useCheckpoint(world) { if (SAVE.cps && SAVE.cps[world]) { SAVE.checkpoint = SAVE.cps[world]; writeSave(); } else setCheckpoint(world); }
 // world restart (all lives lost): hearts, coins, pearls and starfish go back to the world start –
 // but bought things STAY, and coins spent on them stay spent (see spendCoins)
-function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), pearls: c.pearls, starfish: c.starfish }); writeSave(); }
+function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), score: c.score ?? SAVE.score, pearls: c.pearls, starfish: c.starfish }); writeSave(); }
 // a purchase also lowers the coins the checkpoint would give back
 function spendCoins(n) { for (const c of new Set([SAVE.checkpoint, ...Object.values(SAVE.cps || {})])) if (c) c.coins = Math.max(0, c.coins - n); writeSave(); }
+// ---------------- points ----------------
+// Points are for comparing (coins are money for the OXXO). Defeated dinos stay gone, mini games and bosses
+// give their big points only once per game – so nobody can farm millions. A boss can be fought again and again.
+const PTS = { coin: 10, raptor: 100, compy: 100, baby: 50, ptero: 200, trike: 300, stego: 300, mini: 1000, boss: 5000 };
+// time bonus: starts at 10'000 and shrinks by 25 per second played in that world – never below 0 (no countdown!)
+const TIME_BONUS_MAX = 10000, TIME_BONUS_PER_S = 25;
+const timeBonus = sec => Math.max(0, Math.round((TIME_BONUS_MAX - sec * TIME_BONUS_PER_S) / 10) * 10);
+const fmtNum = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+const fmtTime = sec => Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+function bumpBest() { if ((SAVE.score || 0) > (SAVE.best || 0)) { SAVE.best = SAVE.score; return true; } return false; }
+// the score box in the HUD (below the coins)
+function drawScoreBox(score) {
+  ctx.save(); ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W - 168, 46, 156, 26, 10); ctx.fill();
+  ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left'; ctx.fillText(tx('PUNKTE'), W - 158, 59);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'right'; ctx.fillText(fmtNum(score), W - 20, 60);
+  ctx.restore();
+}
+// "+100" floating up where it happened (world coordinates)
+function drawPops(pops) {
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  for (const p of pops) {
+    const u = p.t / 60; ctx.globalAlpha = Math.max(0, 1 - u * u);
+    ctx.font = `bold ${p.big ? 22 : 16}px Arial`; ctx.strokeStyle = OUT; ctx.lineWidth = 4; ctx.fillStyle = p.col || '#ffe14d';
+    ctx.strokeText(p.text, p.x, p.y - u * 40); ctx.fillText(p.text, p.x, p.y - u * 40);
+  }
+  ctx.restore();
+}
+// the boss energy bar: green → yellow → red
+function drawBossBar(name, frac) {
+  const bw = 300, bx = W / 2 - bw / 2 + 40, f = clamp(frac, 0, 1);
+  ctx.save(); ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(30,20,30,0.78)'; ctx.beginPath(); ctx.roundRect(W / 2 - 230, 6, 460, 32, 12); ctx.fill();
+  ctx.fillStyle = '#ffe0f0'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'right'; ctx.fillText(name, bx - 10, 23);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.roundRect(bx, 14, bw, 16, 8); ctx.fill();
+  const col = f > 0.6 ? '#34c759' : f > 0.3 ? '#ffcc2e' : '#ff3b30';
+  if (f > 0) { ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(bx, 14, Math.max(8, bw * f), 16, 8); ctx.fill(); }
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(bx, 14, bw, 16, 8); ctx.stroke();
+  ctx.restore();
+}
+// the end-of-world summary lines (boss beaten)
+function summaryLines(sm) {
+  if (!sm) return [];
+  if (sm.repeat) return [tx('Schon einmal besiegt – diesmal gibt es keine Punkte, nur den Spaß.'), tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score), r: fmtNum(SAVE.best || 0) })];
+  return [tx('Boss besiegt: +{b}   ·   Zeitbonus ({t}): +{z}', { b: fmtNum(sm.boss), t: fmtTime(sm.sec), z: fmtNum(sm.time) }),
+    (sm.record ? tx('NEUER REKORD!') + '  ' : '') + tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score), r: fmtNum(SAVE.best || 0) })];
+}
 // ---------------- lives ----------------
 // 3 lives: when all hearts are gone one life is lost and Kai simply carries on right there with full hearts.
 // Only when all 3 lives are gone the current world starts again (from its checkpoint).
@@ -298,6 +348,13 @@ const QUERY = new URLSearchParams(location.search);
 const LANGS = ['de', 'en', 'es'];
 const TR = {
   // ---------- LEVEL 3 · FELSENHÖHE ----------
+  'PUNKTE': ['POINTS', 'PUNTOS'], 'Punkte': ['points', 'puntos'], 'NOCHMAL': ['AGAIN', 'OTRA VEZ'], 'NEUER REKORD!': ['NEW RECORD!', '¡NUEVO RÉCORD!'],
+  'Punkte: {p}   ·   Rekord: {r}': ['Points: {p}   ·   Record: {r}', 'Puntos: {p}   ·   Récord: {r}'],
+  'Boss besiegt: +{b}   ·   Zeitbonus ({t}): +{z}': ['Boss beaten: +{b}   ·   Time bonus ({t}): +{z}', 'Jefe vencido: +{b}   ·   Bono de tiempo ({t}): +{z}'],
+  'Schon einmal besiegt – diesmal gibt es keine Punkte, nur den Spaß.': ['Beaten before – no points this time, just the fun.', 'Ya lo venciste antes – esta vez no hay puntos, solo la diversión.'],
+  'TREFFER!': ['HIT!', '¡GOLPE!'],
+  'Die FLUGSAURIER-MAMA! Triff sie mit der Schleuder!': ['The PTEROSAUR MOM! Hit her with the slingshot!', '¡La MAMÁ PTEROSAURIO! ¡Dale con la resortera!'],
+  'Sie ist gelandet – jetzt zählt jeder Treffer doppelt!': ['She landed – every hit counts double now!', '¡Aterrizó – ahora cada golpe cuenta doble!'],
   'Halte ▶ gedrückt – los geht\'s!': ['Hold ▶ – let\'s go!', '¡Mantén ▶ – vamos!'],
   'Halte den Pfeil nach rechts – los geht\'s!': ['Hold the right arrow – let\'s go!', '¡Mantén la flecha derecha – vamos!'],
   '◀ ▶ links gedrückt halten = fahren · loslassen = stehen bleiben': ['Hold ◀ ▶ on the left = ride · let go = stop', 'Mantén ◀ ▶ a la izquierda = rodar · suelta = parar'],
@@ -1431,7 +1488,7 @@ const SITES = { rodeo: 4400 - 0, fossil: 8100 };     // mini-game places (start 
 const LIANAS = [2830, 8480], LIANA_BOTTOM = 120;
 
 const S = {
-  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0,
+  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0, score: SAVE.score || 0, pops: [], wtime: SAVE.wtime.tal || 0, combo: 0,
   kai: { x: 160, y: FLOOR, vx: 0, vy: 0, dir: 0, face: 1, faceAnim: 1, ground: true, platform: null, inv: 0, pushT: 0, landT: 0, safeX: 160, jumpHeld: false, hurtT: 0 },
   objects: [], dinos: [], fireballs: [], particles: [], waves: [],
   volcT: VOLCANOES.map((_, i) => 80 + i * 70),
@@ -1470,8 +1527,8 @@ function stomp(d) {
   k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
   burst(k.x, top, '#ffd23a', 10, 3.5);
   S.shake = Math.max(S.shake, 3);
-  if (d.hp <= 0) { d.dead = true; d.deadT = 0; d.stun = 0; Audio.play('stomp'); burst(d.x, top + 10, '#fbf3df', 12, 4); }
-  else { d.stun = 75; Audio.play('boing'); }
+  if (d.hp <= 0) { d.dead = true; d.deadT = 0; d.stun = 0; Audio.play('stomp'); burst(d.x, top + 10, '#fbf3df', 12, 4); comboScore(PTS[d.type] || 100, d.x, top - 20); }
+  else { d.stun = 75; Audio.play('boing'); S.combo++; }
 }
 function buildObjects() {
   const o = [];
@@ -1548,7 +1605,7 @@ window.addEventListener('keyup', e => {
 function beginWorld() {
   const cont = QUERY.get('from') === 'continue' && SAVE.cpX, fromH = QUERY.get('from') === 'hoehe' && !S.begun;
   S.phase = 'play'; S.noHud = false; SAVE.started = true;
-  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
   const k = S.kai; k.x = fromH ? LIANAS[0] : cont ? SAVE.cpX : 160; k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.safeX = k.x;
   S.cpX = fromH ? Math.max(SAVE.cpX || 160, 160) : k.x; S.cam = clamp(k.x - W * (fromH ? 0.4 : 0.38), 0, BOSS_X); S.begun = true;
   if (fromH) { useCheckpoint('tal'); writeSave(); Audio.init(); Audio.setTheme('dino'); flash('Zurück im Dino-Tal!', 110); return; }
@@ -1557,7 +1614,20 @@ function beginWorld() {
   flash(isTouchDev() ? 'Halte ▶ gedrückt – los geht\'s!' : 'Halte den Pfeil nach rechts – los geht\'s!', 150);
 }
 const isTouchDev = () => CTRL.touch;
-function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; writeSave(); }
+function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.score = S.score; SAVE.wtime.tal = S.wtime; bumpBest(); writeSave(); }
+// points: n points, shown as a little "+n" at (x, y) when given
+function addScore(n, x, y, big) { S.score += n; if (x != null) S.pops.push({ x, y, text: '+' + fmtNum(n), t: 0, big }); }
+// jumping from one enemy onto the next without touching the ground: ×2, ×4, ×8 (like Super Mario)
+function comboScore(base, x, y) { S.combo++; const m = Math.min(8, 2 ** (S.combo - 1)); addScore(base * m, x, y, m > 1); if (m > 1) S.pops.push({ x, y: y - 24, text: '×' + m, t: 0, col: '#ff9ad0' }); }
+// end of the world: the boss gives its 5000 points and the time bonus only the first time
+function bossSummary(id) {
+  if (SAVE.pts['boss_' + id]) { S.summary = { repeat: true }; return; }
+  SAVE.pts['boss_' + id] = true;
+  const sec = S.wtime / 60, tb = timeBonus(sec);
+  S.score += PTS.boss + tb;
+  SAVE.score = S.score; const rec = bumpBest();
+  S.summary = { boss: PTS.boss, time: tb, sec, record: rec };
+}
 function reachCheckpoint(x) {
   if (x <= S.cpX) return;
   S.cpX = x; SAVE.cpX = x; saveProgress(); setCheckpoint('tal');
@@ -1592,7 +1662,7 @@ function fallInTar() {
 }
 function resetGame() {
   restartWorldSave();
-  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
   resetDinos(); buildObjects(); S.fireballs = []; S.waves = []; S.boss = null; Audio.setBoss(false);
   const k = S.kai; k.x = SAVE.cpX || 160; k.y = FLOOR; k.vx = 0; k.vy = 0; k.dir = 0; k.face = 1; k.inv = 60; k.ground = true; k.platform = null; k.safeX = k.x;
   S.phase = 'play';
@@ -1604,6 +1674,8 @@ function update(dt) {
   if (S.msgTimer > 0) S.msgTimer -= dt;
   if (S.heartFlash > 0) S.heartFlash -= dt;
   if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
+  if (playing()) S.wtime += dt;                       // time played in this world (frames)
+  for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
   if (S.phase === 'rodeo' || S.phase === 'fossil') { updateGame(dt); return; }
@@ -1694,7 +1766,7 @@ function updateKai(dt) {
 }
 function landOn(pl, top) {
   const k = S.kai;
-  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8;
+  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8; S.combo = 0;
   Audio.play('land');
 }
 // everything Kai can stand on (besides the ground)
@@ -1786,7 +1858,7 @@ function updatePickups() {
     if (Math.abs(o.x - k.x) > 90) continue;
     if (kb.x1 - o.r < o.x && kb.x2 + o.r > o.x && kb.y1 - o.r < o.y && kb.y2 + 8 > o.y) {
       o.done = true;
-      if (o.type === 'coin') { S.coins++; burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
+      if (o.type === 'coin') { S.coins++; addScore(PTS.coin); burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
       if (o.type === 'heart') { S.hearts++; S.heartFlash = -30; burst(o.x, o.y, '#ff3b5c', 14, 3); Audio.play('chest'); flash('+1 HERZ', 50); }
     }
   }
@@ -1821,7 +1893,7 @@ function updateSites() {
   const k = S.kai;
   for (const [id, x] of Object.entries(SITES)) {
     const gate = x + 120;
-    if (Math.abs(k.x - gate) > 400) S.asked[id] = false;            // re-arm when Kai has left
+    if (Math.abs(k.x - gate) > 160) S.asked[id] = false;            // re-arm when Kai has ridden a bit away (so the game can be played again)
     if (!S.asked[id] && Math.abs(k.x - gate) < 30 && k.ground) {
       S.asked[id] = true; S.ask = id; S.phase = 'ask';
       k.vx = 0; k.dir = 0; Audio.play('chime');
@@ -1888,6 +1960,7 @@ function updateBoss(dt) {
   if (!S.boss) { startBoss(); return; }
   const b = S.boss, k = S.kai;
   b.t += dt; if (b.flash > 0) b.flash -= dt;
+  b.bar = (b.bar ?? 1) + (b.hp / 3 - (b.bar ?? 1)) * Math.min(1, 0.08 * dt);   // the energy bar slides down smoothly
   const toward = Math.sign(k.x - b.x) || -1;
   const lo = BOSS_X + 170, hi = MAP_END - 170;
   b.head += ((b.state === 'dizzy' ? 1 : 0) - b.head) * Math.min(1, 0.12 * dt);
@@ -1941,7 +2014,7 @@ function updateBoss(dt) {
       b.hp--; b.state = 'hit'; b.t = 0; b.flash = 60; S.shake = 12;
       k.y = top; k.vy = -13.5; k.ground = false; k.platform = null; k.inv = Math.max(k.inv, 40);
       burst(h.x, top, '#ffd23a', 20, 5); Audio.play('bossHit'); Audio.play('boing');
-      flash(b.hp > 0 ? tx('TREFFER! Noch {n}×', { n: b.hp }) : 'T-REX BESIEGT!', 100);
+      flash(b.hp > 0 ? 'TREFFER!' : 'T-REX BESIEGT!', 100);
       return;
     }
   }
@@ -1958,7 +2031,7 @@ function updateBoss(dt) {
 function winValley() {
   if (S.phase === 'won') return;
   S.phase = 'won'; Audio.setBoss(false); Audio.play('win'); Audio.play('cheer');
-  S.coins += 30; SAVE.done.tal = true; saveProgress();
+  S.coins += 30; SAVE.done.tal = true; bossSummary('tal'); saveProgress();
   burst(S.kai.x, S.kai.y - 60, '#ffd23a', 40, 6);
 }
 function updateBossDead(dt) { if (S.boss) S.boss.t += dt; }
@@ -1995,10 +2068,14 @@ function gameKey(e) {
 window.addEventListener('keyup', e => { if (CUR === ME && S.game && S.game.id === 'rodeo' && /Arrow(Left|Right)|Key[AD]/.test(e.code)) S.game.hold = 0; });
 window.addEventListener('pointerup', () => { if (CUR === ME && S.game && S.game.id === 'rodeo') S.game.hold = 0; });
 window.addEventListener('pointercancel', () => { if (CUR === ME && S.game && S.game.id === 'rodeo') S.game.hold = 0; });
-const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 } };
+const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 }, again: { x: W / 2 - 235, y: 250, w: 220, h: 44 }, next2: { x: W / 2 + 15, y: 250, w: 220, h: 44 } };
 function gamePointer(p) {
   const g = S.game; if (!g) return;
-  if (g.result) { if (inRect(p, GBTN.next)) endGame(); return; }
+  if (g.result) {
+    if (g.result === 'lose' && inRect(p, GBTN.again)) { const id = g.id; S.game = null; startGame(id); return; }
+    if (inRect(p, g.result === 'lose' ? GBTN.next2 : GBTN.next)) endGame();
+    return;
+  }
   if (g.id === 'rodeo') { g.hold = p.x < W / 2 ? -1 : 1; return; }
   // fossil: dig the tapped square
   const c = Math.floor((p.x - FOS.x) / FOS.cw), r = Math.floor((p.y - FOS.y) / FOS.ch);
@@ -2027,14 +2104,16 @@ function updateGame(dt) {
 }
 function gameWon() {
   const g = S.game; g.result = 'win';
-  S.coins += 20; SAVE.mini[g.id] = true; saveProgress();
+  S.coins += 20; SAVE.mini[g.id] = true;
+  g.pts = !SAVE.pts['mini_' + g.id]; if (g.pts) { SAVE.pts['mini_' + g.id] = true; S.score += PTS.mini; }
+  saveProgress();
   Audio.play('win'); Audio.play('cheer');
 }
 function gameLost() { const g = S.game; g.result = 'lose'; Audio.play('nomatch'); if (g.id === 'rodeo') { S.shake = 8; Audio.play('crash'); } }
 function endGame() {
   const k = S.kai, gate = SITES[S.game.id] + 120;
   S.game = null; S.phase = 'play';
-  k.x = gate + 50; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
+  k.x = gate + 200; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
   Audio.play('tink');
 }
 // =====================================================================
@@ -2063,6 +2142,7 @@ function draw() {
   drawWaves();
   for (const p of S.particles) { ctx.globalAlpha = Math.max(0, Math.min(1, p.life)); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
   ctx.globalAlpha = 1;
+  drawPops(S.pops);
   ctx.restore();
   drawFireballs();
   if (!S.hideKai && S.phase !== 'rodeo') drawKai();
@@ -2567,12 +2647,8 @@ function drawHUD() {
     for (const c of CHECKPOINTS) { ctx.fillStyle = S.cpX >= c ? '#34c759' : '#d8352c'; ctx.fillRect(bx + bw * c / BOSS_X - 1, 13, 3, 16); }
     ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ffd23a'; ctx.textAlign = 'left'; ctx.fillText('T-REX', bx + bw + 6, 21);
   }
-  if (S.boss && S.phase === 'boss') {
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(40,20,10,0.75)'; ctx.beginPath(); ctx.roundRect(W / 2 - 110, 8, 220, 28, 12); ctx.fill();
-    ctx.fillStyle = '#ffe0b0'; ctx.font = 'bold 13px Arial'; ctx.fillText('T-REX', W / 2 - 40, 22);
-    for (let i = 0; i < 3; i++) drawHeart(W / 2 + 14 + i * 26, 21, 8, i < S.boss.hp);
-  }
+  if (S.boss && S.phase === 'boss') drawBossBar('T-REX', S.boss.bar ?? 1);
+  drawScoreBox(S.score);
   if (S.msgTimer > 0) {
     ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
@@ -2627,7 +2703,7 @@ function drawScreens() {
     button(BTN.goYes, tx('NOCHMAL VERSUCHEN'), '#36c6f4', '#1677a8'); button(BTN.goNo, tx('NEIN – ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'won') {
-    panel(tx('T-REX BESIEGT!'), [tx('Das Dino-Tal ist geschafft! +30 Münzen'), SAVE.done.hoehe ? tx('Die Lavahöhlen kommen bald – dafür brauchst du das Magma-Board.') : tx('Weiter geht es an den Lianen hinauf zur Felsenhöhe!')], '#7dffa0');
+    panel(tx('T-REX BESIEGT!'), [tx('Das Dino-Tal ist geschafft! +30 Münzen'), ...summaryLines(S.summary), SAVE.done.hoehe ? tx('Die Lavahöhlen kommen bald – dafür brauchst du das Magma-Board.') : tx('Weiter geht es an den Lianen hinauf zur Felsenhöhe!')], '#7dffa0');
     button(BTN.up, '▲ ' + tx('ZUR FELSENHÖHE'), '#34c759', '#1f8f3c'); button(BTN.menu2, tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
 }
@@ -2696,9 +2772,10 @@ function resultPanel(text, win) {
   ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 26px Arial';
   ctx.strokeText(text, W / 2, 214); ctx.fillText(text, W / 2, 214);
-  if (win) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(tx('+20 Münzen · Pokal-Stern!'), W / 2, 238 - 4); ctx.fillText(tx('+20 Münzen · Pokal-Stern!'), W / 2, 238 - 4); }
+  if (win) { const t = tx('+20 Münzen · Pokal-Stern!') + (S.game && S.game.pts ? '  ·  +' + fmtNum(PTS.mini) + ' ' + tx('Punkte') : ''); ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(t, W / 2, 238 - 4); ctx.fillText(t, W / 2, 238 - 4); }
   ctx.restore();
-  button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
 }
 
 Object.assign(ME, { S, update, draw, canBack: () => false, back: () => {}, events: null, ctl: CTL, test: TEST, enter, enterFromMenu });
@@ -2755,9 +2832,9 @@ const SITES = { oxxo: 4300, ptero: 7600 };      // tree house shop / pterosaur r
 const LIANA_DOWN = 70;                           // the liana back down into the valley (left edge)
 
 const S = {
-  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0,
+  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0, score: SAVE.score || 0, pops: [], wtime: SAVE.wtime.hoehe || 0, combo: 0,
   kai: { x: 200, y: FLOOR, vx: 0, vy: 0, dir: 0, face: 1, faceAnim: 1, ground: true, platform: null, inv: 0, pushT: 0, landT: 0, safeX: 200, jumpHeld: false, hurtT: 0, shootT: 0, climb: 0 },
-  plats: [], objects: [], compys: [], pteros: [], stones: [], shots: [], particles: [],
+  plats: [], objects: [], compys: [], pteros: [], stones: [], shots: [], particles: [], eggs: [],
   stoneT: 60, reload: 0,
   cpX: 200, msg: '', msgTimer: 0, heartFlash: 0, shake: 0,
   ask: null, asked: {}, boss: null, noHud: false, hideKai: false, game: null, shopMsg: '', shopMsgT: 0,
@@ -2788,7 +2865,7 @@ function flash(text, f = 80) { S.msg = tx(text); S.msgTimer = f; }
 const kaiBox = () => { const k = S.kai; return { x1: k.x - 26, x2: k.x + 26, y1: k.y - 108, y2: k.y - 4 }; };
 const overlap = (a, b) => a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1;
 const compyBox = c => ({ x1: c.x - 28, x2: c.x + 28, y1: FLOOR - 50, y2: FLOOR });
-const pteroBox = p => ({ x1: p.x - 40, x2: p.x + 40, y1: p.y - 18, y2: p.y + 20 });
+const pteroBox = p => { const s = p.baby ? 0.6 : 1; return { x1: p.x - 40 * s, x2: p.x + 40 * s, y1: p.y - 18 * s, y2: p.y + 20 * s }; };
 const playing = () => S.phase === 'play' || S.phase === 'boss';
 const isTouchDev = () => CTRL.touch;
 
@@ -2857,7 +2934,7 @@ window.addEventListener('keyup', e => {
 function beginWorld() {
   const cont = QUERY.get('from') === 'continue' && SAVE.cpH;
   S.phase = 'play'; S.noHud = false; SAVE.started = true; SAVE.seenHoehe = true;
-  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
   const k = S.kai;
   if (QUERY.get('from') !== 'tal' || S.begun) { k.x = cont ? SAVE.cpH : 200; }
   k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.platform = null; k.safeX = k.x;
@@ -2870,7 +2947,20 @@ function beginWorld() {
     Audio.play('chest');
   } else flash('DIE FELSENHÖHE', 110);
 }
-function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; writeSave(); }
+function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.score = S.score; SAVE.wtime.hoehe = S.wtime; bumpBest(); writeSave(); }
+// points: n points, shown as a little "+n" at (x, y) when given
+function addScore(n, x, y, big) { S.score += n; if (x != null) S.pops.push({ x, y, text: '+' + fmtNum(n), t: 0, big }); }
+// jumping from one enemy onto the next without touching the ground: ×2, ×4, ×8 (like Super Mario)
+function comboScore(base, x, y) { S.combo++; const m = Math.min(8, 2 ** (S.combo - 1)); addScore(base * m, x, y, m > 1); if (m > 1) S.pops.push({ x, y: y - 24, text: '×' + m, t: 0, col: '#ff9ad0' }); }
+// end of the world: the boss gives its 5000 points and the time bonus only the first time
+function bossSummary(id) {
+  if (SAVE.pts['boss_' + id]) { S.summary = { repeat: true }; return; }
+  SAVE.pts['boss_' + id] = true;
+  const sec = S.wtime / 60, tb = timeBonus(sec);
+  S.score += PTS.boss + tb;
+  SAVE.score = S.score; const rec = bumpBest();
+  S.summary = { boss: PTS.boss, time: tb, sec, record: rec };
+}
 function reachCheckpoint(x) {
   if (x <= S.cpX) return;
   S.cpX = x; SAVE.cpH = x; saveProgress(); setCheckpoint('hoehe');
@@ -2906,8 +2996,8 @@ function fallInGorge() {
 }
 function resetGame() {
   restartWorldSave();
-  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
-  buildWorld(); S.stones = []; S.shots = []; S.boss = null; Audio.setBoss(false);
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
+  buildWorld(); S.stones = []; S.shots = []; S.eggs = []; S.boss = null; Audio.setBoss(false);
   const k = S.kai; k.x = SAVE.cpH || 200; k.y = FLOOR; k.vx = 0; k.vy = 0; k.dir = 0; k.face = 1; k.inv = 60; k.ground = true; k.platform = null; k.safeX = k.x;
   S.cpX = k.x; S.cam = clamp(k.x - W * 0.32, 0, BOSS_X);
   S.phase = 'play';
@@ -2925,6 +3015,8 @@ function update(dt) {
   if (S.heartFlash > 0) S.heartFlash -= dt;
   if (S.shopMsgT > 0) S.shopMsgT -= dt;
   if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
+  if (playing()) S.wtime += dt;                       // time played in this world (frames)
+  for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
   if (S.phase === 'ride') { updateRide(dt); return; }
@@ -3027,7 +3119,7 @@ function updateKai(dt) {
 }
 function landOn(pl, top) {
   const k = S.kai;
-  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8;
+  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8; S.combo = 0;
   Audio.play('land');
 }
 
@@ -3049,11 +3141,11 @@ function updateCompys(dt) {
     if (c.x > c.x2 || !groundAt(c.x + 30)) { c.x = Math.min(c.x, c.x2); c.dir = -1; }
     const cb = compyBox(c);
     if (!overlap(kb, cb)) continue;
-    if (k.vy > 0 && (k.prevY ?? k.y) <= cb.y1 + 16) { killCompy(c); stompBounce(cb.y1); }
+    if (k.vy > 0 && (k.prevY ?? k.y) <= cb.y1 + 16) { killCompy(c, true); stompBounce(cb.y1); }
     else hurt(c.x);
   }
 }
-function killCompy(c) { c.dead = true; c.deadT = 0; Audio.play('stomp'); burst(c.x, FLOOR - 24, '#f0c64a', 12, 4); }
+function killCompy(c, stomped) { c.dead = true; c.deadT = 0; Audio.play('stomp'); burst(c.x, FLOOR - 24, '#f0c64a', 12, 4); if (stomped) comboScore(PTS.compy, c.x, FLOOR - 70); else addScore(PTS.compy, c.x, FLOOR - 70); }
 function updatePteros(dt) {
   const k = S.kai, kb = kaiBox();
   for (const p of S.pteros) {
@@ -3067,7 +3159,7 @@ function updatePteros(dt) {
       p.cool -= dt;
       // Kai below and in front of it: it screeches and swoops down
       const dx = k.x - p.x;
-      if (p.cool <= 0 && Math.abs(dx) < 330 && Math.abs(dx) > 60 && S.phase === 'play') {
+      if (p.cool <= 0 && Math.abs(dx) < 330 && Math.abs(dx) > 60 && playing()) {
         p.state = 'warn'; p.st = 0; p.dir = Math.sign(dx); Audio.play('bark');
       }
     } else if (p.state === 'warn') {
@@ -3075,19 +3167,19 @@ function updatePteros(dt) {
       if (p.st > 30) { p.state = 'dive'; p.st = 0; p.sx = p.x; p.sy = p.y; p.tx = k.x + k.vx * 26; }
     } else if (p.state === 'dive') {
       // a curve down to about Kai's head height and up again on the other side
-      p.st += dt; const u = Math.min(1, p.st / 70), ex = p.sx + (p.tx - p.sx) * 2;
+      p.st += dt; const u = Math.min(1, p.st / 70), ex = p.baby ? clamp(p.sx + (p.tx - p.sx) * 2, BOSS_X + 50, MAP_END - 50) : p.sx + (p.tx - p.sx) * 2;
       p.x = p.sx + (ex - p.sx) * u;
       p.y = p.sy + (FLOOR - 66 - p.sy) * Math.sin(u * Math.PI);
       p.dir = Math.sign(ex - p.sx) || p.dir;
-      if (u >= 1) { p.state = 'fly'; p.cool = rand(150, 260); p.x1 = Math.min(p.x1, p.x - 200); p.x2 = Math.max(p.x2, p.x + 200); }
+      if (u >= 1) { p.state = 'fly'; p.cool = p.baby ? rand(50, 110) : rand(150, 260); if (!p.baby) { p.x1 = Math.min(p.x1, p.x - 200); p.x2 = Math.max(p.x2, p.x + 200); } }
     }
     const pb = pteroBox(p);
     if (!overlap(kb, pb)) continue;
-    if (k.vy > 0 && (k.prevY ?? k.y) <= pb.y1 + 18) { killPtero(p); stompBounce(pb.y1); }
+    if (k.vy > 0 && (k.prevY ?? k.y) <= pb.y1 + 18) { killPtero(p, true); stompBounce(pb.y1); }
     else hurt(p.x);
   }
 }
-function killPtero(p) { p.dead = true; p.deadT = 0; p.vy = -3; Audio.play('stomp'); burst(p.x, p.y, '#e9a0c8', 12, 4); }
+function killPtero(p, stomped) { p.dead = true; p.deadT = 0; p.vy = -3; Audio.play('stomp'); burst(p.x, p.y, '#e9a0c8', 12, 4); const n = p.baby ? PTS.baby : PTS.ptero; if (stomped) comboScore(n, p.x, p.y - 30); else addScore(n, p.x, p.y - 30); }
 
 // ---------------- falling stones from the cliffs above ----------------
 function updateStones(dt) {
@@ -3134,7 +3226,7 @@ function updatePickups() {
     if (Math.abs(o.x - k.x) > 90) continue;
     if (kb.x1 - o.r < o.x && kb.x2 + o.r > o.x && kb.y1 - o.r < o.y && kb.y2 + 8 > o.y) {
       o.done = true;
-      if (o.type === 'coin') { S.coins++; burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
+      if (o.type === 'coin') { S.coins++; addScore(PTS.coin); burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
       if (o.type === 'heart') { S.hearts++; S.heartFlash = -30; burst(o.x, o.y, '#ff3b5c', 14, 3); Audio.play('chest'); flash('+1 HERZ', 50); }
     }
   }
@@ -3154,7 +3246,7 @@ function updateSites() {
   }
   for (const [id, x] of Object.entries(SITES)) {
     const gate = x + 120;
-    if (Math.abs(k.x - gate) > 400) S.asked[id] = false;
+    if (Math.abs(k.x - gate) > 160) S.asked[id] = false;      // ride a bit away and back = asked again
     if (!S.asked[id] && Math.abs(k.x - gate) < 30 && k.ground && !k.platform) {
       S.asked[id] = true; S.ask = id; S.phase = 'ask';
       k.vx = 0; k.dir = 0; Audio.play('chime');
@@ -3206,53 +3298,59 @@ const TEST = {
 };
 // =====================================================================
 //  END BOSS: DIE RIESEN-FLUGSAURIER-MAMA
-//  She circles high above and drops stones (shadow = where), swoops down low across the arena
-//  (jump over her or get out of the way), and after two swoops she lands, tired and panting.
-//  ONLY while she sits on the ground the slingshot hurts her. 3 hits → she falls over.
-//  In the air the stones just bounce off.
+//  She circles above the arena. Whenever she flies over Kai she drops something from her claws:
+//  a stone, or eggs – baby pterosaurs hatch from them and attack. The weaker she gets, the more eggs.
+//  She swoops down low across the arena (jump over her or get away), and after two swoops she lands, tired.
+//  EVERY slingshot hit takes energy off her (energy bar green → yellow → red); while she sits on the
+//  ground a hit counts double. Energy 0 → she falls out of the sky / tips over.
 // =====================================================================
+const MAMA_HP = 100, HIT_AIR = 8, HIT_LANDED = 16;
 function startBoss() {
-  S.boss = { x: MAP_END + 200, y: 60, face: -1, hp: 3, state: 'enter', t: 0, flap: 0, flash: 0, swoops: 0, drop: 80, rot: 0, sx: 0, sy: 0, tx: 0, hint: 0 };
-  S.phase = 'boss'; S.stones = [];
+  S.boss = { x: MAP_END + 200, y: 60, face: -1, hp: MAMA_HP, bar: 1, state: 'enter', t: 0, flap: 0, flash: 0, swoops: 0, drop: 60, rot: 0, sx: 0, sy: 0, tx: 0 };
+  S.phase = 'boss'; S.stones = []; S.eggs = [];
   Audio.setBoss(true); Audio.play('bark'); S.shake = 8;
-  flash('Die FLUGSAURIER-MAMA! Triff sie mit der Schleuder, wenn sie landet!', 220);
+  flash('Die FLUGSAURIER-MAMA! Triff sie mit der Schleuder!', 200);
 }
-const mamaBox = b => b.state === 'landed' || b.state === 'hit'
+const mamaBox = b => b.state === 'landed' || b.state === 'dead'
   ? { x1: b.x - 70, x2: b.x + 70, y1: FLOOR - 120, y2: FLOOR - 4 }
   : { x1: b.x - 80, x2: b.x + 80, y1: b.y - 26, y2: b.y + 34 };
+const weak = b => 1 - b.hp / MAMA_HP;          // 0 = full energy … 1 = almost beaten
 function updateBoss(dt) {
   if (!S.boss) { startBoss(); return; }
-  const b = S.boss, k = S.kai, lo = BOSS_X + 140, hi = MAP_END - 140, fast = 3 - b.hp;
-  b.t += dt; b.flap += dt; if (b.flash > 0) b.flash -= dt; if (b.hint > 0) b.hint -= dt;
+  const b = S.boss, k = S.kai, lo = BOSS_X + 140, hi = MAP_END - 140, fast = weak(b);
+  b.t += dt; b.flap += dt; if (b.flash > 0) b.flash -= dt;
+  b.bar += (b.hp / MAMA_HP - b.bar) * Math.min(1, 0.1 * dt);
+  updateEggs(dt);
   switch (b.state) {
     case 'enter':
       b.x -= 4 * dt; b.y += (80 - b.y) * 0.05 * dt;
-      if (b.x <= hi) { b.state = 'circle'; b.t = 0; }
+      if (b.x <= hi) backToCircle(b);
       break;
     case 'circle': {
-      // high up: a wide figure of eight over the arena, dropping stones at Kai now and then
-      const u = b.t * (0.018 + fast * 0.004), cx = BOSS_X + W / 2;
+      // high up: a wide figure of eight over the arena
+      b.ph += (0.018 + fast * 0.012) * dt; const u = b.ph, cx = BOSS_X + W / 2;
       const nx = cx + Math.sin(u) * (W / 2 - 170), ny = 78 + Math.sin(u * 2) * 26;
       b.face = Math.sign(nx - b.x) || b.face; b.x = nx; b.y += (ny - b.y) * Math.min(1, 0.1 * dt);
+      // right above Kai: she lets something fall from her claws
       b.drop -= dt;
-      if (b.drop <= 0) {
-        b.drop = rand(70, 110) - fast * 12;
-        S.stones.push({ x: clamp(k.x + k.vx * 30 + rand(-50, 50), BOSS_X + 40, MAP_END - 40), y: b.y + 30, vy: 1, r: 16, rot: 0, done: false, fromMama: true });
-        Audio.play('swish');
+      if (b.drop <= 0 && Math.abs(b.x - k.x) < 70) {
+        b.drop = 44 - fast * 14;
+        if (Math.random() < 0.35 + fast * 0.35) dropEggs(b);
+        else { S.stones.push({ x: b.x, y: b.y + 30, vy: 0.5, r: 16, rot: 0, done: false, fromMama: true }); Audio.play('swish'); }
       }
-      if (b.t > 200 - fast * 30) { b.state = 'swoop'; b.t = 0; b.sx = b.x; b.sy = b.y; b.tx = k.x; Audio.play('bark'); }
+      if (b.t > 260 - fast * 60) { b.state = 'swoop'; b.t = 0; b.sx = b.x; b.sy = b.y; b.tx = k.x; Audio.play('bark'); }
       break;
     }
     case 'swoop': {
       // down to the ground through where Kai stood, and up again on the other side
-      const T = 86 - fast * 10, u = Math.min(1, b.t / T), dirX = Math.sign(b.tx - b.sx) || -1;
+      const T = 86 - fast * 20, u = Math.min(1, b.t / T), dirX = Math.sign(b.tx - b.sx) || -1;
       const ex = clamp(b.tx + dirX * 420, BOSS_X + 120, MAP_END - 120);
       b.x = b.sx + (ex - b.sx) * u; b.y = b.sy + (FLOOR - 52 - b.sy) * Math.sin(u * Math.PI);
       b.face = dirX;
       if (u >= 1) {
         b.swoops++; b.t = 0;
         if (b.swoops >= 2) { b.state = 'land'; b.swoops = 0; b.sx = b.x; b.sy = b.y; b.tx = k.x < BOSS_X + W / 2 ? hi - 60 : lo + 60; }
-        else b.state = 'circle';
+        else backToCircle(b);
       }
       break;
     }
@@ -3261,19 +3359,21 @@ function updateBoss(dt) {
       const u = Math.min(1, b.t / 70);
       b.x = b.sx + (b.tx - b.sx) * u; b.y = b.sy + (FLOOR - 60 - b.sy) * (u * u);
       b.face = Math.sign(b.tx - b.sx) || b.face;
-      if (u >= 1) { b.state = 'landed'; b.t = 0; b.face = Math.sign(k.x - b.x) || -1; Audio.play('land'); S.shake = 6; burst(b.x, FLOOR - 4, '#a9744a', 16, 4); flash('Sie ist gelandet – JETZT schießen!', 100); }
+      if (u >= 1) { b.state = 'landed'; b.t = 0; b.face = Math.sign(k.x - b.x) || -1; Audio.play('land'); S.shake = 6; burst(b.x, FLOOR - 4, '#a9744a', 16, 4); flash('Sie ist gelandet – jetzt zählt jeder Treffer doppelt!', 100); }
       break;
     }
     case 'landed':
       b.face = Math.sign(k.x - b.x) || b.face;
-      if (b.t > 230 - fast * 30) takeOff(b);
-      break;
-    case 'hit':
-      if (b.t > 50) { if (b.hp <= 0) { b.state = 'dead'; b.t = 0; Audio.play('bossDie'); } else takeOff(b); }
+      if (b.t > 230 - fast * 60) takeOff(b);
       break;
     case 'takeoff':
       b.y -= 3.4 * dt;
-      if (b.y < 90) { b.state = 'circle'; b.t = 0; }
+      if (b.y < 90) backToCircle(b);
+      break;
+    case 'falling':
+      // beaten in the air: she tumbles down
+      b.y += 5 * dt; b.x += b.face * 1.5 * dt;
+      if (b.y >= FLOOR - 60) { b.y = FLOOR - 60; b.state = 'dead'; b.t = 0; S.shake = 10; burst(b.x, FLOOR - 4, '#a9744a', 20, 5); Audio.play('land'); }
       break;
     case 'dead':
       b.rot = Math.min(1.5, b.rot + 0.03 * dt);
@@ -3281,29 +3381,60 @@ function updateBoss(dt) {
       return;
   }
   // touching her hurts (also when she sits – she snaps)
-  if (b.state !== 'hit' && b.state !== 'dead' && overlap(kaiBox(), mamaBox(b))) hurt(b.x);
+  if (b.state !== 'dead' && b.state !== 'falling' && overlap(kaiBox(), mamaBox(b))) hurt(b.x);
+}
+// back up to circling: continue the figure of eight from where she is now (no jump)
+function backToCircle(b) {
+  b.state = 'circle'; b.t = 0;
+  const s = clamp((b.x - (BOSS_X + W / 2)) / (W / 2 - 170), -1, 1); b.ph = b.face < 0 ? Math.PI - Math.asin(s) : Math.asin(s);
 }
 function takeOff(b) { b.state = 'takeoff'; b.t = 0; b.y = FLOOR - 60; Audio.play('flap'); Audio.play('bark'); }
-// a slingshot stone reaches her
+// eggs from her claws: 1 at full energy, 2 when she is weaker, 3 at the end
+function dropEggs(b) {
+  const n = b.hp > MAMA_HP * 0.66 ? 1 : b.hp > MAMA_HP * 0.33 ? 2 : 3;
+  for (let i = 0; i < n; i++) S.eggs.push({ x: b.x, y: b.y + 30, vx: (i - (n - 1) / 2) * 1.6, vy: 0.5, rot: 0, landed: false, t: 0 });
+  Audio.play('pop');
+}
+function updateEggs(dt) {
+  const k = S.kai;
+  for (const e of S.eggs) {
+    if (!e.landed) {
+      e.vy += 0.3 * dt; e.y += e.vy * dt; e.x += e.vx * dt; e.rot += 0.08 * dt;
+      // lands on Kai's head: ouch – and it breaks open
+      if (Math.abs(e.x - k.x) < 30 && e.y > k.y - 112 && e.y - 22 < k.y - 4) { hurt(e.x); hatch(e); continue; }
+      if (e.y >= FLOOR) { e.y = FLOOR; e.landed = true; e.t = 0; Audio.play('land'); }
+    } else {
+      e.t += dt;
+      if (e.t > 50) hatch(e);
+    }
+  }
+  S.eggs = S.eggs.filter(e => !e.done);
+}
+// a baby pterosaur flies out of the egg and attacks Kai
+function hatch(e) {
+  e.done = true; burst(e.x, e.y - 10, '#f6efd8', 10, 3); Audio.play('pop');
+  S.pteros.push({ x: e.x, y: e.y - 20, x1: BOSS_X + 60, x2: MAP_END - 60, hy: rand(110, 160), dir: Math.sign(S.kai.x - e.x) || 1, t: 0, state: 'fly', st: 0, dead: false, deadT: 0, vy: 0, cool: rand(30, 90), baby: true });
+}
+// a slingshot stone reaches her: every hit counts, double while she sits on the ground
 function shotHitsBoss(s) {
-  const b = S.boss; if (!b || b.state === 'dead' || b.state === 'hit') return;
-  const box = mamaBox(b);
-  if (!overlap({ x1: s.x - 6, x2: s.x + 6, y1: s.y - 6, y2: s.y + 6 }, box)) return;
+  const b = S.boss; if (!b || b.state === 'dead' || b.state === 'falling' || b.state === 'enter') return;
+  if (!overlap({ x1: s.x - 6, x2: s.x + 6, y1: s.y - 6, y2: s.y + 6 }, mamaBox(b))) return;
   s.life = 0;
-  if (b.state === 'landed') {
-    b.hp--; b.state = 'hit'; b.t = 0; b.flash = 50; S.shake = 10;
-    burst(s.x, s.y, '#ffd23a', 18, 5); Audio.play('bossHit');
-    flash(b.hp > 0 ? tx('TREFFER! Noch {n}×', { n: b.hp }) : 'FLUGSAURIER-MAMA BESIEGT!', 100);
-  } else {
-    // in the air: the stone bounces off
-    s.life = 0; burst(s.x, s.y, '#cfd6de', 5, 2); Audio.play('tink');
-    if (b.hint <= 0) { b.hint = 200; flash('In der Luft prallt der Stein ab – warte, bis sie landet!', 110); }
+  const dmg = b.state === 'landed' ? HIT_LANDED : HIT_AIR;
+  b.hp = Math.max(0, b.hp - dmg); b.flash = 14; S.shake = Math.max(S.shake, 4);
+  burst(s.x, s.y, '#ffd23a', 12, 4); Audio.play('bossHit');
+  if (b.hp <= 0) {
+    // beaten: the babies fly away, she falls down (or tips over where she sits)
+    for (const p of S.pteros) if (p.baby && !p.dead) { p.dead = true; p.deadT = 0; p.vy = -4; }
+    S.eggs = [];
+    flash('FLUGSAURIER-MAMA BESIEGT!', 100); Audio.play('bossDie');
+    if (b.state === 'landed') { b.state = 'dead'; b.t = 0; } else { b.state = 'falling'; b.t = 0; }
   }
 }
 function winHeights() {
   if (S.phase === 'won') return;
   S.phase = 'won'; Audio.setBoss(false); Audio.play('win'); Audio.play('cheer');
-  S.coins += 30; SAVE.done.hoehe = true; saveProgress();
+  S.coins += 30; SAVE.done.hoehe = true; bossSummary('hoehe'); saveProgress();
   burst(S.kai.x, S.kai.y - 60, '#ffd23a', 40, 6);
 }
 function updateBossDead(dt) { if (S.boss) S.boss.t += dt; }
@@ -3357,7 +3488,7 @@ function shopClick(p) {
 }
 function leaveShop() {
   S.phase = 'play'; Audio.play('tink');
-  const k = S.kai; k.x = SITES.oxxo + 170; k.dir = 0; k.vx = 0; k.face = 1;
+  const k = S.kai; k.x = SITES.oxxo + 320; k.dir = 0; k.vx = 0; k.face = 1;
   if (!SAVE.items.magmaBoard) flash('Ohne Magma-Board kommst du nicht in die Lavahöhlen!', 140);
 }
 
@@ -3374,7 +3505,11 @@ function startRide() {
 function rideFlap() { const g = S.game; if (!g || g.result) return; g.vy = RIDE_FLAP; g.wing = 12; Audio.play('flap'); }
 function ridePointer(p) {
   const g = S.game; if (!g) return;
-  if (g.result) { if (inRect(p, GBTN.next)) endRide(); return; }
+  if (g.result) {
+    if (g.result === 'lose' && inRect(p, GBTN.again)) { S.game = null; startRide(); return; }
+    if (inRect(p, g.result === 'lose' ? GBTN.next2 : GBTN.next)) endRide();
+    return;
+  }
   rideFlap();
 }
 function gameKey(e) {
@@ -3386,23 +3521,30 @@ function gameKey(e) {
   }
 }
 function gameKeyUp() {}
-const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 } };
+const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 }, again: { x: W / 2 - 235, y: 250, w: 220, h: 44 }, next2: { x: W / 2 + 15, y: 250, w: 220, h: 44 } };
+// the ride uses the whole height of the screen (on a phone there is a lot of sky above the world)
+const rideTop = () => -DY + 20;
 const rideBox = g => ({ x1: RIDE_X - 34, x2: RIDE_X + 34, y1: g.y - 72, y2: g.y + 16 });
 function updateRide(dt) {
   const g = S.game; if (!g || g.result) return;
   g.t += dt; g.scroll += RIDE_SP * dt;
   if (g.inv > 0) g.inv -= dt; if (g.wing > 0) g.wing -= dt;
   g.vy = Math.min(7, g.vy + RIDE_G * dt); g.y += g.vy * dt;
-  if (g.y < 90) { g.y = 90; g.vy = Math.max(0, g.vy); }
+  if (g.y < rideTop() + 70) { g.y = rideTop() + 70; g.vy = Math.max(0, g.vy); }
   if (g.y > FLOOR - 16) { g.y = FLOOR - 16; g.vy = RIDE_FLAP * 0.8; bump(); }
   // new rock pillars with a gap (the gap gets a little smaller over time)
   g.spawn -= dt;
   if (g.spawn <= 0 && g.t < RIDE_T - 120) {
     g.spawn = 92;
-    const gap = 184 - Math.min(24, g.t / RIDE_T * 30), mid = rand(110 + gap * 0.1, FLOOR - 40 - gap / 2);
-    const top = Math.max(60, mid - gap / 2);
+    // the gap is somewhere between the very top of the screen and the ground – randomly high, low or in the middle,
+    // but never more than ~230 px away from the last one (so it can always be reached)
+    const gap = 224 - Math.min(14, g.t / RIDE_T * 18), lo = rideTop() + gap / 2 - 30, hi = FLOOR - 8 - gap / 2;
+    let mid = lo + (hi - lo) * Math.random();
+    if (g.lastMid != null) mid = clamp(mid, g.lastMid - 230, g.lastMid + 230);
+    mid = clamp(mid, lo, hi); g.lastMid = mid;
+    const top = mid - gap / 2;
     g.pillars.push({ x: W + 60, top, bot: top + gap, w: 74, hit: false });
-    for (let i = 0; i < 3; i++) g.coins.push({ x: W + 60 + 37, y: top + gap / 2 + (i - 1) * 34, done: false });
+    for (let i = 0; i < 3; i++) g.coins.push({ x: W + 60 + 37, y: top + gap / 2 + 14 + (i - 1) * 34, done: false });
   }
   for (const pl of g.pillars) pl.x -= RIDE_SP * dt;
   for (const c of g.coins) c.x -= RIDE_SP * dt;
@@ -3414,7 +3556,11 @@ function updateRide(dt) {
   }
   for (const c of g.coins) if (!c.done && Math.abs(c.x - RIDE_X) < 40 && c.y > b.y1 - 8 && c.y < b.y2 + 8) { c.done = true; S.coins++; g.got++; Audio.play('coin'); }
   if (g.bumps >= 3) { g.result = 'lose'; Audio.play('nomatch'); Audio.play('crash'); S.shake = 8; saveProgress(); }
-  else if (g.t >= RIDE_T) { g.result = 'win'; S.coins += 20; SAVE.mini.ptero = true; saveProgress(); Audio.play('win'); Audio.play('cheer'); }
+  else if (g.t >= RIDE_T) {
+    g.result = 'win'; S.coins += 20; SAVE.mini.ptero = true;
+    g.pts = !SAVE.pts.mini_ptero; if (g.pts) { SAVE.pts.mini_ptero = true; S.score += PTS.mini; }
+    saveProgress(); Audio.play('win'); Audio.play('cheer');
+  }
 }
 function bump() {
   const g = S.game; if (g.inv > 0) return;
@@ -3423,7 +3569,7 @@ function bump() {
 function endRide() {
   const k = S.kai, gate = SITES.ptero + 120;
   S.game = null; S.phase = 'play'; saveProgress();
-  k.x = gate + 50; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
+  k.x = gate + 200; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
   Audio.play('tink');
 }
 // =====================================================================
@@ -3449,12 +3595,14 @@ function draw() {
   drawStoneShadows();
   for (const o of S.objects) if (!o.done && onScreen(o.x - 20, 40)) { if (o.type === 'coin') drawCoin(o); else drawFruitHeart(o); }
   for (const c of S.compys) if (onScreen(c.x - 60, 120) && !(c.dead && c.deadT > 60)) drawCompy(c);
-  for (const p of S.pteros) if (onScreen(p.x - 80, 160) && !(p.dead && p.y > FLOOR + 400)) drawPtero(p.x, p.y, p.dir, p.t, 1, p.state === 'warn' || p.state === 'dive', p.dead);
+  for (const p of S.pteros) if (onScreen(p.x - 80, 160) && !(p.dead && p.y > FLOOR + 400)) drawPtero(p.x, p.y, p.dir, p.t, p.baby ? 0.58 : 1, p.state === 'warn' || p.state === 'dive', p.dead);
+  for (const e of S.eggs) drawEgg(e);
   if (S.boss) drawMama(S.boss);
   for (const s of S.stones) drawStone(s);
   for (const s of S.shots) { ctx.fillStyle = '#8f8a84'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   for (const p of S.particles) { ctx.globalAlpha = Math.max(0, Math.min(1, p.life)); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
   ctx.globalAlpha = 1;
+  drawPops(S.pops);
   ctx.restore();
   if (!S.hideKai) drawKai();
   ctx.restore();
@@ -3679,6 +3827,16 @@ function drawStone(s) {
   ctx.restore();
 }
 
+// ---------------- the Mama's eggs ----------------
+function drawEgg(e) {
+  ctx.save(); ctx.translate(e.x, e.y); ctx.strokeStyle = OUT; ctx.lineWidth = 2;
+  const wob = e.landed ? Math.sin(e.t * 0.6) * (e.t / 45) * 0.25 : e.rot; ctx.rotate(wob);
+  ctx.fillStyle = '#f6efd8'; ctx.beginPath(); ctx.ellipse(0, -11, 9, 12, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#d29ac0'; for (const [sx, sy] of [[-3, -16], [3, -8], [-2, -4]]) { ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI * 2); ctx.fill(); }
+  if (e.landed && e.t > 20) { ctx.beginPath(); ctx.moveTo(-8, -12); ctx.lineTo(-3, -9); ctx.lineTo(0, -14); ctx.lineTo(4, -9); ctx.lineTo(8, -12); ctx.stroke(); }
+  ctx.restore();
+}
+
 // ---------------- creatures ----------------
 function drawCompy(c) {
   ctx.save(); ctx.translate(c.x, FLOOR);
@@ -3727,6 +3885,7 @@ function drawPtero(x, y, dir, t, sc, angry, dead, calm) {
 function drawMama(b) {
   if (b.state === 'dead' && b.t > 140) return;
   const sitting = b.state === 'landed' || b.state === 'hit' || b.state === 'dead';
+  if (b.state === 'falling') { drawPtero(b.x, b.y, b.face, b.flap * 0.2, 2.6, false, false); return; }
   ctx.save();
   if (b.flash > 0 && Math.floor(b.flash / 5) % 2 === 0) ctx.globalAlpha = 0.45;
   if (sitting) {
@@ -3805,10 +3964,10 @@ function drawRideScene() {
     ctx.restore();
   }
   // bumps left
-  ctx.save(); ctx.translate(0, 0);
-  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W / 2 - 170, 48, 340, 30, 12); ctx.fill();
+  ctx.save(); ctx.translate(0, -DY);
+  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W / 2 - 170, 8, 340, 30, 12); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(tx('Noch {s} s', { s: Math.max(0, Math.ceil((RIDE_T - g.t) / 60)) }) + '   ·   ' + tx('Zusammenstöße: {n} / 3', { n: g.bumps }), W / 2, 64);
+  ctx.fillText(tx('Noch {s} s', { s: Math.max(0, Math.ceil((RIDE_T - g.t) / 60)) }) + '   ·   ' + tx('Zusammenstöße: {n} / 3', { n: g.bumps }), W / 2, 24);
   ctx.restore();
 }
 
@@ -3838,12 +3997,8 @@ function drawHUD() {
     ctx.fillStyle = '#ffd23a'; ctx.fillRect(bx + bw * SITES.oxxo / BOSS_X - 1, 13, 3, 16);
     ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ff9ad0'; ctx.textAlign = 'left'; ctx.fillText(tx('MAMA'), bx + bw + 6, 21);
   }
-  if (S.boss && S.phase === 'boss') {
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(40,20,40,0.75)'; ctx.beginPath(); ctx.roundRect(W / 2 - 150, 8, 300, 28, 12); ctx.fill();
-    ctx.fillStyle = '#ffd0ec'; ctx.font = 'bold 13px Arial'; ctx.fillText(tx('FLUGSAURIER-MAMA'), W / 2 - 40, 22);
-    for (let i = 0; i < 3; i++) drawHeart(W / 2 + 64 + i * 24, 21, 8, i < S.boss.hp);
-  }
+  if (S.boss && S.phase === 'boss') drawBossBar(tx('FLUGSAURIER-MAMA'), S.boss.bar ?? 1);
+  drawScoreBox(S.score);
   if (S.msgTimer > 0) {
     ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
@@ -3916,7 +4071,7 @@ function drawScreens() {
     button(BTN.goYes, tx('NOCHMAL VERSUCHEN'), '#36c6f4', '#1677a8'); button(BTN.goNo, tx('NEIN – ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'won') {
-    panel(tx('FLUGSAURIER-MAMA BESIEGT!'), [tx('Die Felsenhöhe ist geschafft! +30 Münzen'),
+    panel(tx('FLUGSAURIER-MAMA BESIEGT!'), [tx('Die Felsenhöhe ist geschafft! +30 Münzen'), ...summaryLines(S.summary),
       SAVE.items.magmaBoard ? tx('Mit dem Magma-Board geht es durch die Röhre im Tal in die Lavahöhlen.') : tx('Hol dir noch das Magma-Board im OXXO – ohne kommst du nicht in die Lavahöhlen.')], '#7dffa0');
     button(BTN.down, '▼ ' + tx('ZURÜCK INS TAL'), '#34c759', '#1f8f3c'); button(BTN.menu, tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
@@ -3925,9 +4080,10 @@ function resultPanel(text, win) {
   ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 26px Arial';
   ctx.strokeText(text, W / 2, 190); ctx.fillText(text, W / 2, 190);
-  if (win) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(tx('+20 Münzen · Pokal-Stern!'), W / 2, 222); ctx.fillText(tx('+20 Münzen · Pokal-Stern!'), W / 2, 222); }
+  if (win) { const t = tx('+20 Münzen · Pokal-Stern!') + (S.game && S.game.pts ? '  ·  +' + fmtNum(PTS.mini) + ' ' + tx('Punkte') : ''); ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(t, W / 2, 222); ctx.fillText(t, W / 2, 222); }
   ctx.restore();
-  button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
 }
 
 // ---------------- the shop ----------------
@@ -4184,7 +4340,7 @@ const MENU = { open: false, btns: {} }, CONFIRM = { open: false, btns: {} };
 const hasProgress = () => !!(SAVE.started || SAVE.done.tal || SAVE.done.hoehe || SAVE.done.lava || SAVE.items.magmaBoard || SAVE.seenHoehe);
 function askNewGame() { CONFIRM.open = true; Audio.play('warn'); }
 function doNewGame() {
-  const keep = { char: SAVE.char, outfit: SAVE.outfit, outfitKai: SAVE.outfitKai, outfitBali: SAVE.outfitBali, owned: SAVE.owned, importedL2: true };
+  const keep = { char: SAVE.char, outfit: SAVE.outfit, outfitKai: SAVE.outfitKai, outfitBali: SAVE.outfitBali, owned: SAVE.owned, importedL2: true, best: SAVE.best || 0 };
   resetSave(true); Object.assign(SAVE, keep); writeSave();        // a new game keeps who rides and the clothes
   CONFIRM.open = false; MENU.open = false; PAUSE.on = false; Audio.pauseBg(false); INV.open = false;
   TRANS = null; activate(makeWorld('tal.html', ''));            // fresh valley start screen
@@ -4223,6 +4379,8 @@ function drawMenu() {
   // little overview: worlds + coins
   drawWorldIcon('tal', W / 2 - 60, cy - 26, SAVE.done.tal); drawWorldIcon('hoehe', W / 2 - 30, cy - 26, SAVE.done.hoehe); drawWorldIcon('lava', W / 2, cy - 26, SAVE.done.lava);
   ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left'; ctx.fillText('● ' + SAVE.coins, W / 2 + 50, cy - 26);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial';
+  ctx.fillText(tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score || 0), r: fmtNum(SAVE.best || 0) }), W / 2, cy + (hasProgress() ? 166 : 126));
   ctx.restore();
   const prog = hasProgress();
   MENU.btns.cont = { x: W / 2 - 150, y: cy + 4, w: 300, h: 54 };

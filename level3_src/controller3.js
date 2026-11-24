@@ -194,7 +194,7 @@ const MENU = { open: false, btns: {} }, CONFIRM = { open: false, btns: {} };
 const hasProgress = () => !!(SAVE.started || SAVE.done.tal || SAVE.done.hoehe || SAVE.done.lava || SAVE.items.magmaBoard || SAVE.seenHoehe);
 function askNewGame() { CONFIRM.open = true; Audio.play('warn'); }
 function doNewGame() {
-  const keep = { char: SAVE.char, outfit: SAVE.outfit, outfitKai: SAVE.outfitKai, outfitBali: SAVE.outfitBali, owned: SAVE.owned, importedL2: true };
+  const keep = { char: SAVE.char, outfit: SAVE.outfit, outfitKai: SAVE.outfitKai, outfitBali: SAVE.outfitBali, owned: SAVE.owned, importedL2: true, best: SAVE.best || 0 };
   resetSave(true); Object.assign(SAVE, keep); writeSave();        // a new game keeps who rides and the clothes
   CONFIRM.open = false; MENU.open = false; PAUSE.on = false; Audio.pauseBg(false); INV.open = false;
   TRANS = null; activate(makeWorld('tal.html', ''));            // fresh valley start screen
@@ -207,7 +207,7 @@ function continueGame() {
 function toMainMenu() {
   Audio.stopSong(); Audio.grindLoop(false); Audio.setBoss(false); Audio.setFast(false);
   PAUSE.on = false; INV.open = false; CONFIRM.open = false; TRANS = null;
-  CTRL.shootP.clear(); CTRL.jumpP.clear(); CTRL.right = false; SWIPE.clear();
+  CTRL.shootP.clear(); CTRL.jumpP.clear(); CTRL.right = false; CTRL.pad.clear(); CTRL.lastDir = 0;
   if ((SAVE.lives ?? LIVES_MAX) <= 0) restartWorldSave();      // EXIT right from the game-over screen
   writeSave();
   const where = CUR ? CUR.key : (SAVE.where || 'tal');
@@ -233,6 +233,8 @@ function drawMenu() {
   // little overview: worlds + coins
   drawWorldIcon('tal', W / 2 - 60, cy - 26, SAVE.done.tal); drawWorldIcon('hoehe', W / 2 - 30, cy - 26, SAVE.done.hoehe); drawWorldIcon('lava', W / 2, cy - 26, SAVE.done.lava);
   ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left'; ctx.fillText('● ' + SAVE.coins, W / 2 + 50, cy - 26);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial';
+  ctx.fillText(tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score || 0), r: fmtNum(SAVE.best || 0) }), W / 2, cy + (hasProgress() ? 166 : 126));
   ctx.restore();
   const prog = hasProgress();
   MENU.btns.cont = { x: W / 2 - 150, y: cy + 4, w: 300, h: 54 };
@@ -299,26 +301,37 @@ const inB = (p, b) => b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <
 function screenP(e) { const r = canvas.getBoundingClientRect(), sc = Math.min(r.width / W, r.height / VH); return { x: (e.clientX - r.left - (r.width - W * sc) / 2) / sc, y: (e.clientY - r.top - (r.height - VH * sc) / 2) / sc }; }
 
 // ================= ON-SCREEN CONTROLS (two thumbs, multitouch) =================
-// left edge:  SPRUNG – tap = jump / push, hold = Kai rises (the touch simply goes on to the world as a normal tap)
-// right edge: SCHUSS – only shown while Kai can shoot (sky: light arrows, sea: harpoon, piñata: hit)
-// on the computer: right mouse button = shoot (click / Space = jump, X still works)
+// Like Super Mario on a phone:
+//   left thumb:  ◀  ▶  – hold = ride, let go = stop (the thumb can slide from one arrow to the other)
+//   right thumb: SPRUNG (big, hold = higher) and SCHUSS (slingshot, only while Kai has one)
+// on the computer: hold ← / → = ride, Space / click = jump, X / right mouse button = shoot
 const CTRL = { R: 56, jumpP: new Set(), shootP: new Set(), right: false,
+  pad: new Map(),            // finger id → -1 (◀) / 1 (▶)
+  keyL: false, keyR: false, lastPressed: 1, lastDir: 0,
   // the buttons are only for phones / tablets: shown after a finger touch, hidden again when a mouse is used
   touch: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches) };
 const ctlOn = () => !TRANS && CUR && CUR.ctl && !CUR.S.noHud && !MENU.open && !CONFIRM.open && !PAUSE.on && !INV.open;
 const canShootNow = () => ctlOn() && CUR.ctl.canShoot();
 const jumpVisible = () => CTRL.touch && ctlOn() && CUR.ctl.showJump();
 const shootVisible = () => CTRL.touch && canShootNow();
-const jumpC = () => ({ x: 20 + CTRL.R, y: VH - 20 - CTRL.R });
-const shootC = () => ({ x: W - 20 - CTRL.R, y: VH - 20 - CTRL.R });
+const padVisible = () => CTRL.touch && steerOn();
+const leftC = () => ({ x: 20 + CTRL.R, y: VH - 20 - CTRL.R });
+const rightC = () => ({ x: 20 + CTRL.R * 3 + 22, y: VH - 20 - CTRL.R });
+const jumpC = () => ({ x: W - 20 - CTRL.R, y: VH - 20 - CTRL.R });
+const shootC = () => ({ x: W - 20 - CTRL.R * 3 - 26, y: VH - 20 - CTRL.R - 18 });
 // generous touch zones at the bottom corners (a thumb does not hit exactly)
-const inShootZone = p => p.x > W - 220 && p.y > VH - 220;
-const inJumpZone = p => p.x < 220 && p.y > VH - 220;
+const inPadZone = p => p.x < 330 && p.y > VH - 230;
+const padSide = p => p.x < (leftC().x + rightC().x) / 2 ? -1 : 1;
+const inJumpZone = p => p.x > W - 165 && p.y > VH - 230;
+const inShootZone = p => p.x > W - 330 && p.x <= W - 165 && p.y > VH - 230;
+// the riding direction wanted right now (fingers on ◀ ▶ and the arrow keys) – the one pressed last wins
+function wantedDir() {
+  let l = CTRL.keyL, r = CTRL.keyR;
+  for (const s of CTRL.pad.values()) { if (s < 0) l = true; else r = true; }
+  return l && r ? CTRL.lastPressed : r ? 1 : l ? -1 : 0;
+}
 function ctlShoot() { if (canShootNow()) { Audio.init(); CUR.ctl.shoot(); } }
-// ---- Level 3 steering: the board keeps rolling ----
-// swipe → / ← = ride right / left, swipe ↓ = brake and stand, swipe ↑ = jump (as well as the jump button)
-const SWIPE = new Map();
-const SWIPE_MIN = 34;                       // world pixels a finger has to move
+// ---- Level 3 steering: Kai rides only while ◀ / ▶ (or an arrow key) is held ----
 const steerOn = () => ctlOn() && CUR.ctl.steer && CUR.ctl.active();
 function ctlButton(c, pressed, label, icon) {
   const R = CTRL.R;
@@ -326,6 +339,7 @@ function ctlButton(c, pressed, label, icon) {
   ctx.globalAlpha = pressed ? 0.95 : 0.72;
   const g = ctx.createRadialGradient(c.x - R * 0.3, c.y - R * 0.3, 4, c.x, c.y, R);
   if (icon === 'jump') { g.addColorStop(0, pressed ? '#9ff0ff' : '#e9fbff'); g.addColorStop(1, pressed ? '#1aa0d8' : '#5bbfe6'); }
+  else if (icon === 'left' || icon === 'right') { g.addColorStop(0, pressed ? '#fff6c8' : '#ffffff'); g.addColorStop(1, pressed ? '#f2b630' : '#c9d3df'); }
   else { g.addColorStop(0, pressed ? '#ffd2c8' : '#fff1ec'); g.addColorStop(1, pressed ? '#d8392c' : '#f06a55'); }
   ctx.fillStyle = g; ctx.strokeStyle = OUT; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.arc(c.x, c.y, pressed ? R - 3 : R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -334,9 +348,10 @@ function ctlButton(c, pressed, label, icon) {
   if (icon === 'jump') {
     ctx.beginPath(); ctx.moveTo(x, y - 20); ctx.lineTo(x + 17, y); ctx.lineTo(x + 7, y); ctx.lineTo(x + 7, y + 14); ctx.lineTo(x - 7, y + 14); ctx.lineTo(x - 7, y); ctx.lineTo(x - 17, y); ctx.closePath(); ctx.fill();
   } else if (icon === 'sling') {
-    ctx.strokeStyle = '#7a4f2c'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x, y + 18); ctx.lineTo(x, y + 2); ctx.lineTo(x - 11, y - 16); ctx.moveTo(x, y + 2); ctx.lineTo(x + 11, y - 16); ctx.stroke();
-    ctx.strokeStyle = '#d8352c'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x - 11, y - 16); ctx.lineTo(x, y - 8); ctx.lineTo(x + 11, y - 16); ctx.stroke();
-    ctx.fillStyle = '#8f8a84'; ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y - 8, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    drawSlingIcon(x, y - 1, 1.18);
+  } else if (icon === 'left' || icon === 'right') {
+    const d = icon === 'left' ? -1 : 1;
+    ctx.beginPath(); ctx.moveTo(x + d * 20, y + 8); ctx.lineTo(x - d * 12, y - 12); ctx.lineTo(x - d * 12, y + 28); ctx.closePath(); ctx.fill();
   } else if (icon === 'stick') {
     ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x - 16, y + 14); ctx.lineTo(x + 14, y - 16); ctx.stroke();
     ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + 14, y - 16, 9, -0.2, 1.4); ctx.stroke();
@@ -350,13 +365,39 @@ function ctlButton(c, pressed, label, icon) {
   ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, c.x, c.y + 26);
   ctx.restore();
 }
+// a slingshot that reads as one at a glance: wooden fork, two stretched rubber bands, a leather pouch with a stone
+function drawSlingIcon(x, y, s) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // fork: handle + two arms (dark outline, then wood)
+  const fork = () => { ctx.beginPath(); ctx.moveTo(0, 22); ctx.lineTo(0, 4); ctx.moveTo(0, 6); ctx.quadraticCurveTo(-4, 0, -12, -6); ctx.lineTo(-13, -20); ctx.moveTo(0, 6); ctx.quadraticCurveTo(4, 0, 12, -6); ctx.lineTo(13, -20); ctx.stroke(); };
+  ctx.strokeStyle = OUT; ctx.lineWidth = 9; fork();
+  ctx.strokeStyle = '#a8703a'; ctx.lineWidth = 5.5; fork();
+  ctx.strokeStyle = '#d29a5c'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-1.5, 20); ctx.lineTo(-1.5, 8); ctx.stroke();
+  // rubber bands pulled back to the pouch
+  ctx.strokeStyle = '#e2302a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-13, -18); ctx.lineTo(-3, 2); ctx.moveTo(13, -18); ctx.lineTo(3, 2); ctx.stroke();
+  // leather pouch with the stone
+  ctx.fillStyle = '#6b4226'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.ellipse(0, 4, 8, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#9aa0a8'; ctx.beginPath(); ctx.arc(0, 1, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(-1.8, -0.8, 1.6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
 function drawControls() {
+  if (padVisible()) {
+    const want = wantedDir();
+    ctlButton(leftC(), want < 0, '', 'left'); ctlButton(rightC(), want > 0, '', 'right');
+  }
   if (jumpVisible()) ctlButton(jumpC(), CTRL.jumpP.size > 0, tx('SPRUNG'), 'jump');
   if (shootVisible()) ctlButton(shootC(), CTRL.shootP.size > 0 || CTRL.right, tx(CUR.ctl.icon === 'stick' ? 'SCHLAG' : 'SCHUSS'), CUR.ctl.icon);
 }
 function updateControls() {
   // holding the shoot button (or the right mouse button) keeps shooting – the weapon's own cooldown sets the pace
   if ((CTRL.shootP.size > 0 || CTRL.right) && canShootNow() && CUR.ctl.auto) CUR.ctl.shoot();
+  // riding: only while an arrow (button or key) is held – let go and Kai stops
+  if (!CUR || !CUR.ctl || !CUR.ctl.steer) return;
+  if (!steerOn()) { CTRL.lastDir = 0; return; }
+  const d = wantedDir();
+  if (d !== CTRL.lastDir) { CTRL.lastDir = d; if (d) CUR.ctl.dir(d); else if (CUR.ctl.stop) CUR.ctl.stop(); }
 }
 // right mouse button: works even while the left button is held (that arrives as pointermove with new buttons)
 function mouseButtons(e) {
@@ -367,19 +408,18 @@ function mouseButtons(e) {
 }
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('pointermove', mouseButtons);
+// a thumb on ◀ ▶ may slide over to the other arrow without lifting
 window.addEventListener('pointermove', e => {
-  const s = SWIPE.get(e.pointerId); if (!s || s.done || !steerOn()) return;
-  const p = screenP(e), dx = p.x - s.x, dy = p.y - s.y;
-  if (Math.abs(dx) >= SWIPE_MIN && Math.abs(dx) > Math.abs(dy) * 1.1) { s.done = true; CUR.ctl.dir(dx > 0 ? 1 : -1); }
-  else if (dy >= SWIPE_MIN && dy > Math.abs(dx) * 1.1) { s.done = true; CUR.ctl.brake(); }
-  else if (-dy >= SWIPE_MIN && -dy > Math.abs(dx) * 1.1) { s.done = true; s.jumped = true; CUR.ctl.jump(true); }
+  if (!CTRL.pad.has(e.pointerId)) return;
+  const p = screenP(e), s = padSide(p);
+  if (s !== CTRL.pad.get(e.pointerId)) { CTRL.pad.set(e.pointerId, s); CTRL.lastPressed = s; }
 });
 const ctlRelease = e => {
-  const s = SWIPE.get(e.pointerId); if (s) SWIPE.delete(e.pointerId);   // a swipe up is always a full jump
+  CTRL.pad.delete(e.pointerId);
   if (CTRL.jumpP.has(e.pointerId) && CUR && CUR.ctl && CUR.ctl.jump) CUR.ctl.jump(false);
   CTRL.jumpP.delete(e.pointerId); CTRL.shootP.delete(e.pointerId); if (e.pointerType === 'mouse') CTRL.right = (e.buttons & 2) !== 0; };
 window.addEventListener('pointerup', ctlRelease); window.addEventListener('pointercancel', ctlRelease);
-window.addEventListener('blur', () => { CTRL.jumpP.clear(); CTRL.shootP.clear(); CTRL.right = false; SWIPE.clear(); });
+window.addEventListener('blur', () => { CTRL.jumpP.clear(); CTRL.shootP.clear(); CTRL.right = false; CTRL.pad.clear(); CTRL.keyL = CTRL.keyR = false; });
 
 // EXIT (next to PAUSE, in every world): back to the title menu of the game
 const EXIT = { btn: null };
@@ -405,15 +445,18 @@ canvas.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button === 2) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); mouseButtons(e); return; }
   if (EXIT.btn && exitVisible() && inB(p, EXIT.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); toMainMenu(); return; }
   if (shootVisible() && inShootZone(p)) { e.stopImmediatePropagation(); e.preventDefault(); CTRL.shootP.add(e.pointerId); ctlShoot(); return; }
+  if (padVisible() && inPadZone(p)) {
+    e.stopImmediatePropagation(); e.preventDefault(); Audio.init();
+    const s = padSide(p); CTRL.pad.set(e.pointerId, s); CTRL.lastPressed = s; return;
+  }
   if (jumpVisible() && inJumpZone(p)) {
     CTRL.jumpP.add(e.pointerId);
     if (steerOn()) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); CUR.ctl.jump(true); return; }
   }
-  // Level 3: a finger anywhere else steers by swiping; the mouse jumps with a click
+  // Level 3: the mouse jumps with a click anywhere in the game (a finger elsewhere does nothing)
   if (steerOn() && p.y > 92 && !(EXIT.btn && inB(p, EXIT.btn))) {
     e.stopImmediatePropagation(); e.preventDefault(); Audio.init();
-    if (e.pointerType === 'mouse') { CTRL.jumpP.add(e.pointerId); CUR.ctl.jump(true); return; }
-    SWIPE.set(e.pointerId, { x: p.x, y: p.y, done: false, jumped: false });
+    if (e.pointerType === 'mouse') { CTRL.jumpP.add(e.pointerId); CUR.ctl.jump(true); }
     return;
   }
   if (BACK.btn && backVisible() && inB(p, BACK.btn)) { e.stopImmediatePropagation(); e.preventDefault(); Audio.init(); doBack(); return; }
@@ -454,7 +497,12 @@ function mainLoop(now) {
   }   // paused while ITEMS is open or PAUSE
   requestAnimationFrame(mainLoop);
 }
+// arrow keys: held = ride (the worlds read the direction through updateControls)
+const isL = c => c === 'ArrowLeft' || c === 'KeyA', isR = c => c === 'ArrowRight' || c === 'KeyD';
+window.addEventListener('keyup', e => { if (isL(e.code)) CTRL.keyL = false; if (isR(e.code)) CTRL.keyR = false; }, true);
 window.addEventListener('keydown', e => {
+  if (!e.repeat && isL(e.code)) { CTRL.keyL = true; CTRL.lastPressed = -1; }
+  if (!e.repeat && isR(e.code)) { CTRL.keyR = true; CTRL.lastPressed = 1; }
   if (CONFIRM.open) { if (e.code === 'Escape') CONFIRM.open = false; e.stopImmediatePropagation(); return; }
   if (MENU.open) { if (e.code === 'Space' || e.code === 'Enter') continueGame(); e.stopImmediatePropagation(); return; }
   if (e.code === 'KeyP') { if (!TRANS) setPause(!PAUSE.on); }

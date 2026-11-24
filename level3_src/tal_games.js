@@ -31,10 +31,14 @@ function gameKey(e) {
 window.addEventListener('keyup', e => { if (CUR === ME && S.game && S.game.id === 'rodeo' && /Arrow(Left|Right)|Key[AD]/.test(e.code)) S.game.hold = 0; });
 window.addEventListener('pointerup', () => { if (CUR === ME && S.game && S.game.id === 'rodeo') S.game.hold = 0; });
 window.addEventListener('pointercancel', () => { if (CUR === ME && S.game && S.game.id === 'rodeo') S.game.hold = 0; });
-const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 } };
+const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 }, again: { x: W / 2 - 235, y: 250, w: 220, h: 44 }, next2: { x: W / 2 + 15, y: 250, w: 220, h: 44 } };
 function gamePointer(p) {
   const g = S.game; if (!g) return;
-  if (g.result) { if (inRect(p, GBTN.next)) endGame(); return; }
+  if (g.result) {
+    if (g.result === 'lose' && inRect(p, GBTN.again)) { const id = g.id; S.game = null; startGame(id); return; }
+    if (inRect(p, g.result === 'lose' ? GBTN.next2 : GBTN.next)) endGame();
+    return;
+  }
   if (g.id === 'rodeo') { g.hold = p.x < W / 2 ? -1 : 1; return; }
   // fossil: dig the tapped square
   const c = Math.floor((p.x - FOS.x) / FOS.cw), r = Math.floor((p.y - FOS.y) / FOS.ch);
@@ -63,13 +67,15 @@ function updateGame(dt) {
 }
 function gameWon() {
   const g = S.game; g.result = 'win';
-  S.coins += 20; SAVE.mini[g.id] = true; saveProgress();
+  S.coins += 20; SAVE.mini[g.id] = true;
+  g.pts = !SAVE.pts['mini_' + g.id]; if (g.pts) { SAVE.pts['mini_' + g.id] = true; S.score += PTS.mini; }
+  saveProgress();
   Audio.play('win'); Audio.play('cheer');
 }
 function gameLost() { const g = S.game; g.result = 'lose'; Audio.play('nomatch'); if (g.id === 'rodeo') { S.shake = 8; Audio.play('crash'); } }
 function endGame() {
   const k = S.kai, gate = SITES[S.game.id] + 120;
   S.game = null; S.phase = 'play';
-  k.x = gate + 50; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
+  k.x = gate + 200; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
   Audio.play('tink');
 }

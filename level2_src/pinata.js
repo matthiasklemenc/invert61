@@ -119,7 +119,7 @@ function hitPinata(pp) {
   const cols = ['#ff5fa2', '#ffd23a', '#36c6f4', '#7fcf8a', '#b59de0', '#ff8a3a'];
   for (let i = 0; i < 10; i++) S.particles.push({ x: pp.x, y: pp.y, vx: rand(-1, 5), vy: rand(-5, 1), r: rand(2, 4), color: cols[i % cols.length], life: 1.2, g: 0.25, shard: true, rot: rand(0, 6) });
   if (pin.hits >= PINATA_HITS) {
-    pin.done = true; pin.result = 'win'; pin.end = 200; SAVE.mini.pinata = true; writeSave();
+    pin.done = true; pin.result = 'win'; pin.end = 200; SAVE.mini.pinata = true; miniPts('pinata'); writeSave();
     Audio.stopSong(); Audio.play('pinataPop'); setTimeout(() => Audio.play('cheer'), 300);
     S.coins += 15; S.hearts += 1; S.heartFlash = -40; S.shake = 14;
     for (let i = 0; i < 46; i++) {

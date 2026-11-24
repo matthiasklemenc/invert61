@@ -183,8 +183,8 @@ const MENU = { open: false, btns: {} }, CONFIRM = { open: false, btns: {} };
 const hasProgress = () => !!(SAVE.started || SAVE.done.city || SAVE.done.heaven || SAVE.done.sea || SAVE.items.harpoon);
 function askNewGame() { CONFIRM.open = true; Audio.play('warn'); }
 function doNewGame() {
-  const l3 = SAVE.level3Unlocked;
-  resetSave(true); if (l3) SAVE.level3Unlocked = true; writeSave();
+  const l3 = SAVE.level3Unlocked, best = SAVE.best || 0;
+  resetSave(true); if (l3) SAVE.level3Unlocked = true; SAVE.best = best; writeSave();
   CONFIRM.open = false; MENU.open = false; PAUSE.on = false; Audio.pauseBg(false); INV.open = false;
   TRANS = null; activate(makeWorld('stadt.html', ''));          // fresh city start screen
 }
@@ -223,6 +223,8 @@ function drawMenu() {
   drawWorldIcon('city', W / 2 - 60, cy - 26, SAVE.done.city); drawWorldIcon('heaven', W / 2 - 30, cy - 26, SAVE.done.heaven); drawWorldIcon('sea', W / 2, cy - 26, SAVE.done.sea);
   if (SAVE.items.harpoon) drawWorldIcon('harpoon', W / 2 + 30, cy - 26, true);
   ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left'; ctx.fillText('● ' + SAVE.coins, W / 2 + 50, cy - 26);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial';
+  ctx.fillText(tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score || 0), r: fmtNum(SAVE.best || 0) }), W / 2, cy + (hasProgress() ? 166 : 126));
   ctx.restore();
   const prog = hasProgress();
   MENU.btns.cont = { x: W / 2 - 150, y: cy + 4, w: 300, h: 54 };
@@ -409,12 +411,21 @@ else if (hasProgress()) {
 } else { activate(makeWorld('stadt', '')); MENU.open = true; CUR.S.noHud = true; }
 Audio.setTheme(THEME[CUR.key]);
 let lastT = performance.now();
+// points: time played in the world (only while really playing), the "+100" fly up, the boss summary fades
+const PLAY_PHASES = new Set(['play', 'boss', 'fall']);
+function updateScore(dt) {
+  if (CUR && PLAY_PHASES.has(CUR.S.phase)) SAVE.wtime[CUR.key] = (SAVE.wtime[CUR.key] || 0) + dt;
+  for (const p of SC.pops) p.t += dt; SC.pops = SC.pops.filter(p => p.t < 60);
+  if (SC.toast) { SC.toast.t -= dt; if (SC.toast.t <= 0) SC.toast = null; }
+  SC.saveT = (SC.saveT || 0) + dt; if (SC.saveT > 120) { SC.saveT = 0; writeSave(); }   // keep the points safe every 2 s
+}
 function mainLoop(now) {
   const dt = Math.min((now - lastT) / 16.667, 3); lastT = now;
   if (TRANS) { updateTransition(dt); if (TRANS) drawTransition(); else drawWorldFull(CUR); }
   else {
-    if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); }
-    drawWorldFull(CUR); drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
+    if (!INV.open && !PAUSE.on && !MENU.open && !CONFIRM.open) { updateControls(); CUR.update(dt); updateScore(dt); }
+    drawWorldFull(CUR);
+    if (!CUR.S.noHud && !MENU.open) { drawScoreBox(); ctx.save(); ctx.translate(0, DY); drawPops(); ctx.restore(); drawScoreToast(); } drawControls(); if (!CUR.S.noHud) drawPauseButton(); drawInventoryPanel(); drawBackButton(); drawPauseOverlay(); drawExitButton(); drawPauseExtras(); drawMenu(); drawConfirm();
   }   // paused while ITEMS is open or PAUSE
   requestAnimationFrame(mainLoop);
 }

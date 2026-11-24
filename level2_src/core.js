@@ -341,7 +341,7 @@ function memoryClick(p) {
           if (m.pairs === m.n) {
             // bonus: more pairs and fewer moves = more
             const bonusStars = 10 + Math.max(0, m.n * 2 + 2 - m.moves) * 2, bonusPearls = 5 + Math.max(0, m.n * 2 - m.moves);
-            S.stars += bonusStars; S.pearls += bonusPearls; m.done = 150;
+            S.stars += bonusStars; S.pearls += bonusPearls; m.done = 150; miniPts('whale');
             SAVE.mini.whale = true; writeSave();   // won once = stays green on the final screen
             m.result = tx('GESCHAFFT! +{s} Seesterne · +{p} Perlen', { s: bonusStars + m.n * 2, p: bonusPearls });
             Audio.play('win');
@@ -449,14 +449,14 @@ function hitBoss(h) {
       b.hp--; b.hurt = 60; b.eyeOpen = false; b.eye = 0; b.eyeTimer = 170; S.shake = 14;
       burst(e.x, e.y, '#ff6a8a', 26, 7); burst(e.x, e.y, '#ffffff', 12, 5);
       Audio.play('bossHit');
-      S.stars += 5;
+      S.stars += 5; gainPts(PTS.bossHit, e.x, e.y - 40, true);
       S.oxygen = Math.min(100, S.oxygen + 30); flash(tx('TREFFER! + LUFT'), 60);   // a hit into the eye = fresh air
       if (b.hp <= 0) {
         b.state = 'dying'; b.slam = null; Audio.play('bossDie'); Audio.setBoss(false);
         squirtInkBig(e.x, e.y);
         for (const o of S.objects) if (o.fromBoss && !o.done) { o.done = true; burst(o.x, o.y, '#ffb0d0', 8); }
         flash(tx('VOLLTREFFER! Der Kalmar ist besiegt!'), 160);
-        S.stars += 20; S.pearls += 10;
+        S.stars += 20; S.pearls += 10; bossPts('tiefsee');
       } else flash(tx('TREFFER! Noch {n}×', { n: b.hp }), 100);
     } else { Audio.play('tink'); burst(e.x, e.y, '#cfd8e8', 8); flash(tx('Das Auge ist zu!'), 60); }
     return true;
@@ -596,8 +596,8 @@ function update(dt) {
         const tp = harpoonTip(h, 22);
         if (h.life > 0 && Math.abs(tp.x - o.x) < o.r + 16 && Math.abs(tp.y - o.y) < o.r + 8) {
           h.life = 0; o.done = true;
-          if (o.type === 'mine') { explode(o.x, o.y); S.stars += 2; flash(tx('TREFFER! +2')); }
-          else { burst(o.x, o.y, o.type === 'shark' ? '#9fb3c8' : o.type === 'puffer' ? '#ffe08a' : '#f0a3ff', 22, 5); Audio.play('pop'); S.stars += o.type === 'shark' ? 3 : 1; }
+          if (o.type === 'mine') { explode(o.x, o.y); S.stars += 2; flash(tx('TREFFER! +2')); gainPts(PTS.enemy, o.x, o.y - 30); }
+          else { burst(o.x, o.y, o.type === 'shark' ? '#9fb3c8' : o.type === 'puffer' ? '#ffe08a' : '#f0a3ff', 22, 5); Audio.play('pop'); S.stars += o.type === 'shark' ? 3 : 1; gainPts(o.type === 'shark' ? PTS.shark : PTS.enemy, o.x, o.y - 30); }
         }
       }
       if (o.done) continue;
@@ -608,13 +608,13 @@ function update(dt) {
       } else {
         o.done = true;
         if (o.type === 'chest') {
-          o.done = true; o.opened = true; S.hearts += 2; S.pearls += 3; S.heartFlash = -40;
+          o.done = true; o.opened = true; S.hearts += 2; S.pearls += 3; S.heartFlash = -40; gainPts(PTS.chest, o.x, o.y - 50);
           burst(o.x, o.y - 20, '#ffd25a', 30, 6); burst(o.x, o.y - 20, '#ff5a7a', 10, 4);
           Audio.play('chest'); flash(tx('SCHATZTRUHE! +2 Herzen · +3 Perlen'), 110);
         }
         if (o.type === 'air') { S.oxygen = Math.min(100, S.oxygen + 35); burst(o.x, o.y, '#bff4ff', 14); Audio.play('air'); flash(tx('+ LUFT'), 50); }
-        if (o.type === 'star') { S.stars++; burst(o.x, o.y, '#ffb35c', 12); Audio.play('star'); }
-        if (o.type === 'pearl' || o.type === 'clam') { S.pearls++; burst(o.x, o.y - 6, '#ffffff', 12); Audio.play('pearl'); }
+        if (o.type === 'star') { S.stars++; gainPts(PTS.star); burst(o.x, o.y, '#ffb35c', 12); Audio.play('star'); }
+        if (o.type === 'pearl' || o.type === 'clam') { S.pearls++; gainPts(PTS.pearl); burst(o.x, o.y - 6, '#ffffff', 12); Audio.play('pearl'); }
         if (o.type === 'turbo') {
           S.turbo = TURBO_FRAMES; Audio.setFast(true); Audio.play('turbo'); burst(o.x, o.y, '#ffe14d', 30, 7);
           flash(tx('TURBO! Doppelt schnell – jetzt schießen!'));

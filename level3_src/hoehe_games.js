@@ -48,7 +48,7 @@ function shopClick(p) {
 }
 function leaveShop() {
   S.phase = 'play'; Audio.play('tink');
-  const k = S.kai; k.x = SITES.oxxo + 170; k.dir = 0; k.vx = 0; k.face = 1;
+  const k = S.kai; k.x = SITES.oxxo + 320; k.dir = 0; k.vx = 0; k.face = 1;
   if (!SAVE.items.magmaBoard) flash('Ohne Magma-Board kommst du nicht in die Lavahöhlen!', 140);
 }
 
@@ -65,7 +65,11 @@ function startRide() {
 function rideFlap() { const g = S.game; if (!g || g.result) return; g.vy = RIDE_FLAP; g.wing = 12; Audio.play('flap'); }
 function ridePointer(p) {
   const g = S.game; if (!g) return;
-  if (g.result) { if (inRect(p, GBTN.next)) endRide(); return; }
+  if (g.result) {
+    if (g.result === 'lose' && inRect(p, GBTN.again)) { S.game = null; startRide(); return; }
+    if (inRect(p, g.result === 'lose' ? GBTN.next2 : GBTN.next)) endRide();
+    return;
+  }
   rideFlap();
 }
 function gameKey(e) {
@@ -77,23 +81,30 @@ function gameKey(e) {
   }
 }
 function gameKeyUp() {}
-const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 } };
+const GBTN = { next: { x: W / 2 - 110, y: 250, w: 220, h: 44 }, again: { x: W / 2 - 235, y: 250, w: 220, h: 44 }, next2: { x: W / 2 + 15, y: 250, w: 220, h: 44 } };
+// the ride uses the whole height of the screen (on a phone there is a lot of sky above the world)
+const rideTop = () => -DY + 20;
 const rideBox = g => ({ x1: RIDE_X - 34, x2: RIDE_X + 34, y1: g.y - 72, y2: g.y + 16 });
 function updateRide(dt) {
   const g = S.game; if (!g || g.result) return;
   g.t += dt; g.scroll += RIDE_SP * dt;
   if (g.inv > 0) g.inv -= dt; if (g.wing > 0) g.wing -= dt;
   g.vy = Math.min(7, g.vy + RIDE_G * dt); g.y += g.vy * dt;
-  if (g.y < 90) { g.y = 90; g.vy = Math.max(0, g.vy); }
+  if (g.y < rideTop() + 70) { g.y = rideTop() + 70; g.vy = Math.max(0, g.vy); }
   if (g.y > FLOOR - 16) { g.y = FLOOR - 16; g.vy = RIDE_FLAP * 0.8; bump(); }
   // new rock pillars with a gap (the gap gets a little smaller over time)
   g.spawn -= dt;
   if (g.spawn <= 0 && g.t < RIDE_T - 120) {
     g.spawn = 92;
-    const gap = 184 - Math.min(24, g.t / RIDE_T * 30), mid = rand(110 + gap * 0.1, FLOOR - 40 - gap / 2);
-    const top = Math.max(60, mid - gap / 2);
+    // the gap is somewhere between the very top of the screen and the ground – randomly high, low or in the middle,
+    // but never more than ~230 px away from the last one (so it can always be reached)
+    const gap = 224 - Math.min(14, g.t / RIDE_T * 18), lo = rideTop() + gap / 2 - 30, hi = FLOOR - 8 - gap / 2;
+    let mid = lo + (hi - lo) * Math.random();
+    if (g.lastMid != null) mid = clamp(mid, g.lastMid - 230, g.lastMid + 230);
+    mid = clamp(mid, lo, hi); g.lastMid = mid;
+    const top = mid - gap / 2;
     g.pillars.push({ x: W + 60, top, bot: top + gap, w: 74, hit: false });
-    for (let i = 0; i < 3; i++) g.coins.push({ x: W + 60 + 37, y: top + gap / 2 + (i - 1) * 34, done: false });
+    for (let i = 0; i < 3; i++) g.coins.push({ x: W + 60 + 37, y: top + gap / 2 + 14 + (i - 1) * 34, done: false });
   }
   for (const pl of g.pillars) pl.x -= RIDE_SP * dt;
   for (const c of g.coins) c.x -= RIDE_SP * dt;
@@ -105,7 +116,11 @@ function updateRide(dt) {
   }
   for (const c of g.coins) if (!c.done && Math.abs(c.x - RIDE_X) < 40 && c.y > b.y1 - 8 && c.y < b.y2 + 8) { c.done = true; S.coins++; g.got++; Audio.play('coin'); }
   if (g.bumps >= 3) { g.result = 'lose'; Audio.play('nomatch'); Audio.play('crash'); S.shake = 8; saveProgress(); }
-  else if (g.t >= RIDE_T) { g.result = 'win'; S.coins += 20; SAVE.mini.ptero = true; saveProgress(); Audio.play('win'); Audio.play('cheer'); }
+  else if (g.t >= RIDE_T) {
+    g.result = 'win'; S.coins += 20; SAVE.mini.ptero = true;
+    g.pts = !SAVE.pts.mini_ptero; if (g.pts) { SAVE.pts.mini_ptero = true; S.score += PTS.mini; }
+    saveProgress(); Audio.play('win'); Audio.play('cheer');
+  }
 }
 function bump() {
   const g = S.game; if (g.inv > 0) return;
@@ -114,6 +129,6 @@ function bump() {
 function endRide() {
   const k = S.kai, gate = SITES.ptero + 120;
   S.game = null; S.phase = 'play'; saveProgress();
-  k.x = gate + 50; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
+  k.x = gate + 200; k.y = FLOOR; k.vy = 0; k.ground = true; k.platform = null; k.dir = 0; k.face = 1;
   Audio.play('tink');
 }

@@ -16,11 +16,14 @@ const SAVE_DEFAULT = {
   done: { city: false, heaven: false, sea: false },
   mini: { pinata: null, whale: null, football: null, harp: null },
   checkpoint: null,                            // snapshot at the start of the current world
+  score: 0, best: 0,                           // points of this game / personal record on this device
+  pts: {},                                     // what already gave its one-time points (mini games, bosses)
+  wtime: { stadt: 0, himmel: 0, tiefsee: 0 },  // frames played in each world (for the time bonus)
 };
 function loadSave() {
   try {
     const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
+    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { pts: Object.assign({}, raw.pts), wtime: Object.assign({}, SAVE_DEFAULT.wtime, raw.wtime), items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
   } catch (e) {}
   return JSON.parse(JSON.stringify(SAVE_DEFAULT));
 }
@@ -42,16 +45,63 @@ function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)
 function resetSave(keepLang = true) { const lang = SAVE.lang; Object.assign(SAVE, JSON.parse(JSON.stringify(SAVE_DEFAULT))); if (keepLang) SAVE.lang = lang; writeSave(); }
 // remember the state at the start of a world, so a game over only restarts that world
 function setCheckpoint(world) {
-  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
+  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, score: SAVE.score || 0, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
   SAVE.cps = Object.assign({}, SAVE.cps, { [world]: SAVE.checkpoint }); writeSave();
 }
 // back in a world that was already started (e.g. the city after the sky): use that world's own checkpoint again
 function useCheckpoint(world) { if (SAVE.cps && SAVE.cps[world]) { SAVE.checkpoint = SAVE.cps[world]; writeSave(); } else setCheckpoint(world); }
 // world restart (all lives lost): hearts, coins, pearls and starfish go back to the world start –
 // but bought things STAY, and coins spent on them stay spent (see spendCoins)
-function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), pearls: c.pearls, starfish: c.starfish }); writeSave(); }
+function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), score: c.score ?? SAVE.score, pearls: c.pearls, starfish: c.starfish }); writeSave(); }
 // a purchase also lowers the coins the checkpoint would give back
 function spendCoins(n) { for (const c of new Set([SAVE.checkpoint, ...Object.values(SAVE.cps || {})])) if (c) c.coins = Math.max(0, c.coins - n); writeSave(); }
+// ---------------- points (same system as in Level 3) ----------------
+// Points are for comparing (coins / starfish are money). Mini games and bosses give their big points only once
+// per game, a boss can still be fought again and again. Time bonus: 10'000 minus 25 per second, never below 0.
+const PTS = { coin: 10, star: 10, pearl: 10, trick: 100, grind: 10, sail: 200, chest: 100, enemy: 100, devil: 200, shark: 200, storm: 100, fork: 50, bossHit: 500, mini: 1000, boss: 5000 };
+const TIME_BONUS_MAX = 10000, TIME_BONUS_PER_S = 25;
+const timeBonus = sec => Math.max(0, Math.round((TIME_BONUS_MAX - sec * TIME_BONUS_PER_S) / 10) * 10);
+const fmtNum = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+const fmtTime = sec => Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+function bumpBest() { if ((SAVE.score || 0) > (SAVE.best || 0)) { SAVE.best = SAVE.score; return true; } return false; }
+const SC = { pops: [], toast: null };          // floating "+100" (world / screen coordinates) and the boss summary
+function gainPts(n, x, y, big) { SAVE.score = (SAVE.score || 0) + n; bumpBest(); if (x != null) SC.pops.push({ x, y, text: '+' + fmtNum(n), t: 0, big }); }
+// a mini game won: 1000 points the first time
+function miniPts(id) { if (SAVE.pts['mini_' + id]) return false; SAVE.pts['mini_' + id] = true; gainPts(PTS.mini, W / 2, 150, true); writeSave(); return true; }
+// a boss beaten: 5000 + time bonus the first time; a summary appears at the top for a few seconds
+function bossPts(id) {
+  if (SAVE.pts['boss_' + id]) { SC.toast = { lines: [tx('Schon einmal besiegt – diesmal gibt es keine Punkte, nur den Spaß.')], t: 360 }; return; }
+  SAVE.pts['boss_' + id] = true;
+  const sec = (SAVE.wtime[id] || 0) / 60, tb = timeBonus(sec);
+  SAVE.score = (SAVE.score || 0) + PTS.boss + tb; const rec = bumpBest(); writeSave();
+  SC.toast = { lines: [tx('Boss besiegt: +{b}   ·   Zeitbonus ({t}): +{z}', { b: fmtNum(PTS.boss), t: fmtTime(sec), z: fmtNum(tb) }),
+    (rec ? tx('NEUER REKORD!') + '  ' : '') + tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score), r: fmtNum(SAVE.best || 0) })], t: 480 };
+}
+function drawScoreBox() {
+  ctx.save(); ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W - 168, 46, 156, 26, 10); ctx.fill();
+  ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left'; ctx.fillText(tx('PUNKTE'), W - 158, 59);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'right'; ctx.fillText(fmtNum(SAVE.score || 0), W - 20, 60);
+  ctx.restore();
+}
+function drawPops() {
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  for (const p of SC.pops) {
+    const u = p.t / 60; ctx.globalAlpha = Math.max(0, 1 - u * u);
+    ctx.font = `bold ${p.big ? 22 : 16}px Arial`; ctx.strokeStyle = OUT; ctx.lineWidth = 4; ctx.fillStyle = '#ffe14d';
+    ctx.strokeText(p.text, p.x, p.y - u * 40); ctx.fillText(p.text, p.x, p.y - u * 40);
+  }
+  ctx.restore();
+}
+function drawScoreToast() {
+  const t = SC.toast; if (!t) return;
+  ctx.save(); ctx.globalAlpha = Math.min(1, t.t / 30); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const h = 18 + t.lines.length * 24;
+  ctx.fillStyle = 'rgba(16,26,44,0.85)'; ctx.beginPath(); ctx.roundRect(W / 2 - 330, 84, 660, h, 14); ctx.fill();
+  ctx.fillStyle = '#ffe14d'; ctx.font = 'bold 16px Arial';
+  t.lines.forEach((l, i) => ctx.fillText(l, W / 2, 84 + 21 + i * 24));
+  ctx.restore();
+}
 // ---------------- lives ----------------
 // 3 lives: when all hearts are gone one life is lost and Kai simply carries on right there with full hearts.
 // Only when all 3 lives are gone the current world starts again (from its checkpoint).
@@ -250,6 +300,11 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  // ---------- points ----------
+  'PUNKTE': ['POINTS', 'PUNTOS'], 'NEUER REKORD!': ['NEW RECORD!', '¡NUEVO RÉCORD!'],
+  'Punkte: {p}   ·   Rekord: {r}': ['Points: {p}   ·   Record: {r}', 'Puntos: {p}   ·   Récord: {r}'],
+  'Boss besiegt: +{b}   ·   Zeitbonus ({t}): +{z}': ['Boss beaten: +{b}   ·   Time bonus ({t}): +{z}', 'Jefe vencido: +{b}   ·   Bono de tiempo ({t}): +{z}'],
+  'Schon einmal besiegt – diesmal gibt es keine Punkte, nur den Spaß.': ['Beaten before – no points this time, just the fun.', 'Ya lo venciste antes – esta vez no hay puntos, solo la diversión.'],
   // ---------- general ----------
   'JA': ['YES', 'SÍ'], 'NEIN': ['NO', 'NO'],
   // ---------- on-screen buttons · exit · main menu ----------

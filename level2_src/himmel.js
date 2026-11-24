@@ -139,7 +139,7 @@ function hurt(text, x, y) {
   burst(x, y, '#ffffff', 14); S.shake = 8; Audio.play('crash'); flash(tx(text), 60);
   loseHeart(); return true;
 }
-function coinGot(n, x, y) { S.coins += n; burst(x, y, '#ffd23a', 6 + n * 2, 3); Audio.play('coin'); }
+function coinGot(n, x, y) { S.coins += n; gainPts(PTS.coin * n); burst(x, y, '#ffd23a', 6 + n * 2, 3); Audio.play('coin'); }
 
 // leaving the OXXO / the football cloud: Kai flaps up first, so he doesn't touch the cloud floor
 function liftOff() { const k = S.kai; S.floorWarn = 0; k.y = Math.min(k.y, FLOOR - 80); k.vy = -3; S.lowWarned = false; flapFx(); }
@@ -308,7 +308,7 @@ function updateFootball(dt) {
       f.ball = null;
       if (f.goals >= 3 || f.shots >= 5 || f.goals + (5 - f.shots) < 3) {
         const won = f.goals >= 3; f.done = 1;
-        if (won) { S.coins += 15; S.hearts++; S.heartFlash = -40; Audio.play('win'); flash(tx('GEWONNEN! +15 Münzen · +1 Herz'), 150); }
+        if (won) { S.coins += 15; S.hearts++; S.heartFlash = -40; miniPts('football'); Audio.play('win'); flash(tx('GEWONNEN! +15 Münzen · +1 Herz'), 150); }
         else flash(tx('Knapp verloren – weiter geht\'s!'), 120);
         setTimeout(() => endFootball(won), 1400);
       }
@@ -416,7 +416,7 @@ function update(dt) {
     // Kai walks down the glowing stairway
     const u = Math.min(1, S.stairsT / 200); k.x = 250 + u * 380; k.y = 160 + u * 140;
     updateParticles(dt, 0);
-    if (S.stairsT > 200 && !S.leaving) { S.leaving = true; SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.done.heaven = true; SAVE.mini.harp = SAVE.mini.harp === true || !!(S.harp && S.harp.done); goToWorld('stadt.html', 'from=himmel'); }
+    if (S.stairsT > 200 && !S.leaving) { S.leaving = true; bossPts('himmel'); SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.done.heaven = true; SAVE.mini.harp = SAVE.mini.harp === true || !!(S.harp && S.harp.done); goToWorld('stadt.html', 'from=himmel'); }
     return;
   }
 
@@ -515,8 +515,8 @@ function update(dt) {
       if (o.done || (o.type !== 'devil' && o.type !== 'storm')) continue;
       if (Math.hypot(a.x - o.x, a.y - o.y) < (o.r || 20) + 8) {
         a.life = 0; o.done = true;
-        if (o.type === 'devil') { burst(o.x, o.y, '#ff5a3a', 20, 5); Audio.play('devilHit'); coinGot(3, o.x, o.y); flash(tx('TREFFER! +3'), 40); }
-        else { burst(o.x, o.y, '#9aa6b1', 16, 4); Audio.play('pop'); }
+        if (o.type === 'devil') { burst(o.x, o.y, '#ff5a3a', 20, 5); Audio.play('devilHit'); coinGot(3, o.x, o.y); gainPts(PTS.devil, o.x, o.y - 30); flash(tx('TREFFER! +3'), 40); }
+        else { burst(o.x, o.y, '#9aa6b1', 16, 4); Audio.play('pop'); gainPts(PTS.storm, o.x, o.y - 30); }
       }
     }
     // arrows also shoot down the pitchforks the devils throw (shaft or prongs)
@@ -525,7 +525,7 @@ function update(dt) {
       const tipX = s.x + Math.cos(s.rot) * 16, tipY = s.y + Math.sin(s.rot) * 16;
       if (Math.hypot(a.x - s.x, a.y - s.y) < 18 || Math.hypot(a.x - tipX, a.y - tipY) < 14) {
         s.dead = true; a.life = 0;
-        burst(s.x, s.y, '#ffd23a', 12, 4); burst(s.x, s.y, '#c8352c', 8, 3); Audio.play('clank'); coinGot(1, s.x, s.y);
+        burst(s.x, s.y, '#ffd23a', 12, 4); burst(s.x, s.y, '#c8352c', 8, 3); Audio.play('clank'); coinGot(1, s.x, s.y); gainPts(PTS.fork, s.x, s.y - 20);
         break;
       }
     }

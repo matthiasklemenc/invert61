@@ -45,9 +45,9 @@ const SITES = { oxxo: 4300, ptero: 7600 };      // tree house shop / pterosaur r
 const LIANA_DOWN = 70;                           // the liana back down into the valley (left edge)
 
 const S = {
-  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0,
+  phase: 'start', t: 0, cam: 0, hearts: SAVE.hearts || LIFE_HEARTS, coins: SAVE.coins || 0, score: SAVE.score || 0, pops: [], wtime: SAVE.wtime.hoehe || 0, combo: 0,
   kai: { x: 200, y: FLOOR, vx: 0, vy: 0, dir: 0, face: 1, faceAnim: 1, ground: true, platform: null, inv: 0, pushT: 0, landT: 0, safeX: 200, jumpHeld: false, hurtT: 0, shootT: 0, climb: 0 },
-  plats: [], objects: [], compys: [], pteros: [], stones: [], shots: [], particles: [],
+  plats: [], objects: [], compys: [], pteros: [], stones: [], shots: [], particles: [], eggs: [],
   stoneT: 60, reload: 0,
   cpX: 200, msg: '', msgTimer: 0, heartFlash: 0, shake: 0,
   ask: null, asked: {}, boss: null, noHud: false, hideKai: false, game: null, shopMsg: '', shopMsgT: 0,
@@ -78,7 +78,7 @@ function flash(text, f = 80) { S.msg = tx(text); S.msgTimer = f; }
 const kaiBox = () => { const k = S.kai; return { x1: k.x - 26, x2: k.x + 26, y1: k.y - 108, y2: k.y - 4 }; };
 const overlap = (a, b) => a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1;
 const compyBox = c => ({ x1: c.x - 28, x2: c.x + 28, y1: FLOOR - 50, y2: FLOOR });
-const pteroBox = p => ({ x1: p.x - 40, x2: p.x + 40, y1: p.y - 18, y2: p.y + 20 });
+const pteroBox = p => { const s = p.baby ? 0.6 : 1; return { x1: p.x - 40 * s, x2: p.x + 40 * s, y1: p.y - 18 * s, y2: p.y + 20 * s }; };
 const playing = () => S.phase === 'play' || S.phase === 'boss';
 const isTouchDev = () => CTRL.touch;
 
@@ -147,7 +147,7 @@ window.addEventListener('keyup', e => {
 function beginWorld() {
   const cont = QUERY.get('from') === 'continue' && SAVE.cpH;
   S.phase = 'play'; S.noHud = false; SAVE.started = true; SAVE.seenHoehe = true;
-  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
   const k = S.kai;
   if (QUERY.get('from') !== 'tal' || S.begun) { k.x = cont ? SAVE.cpH : 200; }
   k.y = FLOOR; k.vy = 0; k.vx = 0; k.dir = 0; k.face = 1; k.ground = true; k.platform = null; k.safeX = k.x;
@@ -160,7 +160,20 @@ function beginWorld() {
     Audio.play('chest');
   } else flash('DIE FELSENHÖHE', 110);
 }
-function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; writeSave(); }
+function saveProgress() { SAVE.hearts = S.hearts; SAVE.coins = S.coins; SAVE.score = S.score; SAVE.wtime.hoehe = S.wtime; bumpBest(); writeSave(); }
+// points: n points, shown as a little "+n" at (x, y) when given
+function addScore(n, x, y, big) { S.score += n; if (x != null) S.pops.push({ x, y, text: '+' + fmtNum(n), t: 0, big }); }
+// jumping from one enemy onto the next without touching the ground: ×2, ×4, ×8 (like Super Mario)
+function comboScore(base, x, y) { S.combo++; const m = Math.min(8, 2 ** (S.combo - 1)); addScore(base * m, x, y, m > 1); if (m > 1) S.pops.push({ x, y: y - 24, text: '×' + m, t: 0, col: '#ff9ad0' }); }
+// end of the world: the boss gives its 5000 points and the time bonus only the first time
+function bossSummary(id) {
+  if (SAVE.pts['boss_' + id]) { S.summary = { repeat: true }; return; }
+  SAVE.pts['boss_' + id] = true;
+  const sec = S.wtime / 60, tb = timeBonus(sec);
+  S.score += PTS.boss + tb;
+  SAVE.score = S.score; const rec = bumpBest();
+  S.summary = { boss: PTS.boss, time: tb, sec, record: rec };
+}
 function reachCheckpoint(x) {
   if (x <= S.cpX) return;
   S.cpX = x; SAVE.cpH = x; saveProgress(); setCheckpoint('hoehe');
@@ -196,8 +209,8 @@ function fallInGorge() {
 }
 function resetGame() {
   restartWorldSave();
-  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0;
-  buildWorld(); S.stones = []; S.shots = []; S.boss = null; Audio.setBoss(false);
+  S.hearts = SAVE.hearts || LIFE_HEARTS; S.coins = SAVE.coins || 0; S.score = SAVE.score || 0;
+  buildWorld(); S.stones = []; S.shots = []; S.eggs = []; S.boss = null; Audio.setBoss(false);
   const k = S.kai; k.x = SAVE.cpH || 200; k.y = FLOOR; k.vx = 0; k.vy = 0; k.dir = 0; k.face = 1; k.inv = 60; k.ground = true; k.platform = null; k.safeX = k.x;
   S.cpX = k.x; S.cam = clamp(k.x - W * 0.32, 0, BOSS_X);
   S.phase = 'play';
@@ -215,6 +228,8 @@ function update(dt) {
   if (S.heartFlash > 0) S.heartFlash -= dt;
   if (S.shopMsgT > 0) S.shopMsgT -= dt;
   if (S.shake > 0) S.shake = Math.max(0, S.shake - 0.5 * dt);
+  if (playing()) S.wtime += dt;                       // time played in this world (frames)
+  for (const p of S.pops) p.t += dt; S.pops = S.pops.filter(p => p.t < 60);
   updateParticles(dt);
   for (const o of S.objects) o.p += 0.05 * dt;
   if (S.phase === 'ride') { updateRide(dt); return; }
@@ -317,7 +332,7 @@ function updateKai(dt) {
 }
 function landOn(pl, top) {
   const k = S.kai;
-  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8;
+  k.y = top; k.vy = 0; k.ground = true; k.platform = pl; k.landT = 8; S.combo = 0;
   Audio.play('land');
 }
 
@@ -339,11 +354,11 @@ function updateCompys(dt) {
     if (c.x > c.x2 || !groundAt(c.x + 30)) { c.x = Math.min(c.x, c.x2); c.dir = -1; }
     const cb = compyBox(c);
     if (!overlap(kb, cb)) continue;
-    if (k.vy > 0 && (k.prevY ?? k.y) <= cb.y1 + 16) { killCompy(c); stompBounce(cb.y1); }
+    if (k.vy > 0 && (k.prevY ?? k.y) <= cb.y1 + 16) { killCompy(c, true); stompBounce(cb.y1); }
     else hurt(c.x);
   }
 }
-function killCompy(c) { c.dead = true; c.deadT = 0; Audio.play('stomp'); burst(c.x, FLOOR - 24, '#f0c64a', 12, 4); }
+function killCompy(c, stomped) { c.dead = true; c.deadT = 0; Audio.play('stomp'); burst(c.x, FLOOR - 24, '#f0c64a', 12, 4); if (stomped) comboScore(PTS.compy, c.x, FLOOR - 70); else addScore(PTS.compy, c.x, FLOOR - 70); }
 function updatePteros(dt) {
   const k = S.kai, kb = kaiBox();
   for (const p of S.pteros) {
@@ -357,7 +372,7 @@ function updatePteros(dt) {
       p.cool -= dt;
       // Kai below and in front of it: it screeches and swoops down
       const dx = k.x - p.x;
-      if (p.cool <= 0 && Math.abs(dx) < 330 && Math.abs(dx) > 60 && S.phase === 'play') {
+      if (p.cool <= 0 && Math.abs(dx) < 330 && Math.abs(dx) > 60 && playing()) {
         p.state = 'warn'; p.st = 0; p.dir = Math.sign(dx); Audio.play('bark');
       }
     } else if (p.state === 'warn') {
@@ -365,19 +380,19 @@ function updatePteros(dt) {
       if (p.st > 30) { p.state = 'dive'; p.st = 0; p.sx = p.x; p.sy = p.y; p.tx = k.x + k.vx * 26; }
     } else if (p.state === 'dive') {
       // a curve down to about Kai's head height and up again on the other side
-      p.st += dt; const u = Math.min(1, p.st / 70), ex = p.sx + (p.tx - p.sx) * 2;
+      p.st += dt; const u = Math.min(1, p.st / 70), ex = p.baby ? clamp(p.sx + (p.tx - p.sx) * 2, BOSS_X + 50, MAP_END - 50) : p.sx + (p.tx - p.sx) * 2;
       p.x = p.sx + (ex - p.sx) * u;
       p.y = p.sy + (FLOOR - 66 - p.sy) * Math.sin(u * Math.PI);
       p.dir = Math.sign(ex - p.sx) || p.dir;
-      if (u >= 1) { p.state = 'fly'; p.cool = rand(150, 260); p.x1 = Math.min(p.x1, p.x - 200); p.x2 = Math.max(p.x2, p.x + 200); }
+      if (u >= 1) { p.state = 'fly'; p.cool = p.baby ? rand(50, 110) : rand(150, 260); if (!p.baby) { p.x1 = Math.min(p.x1, p.x - 200); p.x2 = Math.max(p.x2, p.x + 200); } }
     }
     const pb = pteroBox(p);
     if (!overlap(kb, pb)) continue;
-    if (k.vy > 0 && (k.prevY ?? k.y) <= pb.y1 + 18) { killPtero(p); stompBounce(pb.y1); }
+    if (k.vy > 0 && (k.prevY ?? k.y) <= pb.y1 + 18) { killPtero(p, true); stompBounce(pb.y1); }
     else hurt(p.x);
   }
 }
-function killPtero(p) { p.dead = true; p.deadT = 0; p.vy = -3; Audio.play('stomp'); burst(p.x, p.y, '#e9a0c8', 12, 4); }
+function killPtero(p, stomped) { p.dead = true; p.deadT = 0; p.vy = -3; Audio.play('stomp'); burst(p.x, p.y, '#e9a0c8', 12, 4); const n = p.baby ? PTS.baby : PTS.ptero; if (stomped) comboScore(n, p.x, p.y - 30); else addScore(n, p.x, p.y - 30); }
 
 // ---------------- falling stones from the cliffs above ----------------
 function updateStones(dt) {
@@ -424,7 +439,7 @@ function updatePickups() {
     if (Math.abs(o.x - k.x) > 90) continue;
     if (kb.x1 - o.r < o.x && kb.x2 + o.r > o.x && kb.y1 - o.r < o.y && kb.y2 + 8 > o.y) {
       o.done = true;
-      if (o.type === 'coin') { S.coins++; burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
+      if (o.type === 'coin') { S.coins++; addScore(PTS.coin); burst(o.x, o.y, '#ffd23a', 6, 2.5); Audio.play('coin'); }
       if (o.type === 'heart') { S.hearts++; S.heartFlash = -30; burst(o.x, o.y, '#ff3b5c', 14, 3); Audio.play('chest'); flash('+1 HERZ', 50); }
     }
   }
@@ -444,7 +459,7 @@ function updateSites() {
   }
   for (const [id, x] of Object.entries(SITES)) {
     const gate = x + 120;
-    if (Math.abs(k.x - gate) > 400) S.asked[id] = false;
+    if (Math.abs(k.x - gate) > 160) S.asked[id] = false;      // ride a bit away and back = asked again
     if (!S.asked[id] && Math.abs(k.x - gate) < 30 && k.ground && !k.platform) {
       S.asked[id] = true; S.ask = id; S.phase = 'ask';
       k.vx = 0; k.dir = 0; Audio.play('chime');

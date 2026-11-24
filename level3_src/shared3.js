@@ -16,11 +16,14 @@ const SAVE_DEFAULT = {
   done: { tal: false, hoehe: false, lava: false },
   mini: { rodeo: null, fossil: null, ptero: null, lore: null },
   checkpoint: null,                            // snapshot at the start of the current world
+  score: 0, best: 0,                           // points of this game / personal record on this device
+  pts: {},                                     // what already gave its one-time points (mini games, bosses)
+  wtime: { tal: 0, hoehe: 0 },                 // seconds played in each world (for the time bonus)
 };
 function loadSave() {
   try {
     const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
+    if (raw) return Object.assign({}, SAVE_DEFAULT, raw, { pts: Object.assign({}, raw.pts), wtime: Object.assign({}, SAVE_DEFAULT.wtime, raw.wtime), items: Object.assign({}, SAVE_DEFAULT.items, raw.items), outfit: Object.assign({}, SAVE_DEFAULT.outfit, raw.outfit), outfitBali: Object.assign({}, SAVE_DEFAULT.outfitBali, raw.outfitBali), done: Object.assign({}, SAVE_DEFAULT.done, raw.done), mini: Object.assign({}, SAVE_DEFAULT.mini, raw.mini) });
   } catch (e) {}
   return JSON.parse(JSON.stringify(SAVE_DEFAULT));
 }
@@ -50,16 +53,63 @@ function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)
 function resetSave(keepLang = true) { const lang = SAVE.lang; Object.assign(SAVE, JSON.parse(JSON.stringify(SAVE_DEFAULT))); if (keepLang) SAVE.lang = lang; writeSave(); }
 // remember the state at the start of a world, so a game over only restarts that world
 function setCheckpoint(world) {
-  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
+  SAVE.checkpoint = { world, hearts: SAVE.hearts, coins: SAVE.coins, score: SAVE.score || 0, pearls: SAVE.pearls, starfish: SAVE.starfish, items: Object.assign({}, SAVE.items) };
   SAVE.cps = Object.assign({}, SAVE.cps, { [world]: SAVE.checkpoint }); writeSave();
 }
 // back in a world that was already started (e.g. the city after the sky): use that world's own checkpoint again
 function useCheckpoint(world) { if (SAVE.cps && SAVE.cps[world]) { SAVE.checkpoint = SAVE.cps[world]; writeSave(); } else setCheckpoint(world); }
 // world restart (all lives lost): hearts, coins, pearls and starfish go back to the world start –
 // but bought things STAY, and coins spent on them stay spent (see spendCoins)
-function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), pearls: c.pearls, starfish: c.starfish }); writeSave(); }
+function restoreCheckpoint() { const c = SAVE.checkpoint; if (!c) return; Object.assign(SAVE, { hearts: c.hearts, coins: Math.max(0, c.coins), score: c.score ?? SAVE.score, pearls: c.pearls, starfish: c.starfish }); writeSave(); }
 // a purchase also lowers the coins the checkpoint would give back
 function spendCoins(n) { for (const c of new Set([SAVE.checkpoint, ...Object.values(SAVE.cps || {})])) if (c) c.coins = Math.max(0, c.coins - n); writeSave(); }
+// ---------------- points ----------------
+// Points are for comparing (coins are money for the OXXO). Defeated dinos stay gone, mini games and bosses
+// give their big points only once per game – so nobody can farm millions. A boss can be fought again and again.
+const PTS = { coin: 10, raptor: 100, compy: 100, baby: 50, ptero: 200, trike: 300, stego: 300, mini: 1000, boss: 5000 };
+// time bonus: starts at 10'000 and shrinks by 25 per second played in that world – never below 0 (no countdown!)
+const TIME_BONUS_MAX = 10000, TIME_BONUS_PER_S = 25;
+const timeBonus = sec => Math.max(0, Math.round((TIME_BONUS_MAX - sec * TIME_BONUS_PER_S) / 10) * 10);
+const fmtNum = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+const fmtTime = sec => Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+function bumpBest() { if ((SAVE.score || 0) > (SAVE.best || 0)) { SAVE.best = SAVE.score; return true; } return false; }
+// the score box in the HUD (below the coins)
+function drawScoreBox(score) {
+  ctx.save(); ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(20,30,50,0.6)'; ctx.beginPath(); ctx.roundRect(W - 168, 46, 156, 26, 10); ctx.fill();
+  ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left'; ctx.fillText(tx('PUNKTE'), W - 158, 59);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'right'; ctx.fillText(fmtNum(score), W - 20, 60);
+  ctx.restore();
+}
+// "+100" floating up where it happened (world coordinates)
+function drawPops(pops) {
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  for (const p of pops) {
+    const u = p.t / 60; ctx.globalAlpha = Math.max(0, 1 - u * u);
+    ctx.font = `bold ${p.big ? 22 : 16}px Arial`; ctx.strokeStyle = OUT; ctx.lineWidth = 4; ctx.fillStyle = p.col || '#ffe14d';
+    ctx.strokeText(p.text, p.x, p.y - u * 40); ctx.fillText(p.text, p.x, p.y - u * 40);
+  }
+  ctx.restore();
+}
+// the boss energy bar: green → yellow → red
+function drawBossBar(name, frac) {
+  const bw = 300, bx = W / 2 - bw / 2 + 40, f = clamp(frac, 0, 1);
+  ctx.save(); ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(30,20,30,0.78)'; ctx.beginPath(); ctx.roundRect(W / 2 - 230, 6, 460, 32, 12); ctx.fill();
+  ctx.fillStyle = '#ffe0f0'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'right'; ctx.fillText(name, bx - 10, 23);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.roundRect(bx, 14, bw, 16, 8); ctx.fill();
+  const col = f > 0.6 ? '#34c759' : f > 0.3 ? '#ffcc2e' : '#ff3b30';
+  if (f > 0) { ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(bx, 14, Math.max(8, bw * f), 16, 8); ctx.fill(); }
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(bx, 14, bw, 16, 8); ctx.stroke();
+  ctx.restore();
+}
+// the end-of-world summary lines (boss beaten)
+function summaryLines(sm) {
+  if (!sm) return [];
+  if (sm.repeat) return [tx('Schon einmal besiegt – diesmal gibt es keine Punkte, nur den Spaß.'), tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score), r: fmtNum(SAVE.best || 0) })];
+  return [tx('Boss besiegt: +{b}   ·   Zeitbonus ({t}): +{z}', { b: fmtNum(sm.boss), t: fmtTime(sm.sec), z: fmtNum(sm.time) }),
+    (sm.record ? tx('NEUER REKORD!') + '  ' : '') + tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score), r: fmtNum(SAVE.best || 0) })];
+}
 // ---------------- lives ----------------
 // 3 lives: when all hearts are gone one life is lost and Kai simply carries on right there with full hearts.
 // Only when all 3 lives are gone the current world starts again (from its checkpoint).
@@ -261,6 +311,13 @@ const QUERY = new URLSearchParams(location.search);
 const LANGS = ['de', 'en', 'es'];
 const TR = {
   // ---------- LEVEL 3 · FELSENHÖHE ----------
+  'PUNKTE': ['POINTS', 'PUNTOS'], 'Punkte': ['points', 'puntos'], 'NOCHMAL': ['AGAIN', 'OTRA VEZ'], 'NEUER REKORD!': ['NEW RECORD!', '¡NUEVO RÉCORD!'],
+  'Punkte: {p}   ·   Rekord: {r}': ['Points: {p}   ·   Record: {r}', 'Puntos: {p}   ·   Récord: {r}'],
+  'Boss besiegt: +{b}   ·   Zeitbonus ({t}): +{z}': ['Boss beaten: +{b}   ·   Time bonus ({t}): +{z}', 'Jefe vencido: +{b}   ·   Bono de tiempo ({t}): +{z}'],
+  'Schon einmal besiegt – diesmal gibt es keine Punkte, nur den Spaß.': ['Beaten before – no points this time, just the fun.', 'Ya lo venciste antes – esta vez no hay puntos, solo la diversión.'],
+  'TREFFER!': ['HIT!', '¡GOLPE!'],
+  'Die FLUGSAURIER-MAMA! Triff sie mit der Schleuder!': ['The PTEROSAUR MOM! Hit her with the slingshot!', '¡La MAMÁ PTEROSAURIO! ¡Dale con la resortera!'],
+  'Sie ist gelandet – jetzt zählt jeder Treffer doppelt!': ['She landed – every hit counts double now!', '¡Aterrizó – ahora cada golpe cuenta doble!'],
   'Halte ▶ gedrückt – los geht\'s!': ['Hold ▶ – let\'s go!', '¡Mantén ▶ – vamos!'],
   'Halte den Pfeil nach rechts – los geht\'s!': ['Hold the right arrow – let\'s go!', '¡Mantén la flecha derecha – vamos!'],
   '◀ ▶ links gedrückt halten = fahren · loslassen = stehen bleiben': ['Hold ◀ ▶ on the left = ride · let go = stop', 'Mantén ◀ ▶ a la izquierda = rodar · suelta = parar'],

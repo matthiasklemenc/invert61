@@ -18,6 +18,7 @@ function updateBoss(dt) {
   if (!S.boss) { startBoss(); return; }
   const b = S.boss, k = S.kai;
   b.t += dt; if (b.flash > 0) b.flash -= dt;
+  b.bar = (b.bar ?? 1) + (b.hp / 3 - (b.bar ?? 1)) * Math.min(1, 0.08 * dt);   // the energy bar slides down smoothly
   const toward = Math.sign(k.x - b.x) || -1;
   const lo = BOSS_X + 170, hi = MAP_END - 170;
   b.head += ((b.state === 'dizzy' ? 1 : 0) - b.head) * Math.min(1, 0.12 * dt);
@@ -71,7 +72,7 @@ function updateBoss(dt) {
       b.hp--; b.state = 'hit'; b.t = 0; b.flash = 60; S.shake = 12;
       k.y = top; k.vy = -13.5; k.ground = false; k.platform = null; k.inv = Math.max(k.inv, 40);
       burst(h.x, top, '#ffd23a', 20, 5); Audio.play('bossHit'); Audio.play('boing');
-      flash(b.hp > 0 ? tx('TREFFER! Noch {n}×', { n: b.hp }) : 'T-REX BESIEGT!', 100);
+      flash(b.hp > 0 ? 'TREFFER!' : 'T-REX BESIEGT!', 100);
       return;
     }
   }
@@ -88,7 +89,7 @@ function updateBoss(dt) {
 function winValley() {
   if (S.phase === 'won') return;
   S.phase = 'won'; Audio.setBoss(false); Audio.play('win'); Audio.play('cheer');
-  S.coins += 30; SAVE.done.tal = true; saveProgress();
+  S.coins += 30; SAVE.done.tal = true; bossSummary('tal'); saveProgress();
   burst(S.kai.x, S.kai.y - 60, '#ffd23a', 40, 6);
 }
 function updateBossDead(dt) { if (S.boss) S.boss.t += dt; }

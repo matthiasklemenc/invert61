@@ -129,7 +129,7 @@ function sayAhoi() {
 function sailBoing(b) {
   const k = S.kai;
   k.y = SAIL_Y; k.vy = -16.5; k.rampJump = true; k.ground = false; k.platform = null;
-  b.hits++; b.rock = 1; S.coins += 20; S.sailBoings = (S.sailBoings || 0) + 1;
+  b.hits++; b.rock = 1; S.coins += 20; S.sailBoings = (S.sailBoings || 0) + 1; gainPts(PTS.sail, k.x, SAIL_Y - 40, true);
   Audio.play('boing'); Audio.play('coin');
   for (let i = 0; i < 16; i++) S.particles.push({ x: k.x + rand(-30, 30), y: SAIL_Y + rand(-10, 10), vx: rand(-3, 3), vy: rand(-4, 1), r: rand(2, 4), color: i % 2 ? '#ffffff' : '#ffd23a', life: 1, g: 0.15 });
   flash(S.sailBoings > 1 ? tx('{n}× SEGEL-BOING! +20', { n: S.sailBoings }) : tx('SEGEL-BOING! +20'), 70);
@@ -365,7 +365,7 @@ function landed(surface) {
   if (k.natas) { updateNatas(dt); return; }
   if (k.flipping) { k.flipping = false; k.flip = 0; }
   k.ollieT = null;
-  if (k.combo > 0) { const bonus = k.combo * 3; S.coins += bonus; flash(k.combo > 1 ? tx('{k}× KICKFLIP! +{n}', { k: k.combo, n: bonus }) : tx('KICKFLIP! +{n}', { n: bonus }), 60); Audio.play('coin'); }
+  if (k.combo > 0) { const bonus = k.combo * 3; S.coins += bonus; gainPts(PTS.trick * k.combo, k.x, k.y - 130, k.combo > 1); flash(k.combo > 1 ? tx('{k}× KICKFLIP! +{n}', { k: k.combo, n: bonus }) : tx('KICKFLIP! +{n}', { n: bonus }), 60); Audio.play('coin'); }
   k.combo = 0;
   if (surface !== 'grind') { Audio.play('land'); k.landT = 10; }
 }
@@ -376,7 +376,7 @@ function launchFromRamp(o, boost) {
   if (o.wings) { startAscend(); return; }
   if (o.pierRamp) {
     // big jump off the end of the pier into the water: +10 coins
-    jump(RAMP_V * 1.08); k.rampJump = true; S.coins += 10;
+    jump(RAMP_V * 1.08); k.rampJump = true; S.coins += 10; gainPts(PTS.trick, k.x, k.y - 130);
     Audio.play('ramp'); Audio.play('coin'); flash(tx('HAFEN-SPRUNG! +10'), 90);
     return;
   }
@@ -411,7 +411,7 @@ function updateKai(dt) {
       if (k.grind) {
         k.grindT += dt;
         if (Math.random() < 0.7 * dt) S.particles.push({ x: k.x + rand(-25, 25), y: k.y - 2, vx: rand(-3, -1), vy: rand(-2, 0), r: rand(1, 2.5), color: '#ffd25a', life: 0.8, g: 0.1 });
-        if (k.grindT > 14) { k.grindT = 0; S.coins++; Audio.play('coin'); }
+        if (k.grindT > 14) { k.grindT = 0; S.coins++; gainPts(PTS.grind); Audio.play('coin'); }
       }
     }
   }
@@ -492,7 +492,7 @@ function updateNatas(dt) {
   const done = Math.floor(n.rot / (Math.PI * 2));
   if (done > n.spins) {
     n.spins = done;
-    S.coins += 3; burst(k.x, k.y - 60, '#ffd23a', 10, 4); Audio.play('coin');
+    S.coins += 3; gainPts(PTS.trick, k.x, k.y - 140); burst(k.x, k.y - 60, '#ffd23a', 10, 4); Audio.play('coin');
     if (n.spins === 3) { S.hearts++; S.heartFlash = -40; burst(k.x, k.y - 60, '#ff5a7a', 14, 5); Audio.play('taco'); flash(tx('3 SPINS! +1 Herz'), 90); }
     else flash(tx('{n}× SPIN! +3', { n: n.spins }), 50);
   }
@@ -534,12 +534,12 @@ function bossRoofCheck(prevY) {
     burst(k.x, roof.y, '#9be08a', 20, 6); burst(k.x, roof.y, '#ffffff', 10, 4);
     for (let i = 0; i < 6; i++) S.particles.push({ x: k.x + rand(-40, 40), y: roof.y, vx: rand(-4, 4), vy: rand(-8, -3), r: rand(3, 6), color: ['#8a6a3a', '#6b7884', '#c9c9c9'][i % 3], life: 1.4, g: 0.35, shard: true, rot: rand(0, 6) });
     Audio.play('stomp'); Audio.play('horn');
-    S.coins += 5;
+    S.coins += 5; gainPts(PTS.bossHit, k.x, roof.y - 40, true);
     // bounce back to the street
     k.vy = -11; let y = k.y, vy = k.vy, t = 0;
     while (t < 200) { vy += GRAV; y += vy; t++; if (vy > 0 && y >= FLOOR) break; }
     k.vx = (250 - k.x) / t;
-    if (b.hp <= 0) { b.state = 'dying'; b.t = 0; Audio.setBoss(false); flash(tx('DER MÜLLWAGEN IST ERLEDIGT!'), 160); S.coins += 20; }
+    if (b.hp <= 0) { b.state = 'dying'; b.t = 0; Audio.setBoss(false); flash(tx('DER MÜLLWAGEN IST ERLEDIGT!'), 160); S.coins += 20; bossPts('stadt'); }
     else flash(tx('VOLLTREFFER! Noch {n}×', { n: b.hp }), 90);
   }
 }
@@ -683,7 +683,7 @@ function update(dt) {
   const body = { x1: k.x - 14, x2: k.x + 22, y1: k.y - 100, y2: k.y - 4 };
   for (const o of S.objects) {
     if (o.done) continue;
-    if (o.type === 'coin') { if (o.x + o.r > k.x - 43 && o.x - o.r < k.x + 44 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; S.coins++; burst(o.x, o.y, '#ffd23a', 8, 3); Audio.play('coin'); } continue; }
+    if (o.type === 'coin') { if (o.x + o.r > k.x - 43 && o.x - o.r < k.x + 44 && o.y + o.r > k.y - 114 && o.y - o.r < k.y + 4) { o.done = true; S.coins++; gainPts(PTS.coin); burst(o.x, o.y, '#ffd23a', 8, 3); Audio.play('coin'); } continue; }
     if (o.type === 'icecream' && !o.coneTaken) {
       const cx = o.x + 160, cy = o.top - 26;
       if (cx + 14 > k.x - 43 && cx - 14 < k.x + 44 && cy + 18 > k.y - 114 && cy - 14 < k.y + 4) {

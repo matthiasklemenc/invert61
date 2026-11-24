@@ -24,6 +24,7 @@ function draw() {
   drawWaves();
   for (const p of S.particles) { ctx.globalAlpha = Math.max(0, Math.min(1, p.life)); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
   ctx.globalAlpha = 1;
+  drawPops(S.pops);
   ctx.restore();
   drawFireballs();
   if (!S.hideKai && S.phase !== 'rodeo') drawKai();
@@ -528,12 +529,8 @@ function drawHUD() {
     for (const c of CHECKPOINTS) { ctx.fillStyle = S.cpX >= c ? '#34c759' : '#d8352c'; ctx.fillRect(bx + bw * c / BOSS_X - 1, 13, 3, 16); }
     ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#ffd23a'; ctx.textAlign = 'left'; ctx.fillText('T-REX', bx + bw + 6, 21);
   }
-  if (S.boss && S.phase === 'boss') {
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(40,20,10,0.75)'; ctx.beginPath(); ctx.roundRect(W / 2 - 110, 8, 220, 28, 12); ctx.fill();
-    ctx.fillStyle = '#ffe0b0'; ctx.font = 'bold 13px Arial'; ctx.fillText('T-REX', W / 2 - 40, 22);
-    for (let i = 0; i < 3; i++) drawHeart(W / 2 + 14 + i * 26, 21, 8, i < S.boss.hp);
-  }
+  if (S.boss && S.phase === 'boss') drawBossBar('T-REX', S.boss.bar ?? 1);
+  drawScoreBox(S.score);
   if (S.msgTimer > 0) {
     ctx.textAlign = 'center'; ctx.globalAlpha = Math.min(1, S.msgTimer / 20);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 24px Arial';
@@ -588,7 +585,7 @@ function drawScreens() {
     button(BTN.goYes, tx('NOCHMAL VERSUCHEN'), '#36c6f4', '#1677a8'); button(BTN.goNo, tx('NEIN – ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
   if (S.phase === 'won') {
-    panel(tx('T-REX BESIEGT!'), [tx('Das Dino-Tal ist geschafft! +30 Münzen'), SAVE.done.hoehe ? tx('Die Lavahöhlen kommen bald – dafür brauchst du das Magma-Board.') : tx('Weiter geht es an den Lianen hinauf zur Felsenhöhe!')], '#7dffa0');
+    panel(tx('T-REX BESIEGT!'), [tx('Das Dino-Tal ist geschafft! +30 Münzen'), ...summaryLines(S.summary), SAVE.done.hoehe ? tx('Die Lavahöhlen kommen bald – dafür brauchst du das Magma-Board.') : tx('Weiter geht es an den Lianen hinauf zur Felsenhöhe!')], '#7dffa0');
     button(BTN.up, '▲ ' + tx('ZUR FELSENHÖHE'), '#34c759', '#1f8f3c'); button(BTN.menu2, tx('ZUM MENÜ'), '#8a96a8', '#5d6878');
   }
 }
@@ -657,7 +654,8 @@ function resultPanel(text, win) {
   ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = win ? '#7dffa0' : '#ffb0a0'; ctx.strokeStyle = OUT; ctx.lineWidth = 5; ctx.font = 'bold 26px Arial';
   ctx.strokeText(text, W / 2, 214); ctx.fillText(text, W / 2, 214);
-  if (win) { ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(tx('+20 Münzen · Pokal-Stern!'), W / 2, 238 - 4); ctx.fillText(tx('+20 Münzen · Pokal-Stern!'), W / 2, 238 - 4); }
+  if (win) { const t = tx('+20 Münzen · Pokal-Stern!') + (S.game && S.game.pts ? '  ·  +' + fmtNum(PTS.mini) + ' ' + tx('Punkte') : ''); ctx.fillStyle = '#ffd23a'; ctx.font = 'bold 18px Arial'; ctx.strokeText(t, W / 2, 238 - 4); ctx.fillText(t, W / 2, 238 - 4); }
   ctx.restore();
-  button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  if (win) button(GBTN.next, tx('WEITER'), '#34c759', '#1f8f3c');
+  else { button(GBTN.again, '↻ ' + tx('NOCHMAL'), '#36c6f4', '#1677a8'); button(GBTN.next2, tx('WEITER'), '#8a96a8', '#5d6878'); }
 }
