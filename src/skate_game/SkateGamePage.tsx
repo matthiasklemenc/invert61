@@ -247,7 +247,8 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     // -----------------------------------------
     // 🔥 ROTATE DEVICE SCREEN
     // -----------------------------------------
-    if (isMobile && !isLandscape) {
+    // The menu (player, name, level tiles) works upright too – rotating is only needed to play
+    if (isMobile && !isLandscape && uiState !== "MENU") {
         return (
             <div className="fixed inset-0 z-[100] bg-gray-900 text-white flex flex-col items-center justify-center p-6">
                 <svg

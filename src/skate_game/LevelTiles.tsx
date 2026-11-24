@@ -216,10 +216,29 @@ const PICS: Record<number, React.FC> = { 1: PicStreet, 2: PicKraken, 3: PicTrex,
 
 // ---------------- the tile row ----------------
 
-const LevelTiles: React.FC<{ tiles: LevelTileInfo[]; lang: Lang }> = ({ tiles, lang }) => (
+// phone held upright → 2 tiles per row, otherwise 4 in one row
+function useIsPortrait() {
+    const get = () => typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+    const [portrait, setPortrait] = React.useState(get);
+    React.useEffect(() => {
+        const on = () => setPortrait(get());
+        window.addEventListener('resize', on);
+        window.addEventListener('orientationchange', on);
+        return () => { window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); };
+    }, []);
+    return portrait;
+}
+
+const LevelTiles: React.FC<{ tiles: LevelTileInfo[]; lang: Lang }> = ({ tiles, lang }) => {
+    const portrait = useIsPortrait();
+    const tileWidth = portrait ? 'min(42vw, 200px)' : 'clamp(78px, 24vh, 150px)';
+    return (
     <div className="mb-4 w-full">
         <div className="text-center text-[10px] text-gray-500 uppercase tracking-[0.2em] font-bold mb-2">{TXT.title[lang]}</div>
-        <div className="flex justify-center gap-2 sm:gap-3">
+        <div
+            className="mx-auto grid gap-2 sm:gap-3 justify-center"
+            style={{ gridTemplateColumns: `repeat(${portrait ? 2 : 4}, ${tileWidth})` }}
+        >
             {tiles.map(t => {
                 const Pic = PICS[t.level];
                 const playable = t.state === 'open' && !!t.onPlay;
@@ -229,7 +248,7 @@ const LevelTiles: React.FC<{ tiles: LevelTileInfo[]; lang: Lang }> = ({ tiles, l
                         disabled={!playable}
                         onClick={(e) => { e.stopPropagation(); if (playable) t.onPlay!(); }}
                         className={`relative flex flex-col overflow-hidden rounded-xl border-2 text-left transition-transform ${playable ? 'border-white/70 hover:scale-105 active:scale-95 cursor-pointer shadow-lg' : 'border-gray-700 cursor-default'}`}
-                        style={{ width: 'clamp(78px, 24vh, 150px)' }}
+                        style={{ width: tileWidth }}
                     >
                         {/* picture (square) */}
                         <div className="relative w-full" style={{ aspectRatio: '1 / 1' }}>
@@ -262,6 +281,7 @@ const LevelTiles: React.FC<{ tiles: LevelTileInfo[]; lang: Lang }> = ({ tiles, l
             })}
         </div>
     </div>
-);
+    );
+};
 
 export default LevelTiles;

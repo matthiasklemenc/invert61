@@ -91,6 +91,23 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 }}
             />
             
+            <div className="relative group w-full max-w-xs mb-4 text-center">
+                <label className="block text-[10px] text-gray-500 uppercase tracking-[0.2em] font-bold mb-2">
+                    Choose your own name
+                </label>
+                <input 
+                    type="text"
+                    value={userName}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                        setUserName(e.target.value);
+                        localStorage.setItem('invert-skate-username', e.target.value);
+                    }}
+                    placeholder={defaultName}
+                    className="bg-transparent border-b border-gray-700 w-full text-white text-center font-bold text-xl py-2 focus:border-[#c52323] outline-none uppercase tracking-widest transition-colors placeholder-gray-600 focus:placeholder-gray-800"
+                />
+            </div>
+
             {/* Level selection: square tiles for all levels (open / locked / coming soon) */}
             <LevelTiles
                 lang={lang}
@@ -101,8 +118,9 @@ const GameMenu: React.FC<GameMenuProps> = ({
                     { level: 4, state: 'soon' },
                 ]}
             />
+            <div className="mb-auto pb-8 flex justify-center">
             {level2Unlocked && onStartOver && (
-                <div className="mb-6 flex justify-center">
+                <div className="flex justify-center">
                     <button
                         onClick={() => setConfirmStartOver(true)}
                         className="text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 font-bold py-2 px-4 rounded-xl text-xs tracking-wider"
@@ -111,6 +129,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
                     </button>
                 </div>
             )}
+            </div>
 
             {confirmStartOver && onStartOver && (
                 <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setConfirmStartOver(false)}>
@@ -135,22 +154,6 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 </div>
             )}
 
-            <div className="relative group w-full max-w-xs mb-auto pb-8 text-center">
-                <label className="block text-[10px] text-gray-500 uppercase tracking-[0.2em] font-bold mb-2">
-                    Choose your own name
-                </label>
-                <input 
-                    type="text"
-                    value={userName}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => {
-                        setUserName(e.target.value);
-                        localStorage.setItem('invert-skate-username', e.target.value);
-                    }}
-                    placeholder={defaultName}
-                    className="bg-transparent border-b border-gray-700 w-full text-white text-center font-bold text-xl py-2 focus:border-[#c52323] outline-none uppercase tracking-widest transition-colors placeholder-gray-600 focus:placeholder-gray-800"
-                />
-            </div>
         </div>
     );
 };
