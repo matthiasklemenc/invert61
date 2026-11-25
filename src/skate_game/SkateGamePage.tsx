@@ -84,6 +84,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         toggleMute,
         startGame,
         startBasketball,
+        continueFromCheckpoint,
         handleTouchStart,
         handleTouchEnd,
         triggerAction,
@@ -133,6 +134,11 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
     const handleStartGame = () => {
         wrapperRef.current?.requestFullscreen?.().catch(() => {});
         startGame();
+    };
+
+    const handleContinue = () => {
+        wrapperRef.current?.requestFullscreen?.().catch(() => {});
+        continueFromCheckpoint();
     };
 
     const handleBasketball = () => {
@@ -453,7 +459,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                     score={score}
                     highScore={highScore}
                     stats={stats}
-                    startGame={handleStartGame}
+                    startGame={handleContinue}
                     onMenu={() => setUiState("MENU")}
                 />
             )}

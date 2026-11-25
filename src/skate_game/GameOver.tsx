@@ -45,8 +45,9 @@ const GameOver: React.FC<GameOverProps> = ({
                 onClick={startGame}
                 className="bg-white text-black font-bold py-3 px-8 rounded-xl text-lg shadow-lg"
             >
-                TRY AGAIN
+                🚩 TRY AGAIN
             </button>
+            <div className="text-xs text-white/70 mt-2">from the last checkpoint flag</div>
             <button 
                 onClick={onMenu}
                 className="mt-4 text-white/70 hover:text-white"

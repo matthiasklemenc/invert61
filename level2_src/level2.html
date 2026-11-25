@@ -4485,7 +4485,8 @@ const listen = (t, ev, fn, opt) => t.addEventListener(ev, e => { if (CUR === ME 
 // ================= GAME CONSTANTS =================
 // 1.5× faster than before; the course is 1.5× longer, so the deep sea still lasts about as long. Turbo = double speed.
 const SEA_SCALE = 1.5;
-const BASE_SPEED = 3.2 * SEA_SCALE, TURBO_SPEED = BASE_SPEED * 2, TURBO_FRAMES = 12 * 60; // turbo lasts 12 seconds
+// Nov 2026: one third faster again (the course stays the same length, so the deep sea is over a bit sooner)
+const BASE_SPEED = 3.2 * SEA_SCALE * 4 / 3, TURBO_SPEED = BASE_SPEED * 2, TURBO_FRAMES = 12 * 60; // turbo lasts 12 seconds
 const LEVEL_LENGTH = 16000 * SEA_SCALE;          // distance until the giant squid
 const START_HEARTS = 5;              // lives at the start – there is NO upper limit
 const NO_AIR_HEART_FRAMES = 120;     // without air Kai loses one heart every 2 seconds

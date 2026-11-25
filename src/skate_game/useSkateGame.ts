@@ -98,7 +98,11 @@ export function useSkateGame() {
         skillGameDoneRun: boolean,   // basketball already played in this underworld trip
         skillPractice: boolean,      // "basketball only" from the level selection
         ufoBoss: any,                // the mothership end boss in Space (null = no boss fight)
-        bossInput: any
+        bossInput: any,
+        flags: any[],                // checkpoint flags on the screen
+        flagDist: number,            // distance until the next flag
+        flagWorld: string,
+        cp: any                      // last checkpoint reached (world + score) – "TRY AGAIN" starts there
     }>({
         status: 'MENU',
         score: 0,
@@ -195,7 +199,11 @@ export function useSkateGame() {
         skillGameDoneRun: false,
         skillPractice: false,
         ufoBoss: null,
-        bossInput: null
+        bossInput: null,
+        flags: [],
+        flagDist: 1200,
+        flagWorld: 'NORMAL',
+        cp: null
     });
 
     const [uiState, setUiState] = useState<GameState>('MENU');
@@ -700,6 +708,55 @@ export function useSkateGame() {
 
 
     // =====================================================================
+    //  CHECKPOINT FLAGS: every stretch a flag comes along. Riding past it
+    //  saves the place – after GAME OVER "TRY AGAIN" starts there again.
+    // =====================================================================
+    const FLAG_EVERY = 2600;
+    const updateFlags = (scrollAmount: number, canvasWidth: number) => {
+        const state = stateRef.current;
+        const w = state.world as string;
+        if (w !== 'NORMAL' && w !== 'UNDERWORLD' && w !== 'SPACE') return;
+        if (w !== state.flagWorld) { state.flags = []; state.flagWorld = w; state.flagDist = 500; }   // new world: the first flag comes soon
+        for (const f of state.flags) f.x -= scrollAmount;
+        state.flags = state.flags.filter((f: any) => f.x > -80);
+        state.flagDist -= Math.abs(scrollAmount);
+        if (state.flagDist <= 0 && !state.abductionActive && !state.spawnedExit) {
+            const x = canvasWidth + 40;
+            let y: number | null = BASE_FLOOR_Y;
+            if (w !== 'NORMAL') {
+                // in the underworld and in space the flag stands on a platform
+                const plat = state.obstacles.find(o => o.isPlatform && o.type !== 'mega_ramp' && x >= o.x + 10 && x <= o.x + o.w - 10);
+                y = plat ? plat.y : null;
+            } else if (state.obstacles.some(o => (o.isGap || o.type === 'gap') && x >= o.x - 20 && x <= o.x + o.w + 20)) y = null;   // not above a hole
+            if (y !== null) { state.flags.push({ x, y, hit: false }); state.flagDist = FLAG_EVERY; }
+        }
+        for (const f of state.flags) {
+            if (!f.hit && f.x < state.player.x) {
+                f.hit = true;
+                state.cp = { world: w, score: state.score, uwTimer: state.underworldTimer, spaceDuration: state.spaceDuration };
+                addFloatingText(state.player.x, f.y - 90, 'CHECKPOINT!', '#4ade80');
+                try { getSoundManager().playDoubleJump(); } catch { /* ignore */ }
+            }
+        }
+    };
+    const drawCheckpointFlag = (ctx: CanvasRenderingContext2D, f: any, frame: number) => {
+        const x = f.x, y = f.y, top = y - 70;
+        ctx.save();
+        ctx.strokeStyle = '#1b1630'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+        // base + pole
+        ctx.fillStyle = '#6b7280'; ctx.beginPath(); ctx.ellipse(x, y - 2, 11, 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#e5e7eb'; ctx.beginPath(); ctx.roundRect(x - 2.5, top, 5, 70, 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ffd23a'; ctx.beginPath(); ctx.arc(x, top - 2, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        // waving flag: red = not reached yet, green = reached
+        const wv = Math.sin(frame * 0.18 + x * 0.01) * 4;
+        ctx.fillStyle = f.hit ? '#22c55e' : '#ef4444';
+        ctx.beginPath(); ctx.moveTo(x + 2.5, top + 2); ctx.quadraticCurveTo(x + 20, top + 2 + wv, x + 40, top + 13 + wv * 0.5); ctx.quadraticCurveTo(x + 20, top + 24 - wv, x + 2.5, top + 26); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center'; ctx.fillText(f.hit ? '✓' : '★', x + 17, top + 18 + wv * 0.3);
+        ctx.textAlign = 'left';
+        ctx.restore();
+    };
+
+    // =====================================================================
     //  UFO END BOSS (Space): the mothership. The world stops, Kai rides
     //  left / right on a long space platform, jumps (hold = higher) and
     //  shoots upwards. Bombs and a beam come down. Defeated = back to Earth.
@@ -726,6 +783,7 @@ export function useSkateGame() {
             bombT: 90, beamT: 360, beam: null as any, hitFlash: 0, dead: false, deadT: 0,
         };
         state.bossInput = { left: false, right: false, touches: {} as Record<string, string> };
+        state.cp = { world: 'BOSS', score: state.score };          // dying in the boss fight starts the boss fight again
         addFloatingText(canvasWidth / 2 - 120, 160, 'MOTHERSHIP!', '#ef4444', 30);
         sfx(() => getSoundManager().playLaunch());
     };
@@ -779,11 +837,11 @@ export function useSkateGame() {
         // ---- the mothership ----
         const phase2 = b.hp <= BOSS_HP / 2;
         if (!b.dead) {
-            if (b.enter) { b.y += 2.2 * dt; if (b.y >= 100) { b.y = 100; b.enter = false; } }
+            if (b.enter) { b.y += 2.2 * dt; if (b.y >= 132) { b.y = 132; b.enter = false; } }
             else if (!b.beam || b.beam.t > 70) {
                 const span = Math.max(80, canvasWidth / 2 - 130);
                 b.x = canvasWidth / 2 + Math.sin(b.t * (phase2 ? 0.02 : 0.013)) * span;
-                b.y = 100 + Math.sin(b.t * 0.05) * 8;
+                b.y = 132 + Math.sin(b.t * 0.05) * 6;
             }
             if (!b.enter) {
                 b.bombT -= dt;
@@ -851,70 +909,174 @@ export function useSkateGame() {
         b.booms = b.booms.filter((e: any) => e.life > 0);
     };
 
+    // ---- boss drawing: cartoon style with dark outlines (like Level 2 – 4) ----
+    const OUTLINE = '#1b1630';
+    const drawMothership = (ctx: CanvasRenderingContext2D, b: any, frame: number) => {
+        const hurt = b.hitFlash > 0;
+        // engine glow below the ship
+        const glow = ctx.createRadialGradient(0, 30, 4, 0, 30, 90);
+        glow.addColorStop(0, 'rgba(120,255,200,0.55)'); glow.addColorStop(1, 'rgba(120,255,200,0)');
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.ellipse(0, 34, 95, 30, 0, 0, Math.PI * 2); ctx.fill();
+        // glass dome
+        const dome = ctx.createLinearGradient(-50, -70, 40, -10);
+        dome.addColorStop(0, 'rgba(210,245,255,0.95)'); dome.addColorStop(0.45, 'rgba(120,200,240,0.75)'); dome.addColorStop(1, 'rgba(60,120,190,0.85)');
+        // the alien inside the dome (drawn first, the glass goes over it)
+        ctx.save();
+        ctx.beginPath(); ctx.ellipse(0, -14, 50, 46, 0, Math.PI, 0); ctx.closePath(); ctx.clip();
+        ctx.fillStyle = '#9fe5ff'; ctx.fillRect(-60, -70, 120, 60);
+        const bob = Math.sin(frame * 0.08) * 2;
+        // body + head
+        ctx.fillStyle = '#5fd86b'; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.ellipse(0, -10 + bob, 16, 12, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(0, -36 + bob, 21, 18, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        // antennas
+        ctx.beginPath(); ctx.moveTo(-8, -52 + bob); ctx.quadraticCurveTo(-14, -64 + bob, -18, -62 + bob); ctx.moveTo(8, -52 + bob); ctx.quadraticCurveTo(14, -64 + bob, 18, -62 + bob); ctx.stroke();
+        ctx.fillStyle = '#ffe14d'; ctx.beginPath(); ctx.arc(-18, -62 + bob, 3.5, 0, Math.PI * 2); ctx.arc(18, -62 + bob, 3.5, 0, Math.PI * 2); ctx.fill();
+        // big eyes (angry when hit)
+        for (const sx of [-1, 1]) {
+            ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(sx * 8, -38 + bob, 7, 8.5, sx * 0.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = OUTLINE; ctx.beginPath(); ctx.arc(sx * 8 + 1.5, -37 + bob, 3.6, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(sx * 8 + 2.6, -38.6 + bob, 1.2, 0, Math.PI * 2); ctx.fill();
+            if (hurt || b.hp <= BOSS_HP / 2) { ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(sx * 15, -50 + bob); ctx.lineTo(sx * 3, -45 + bob); ctx.stroke(); }
+        }
+        ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2;
+        ctx.beginPath(); if (hurt) ctx.arc(0, -24 + bob, 4, 0, Math.PI * 2); else ctx.arc(0, -28 + bob, 5, 0.2, Math.PI - 0.2); ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = dome; ctx.globalAlpha = 0.32; ctx.beginPath(); ctx.ellipse(0, -14, 50, 46, 0, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+        ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.ellipse(0, -14, 50, 46, 0, Math.PI, 0); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.ellipse(-24, -40, 6, 14, 0.5, 0, Math.PI * 2); ctx.fill();
+        // main saucer body (metal with shading)
+        const body = ctx.createLinearGradient(0, -24, 0, 30);
+        if (hurt) { body.addColorStop(0, '#ffd1d1'); body.addColorStop(1, '#d94f4f'); }
+        else { body.addColorStop(0, '#eef2f8'); body.addColorStop(0.35, '#b8c3d4'); body.addColorStop(0.7, '#7a879c'); body.addColorStop(1, '#4f5a6e'); }
+        ctx.fillStyle = body; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.ellipse(0, 0, 128, 30, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        // purple rim band
+        const band = ctx.createLinearGradient(0, -6, 0, 14);
+        band.addColorStop(0, '#9b6bff'); band.addColorStop(1, '#5a2fc4');
+        ctx.fillStyle = band; ctx.beginPath(); ctx.ellipse(0, 4, 122, 14, 0, 0, Math.PI); ctx.ellipse(0, 4, 122, 6, 0, Math.PI, 0, true); ctx.fill();
+        ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(0, 4, 122, 14, 0, 0, Math.PI); ctx.stroke();
+        // panel lines + rivets
+        ctx.strokeStyle = 'rgba(27,22,48,0.35)'; ctx.lineWidth = 1.5;
+        for (const px of [-80, -40, 40, 80]) { ctx.beginPath(); ctx.moveTo(px, -22); ctx.lineTo(px * 1.08, -4); ctx.stroke(); }
+        ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(-50, -14, 40, 5, -0.05, 0, Math.PI * 2); ctx.fill();
+        // running lights on the rim
+        for (let i = 0; i < 9; i++) {
+            const lx = -96 + i * 24, ly = 6 + Math.sqrt(Math.max(0, 1 - (lx / 122) ** 2)) * 6;
+            const on = (Math.floor(frame / 7) + i) % 3 === 0;
+            const col = ['#ffe14d', '#ff5a7a', '#5affc8'][i % 3];
+            if (on) { ctx.fillStyle = col; ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(lx, ly, 10, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+            ctx.fillStyle = on ? col : '#3a3358'; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(lx, ly, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
+        // underside with the bomb hatch
+        const under = ctx.createLinearGradient(0, 18, 0, 40);
+        under.addColorStop(0, '#5b6478'); under.addColorStop(1, '#2e3446');
+        ctx.fillStyle = under; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(0, 26, 60, 13, 0, 0, Math.PI); ctx.lineTo(-60, 22); ctx.closePath(); ctx.fill(); ctx.stroke();
+        const hatch = ctx.createRadialGradient(0, 30, 1, 0, 30, 16);
+        hatch.addColorStop(0, '#eafff4'); hatch.addColorStop(0.5, '#5affc8'); hatch.addColorStop(1, '#1f8f6a');
+        ctx.fillStyle = hatch; ctx.beginPath(); ctx.ellipse(0, 30, 16, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    };
+    const drawPlasmaBomb = (ctx: CanvasRenderingContext2D, x: number, y: number, frame: number) => {
+        const r = 10 + Math.sin(frame * 0.4 + x) * 1.2;
+        const g = ctx.createRadialGradient(x, y, 1, x, y, r * 2.2);
+        g.addColorStop(0, 'rgba(180,255,210,0.8)'); g.addColorStop(1, 'rgba(90,255,170,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, Math.PI * 2); ctx.fill();
+        const c = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, r);
+        c.addColorStop(0, '#ffffff'); c.addColorStop(0.4, '#8dffc6'); c.addColorStop(1, '#13a36a');
+        ctx.fillStyle = c; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        // little trail above
+        ctx.fillStyle = 'rgba(141,255,198,0.5)'; ctx.beginPath(); ctx.arc(x, y - r - 6, 4, 0, Math.PI * 2); ctx.arc(x, y - r - 14, 2.5, 0, Math.PI * 2); ctx.fill();
+    };
+    const drawKaiLaser = (ctx: CanvasRenderingContext2D, s: any) => {
+        const a = Math.atan2(s.vy, s.vx);
+        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(a);
+        ctx.fillStyle = 'rgba(255,90,200,0.35)'; ctx.beginPath(); ctx.ellipse(0, 0, 22, 8, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ff7ad9'; ctx.beginPath(); ctx.ellipse(0, 0, 16, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(2, 0, 10, 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    };
+    const drawBossFloor = (ctx: CanvasRenderingContext2D, w: number, scroll: number) => {
+        // a metal space bridge with a glowing edge
+        const top = BOSS_FLOOR;
+        const g = ctx.createLinearGradient(0, top, 0, top + 26);
+        g.addColorStop(0, '#c9d3e3'); g.addColorStop(0.25, '#8794ab'); g.addColorStop(1, '#3b4459');
+        ctx.fillStyle = g; ctx.fillRect(0, top, w, 26);
+        ctx.fillStyle = '#5affc8'; ctx.globalAlpha = 0.85; ctx.fillRect(0, top, w, 3); ctx.globalAlpha = 1;
+        ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, top); ctx.lineTo(w, top); ctx.moveTo(0, top + 26); ctx.lineTo(w, top + 26); ctx.stroke();
+        ctx.lineWidth = 2;
+        for (let x = -(scroll % 70); x < w; x += 70) {
+            ctx.strokeStyle = 'rgba(27,22,48,0.5)'; ctx.beginPath(); ctx.moveTo(x, top + 4); ctx.lineTo(x, top + 26); ctx.stroke();
+            ctx.fillStyle = '#dfe6f2'; ctx.beginPath(); ctx.arc(x + 10, top + 15, 2.2, 0, Math.PI * 2); ctx.arc(x + 60, top + 15, 2.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = (Math.floor(scroll / 20) + Math.round(x / 70)) % 2 ? '#ffe14d' : '#ff9d2e';
+            ctx.fillRect(x + 28, top + 12, 14, 5);
+        }
+    };
+
     const drawUfoBoss = (ctx: CanvasRenderingContext2D, state: any) => {
         const b = state.ufoBoss;
         const w = ctx.canvas.width, h = ctx.canvas.height;
         ctx.clearRect(0, 0, w, h);
         drawSpaceBackground(ctx, w, h, state.totalScroll, 0, false, false, state.frame, state.spaceEntryScroll);
-        // the long platform
-        ctx.fillStyle = '#475569'; ctx.fillRect(0, BOSS_FLOOR, w, 18);
-        ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, BOSS_FLOOR, w, 4);
-        ctx.fillStyle = '#1e293b'; for (let x = (-state.totalScroll % 60); x < w; x += 60) ctx.fillRect(x, BOSS_FLOOR + 8, 30, 4);
-        // beam warning / beam
+        drawBossFloor(ctx, w, state.totalScroll);
+        // beam: a blinking warning on the floor first, then the beam comes down
         if (b.beam) {
-            if (b.beam.t <= 60) { ctx.fillStyle = Math.floor(b.beam.t / 6) % 2 ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.12)'; ctx.fillRect(b.beam.x - 40, b.y + 30, 80, BOSS_FLOOR - b.y - 30); }
-            else {
-                const g = ctx.createLinearGradient(b.beam.x - 40, 0, b.beam.x + 40, 0);
-                g.addColorStop(0, 'rgba(74,222,128,0)'); g.addColorStop(0.5, 'rgba(190,255,200,0.95)'); g.addColorStop(1, 'rgba(74,222,128,0)');
-                ctx.fillStyle = g; ctx.fillRect(b.beam.x - 40, b.y + 20, 80, BOSS_FLOOR - b.y - 20);
+            if (b.beam.t <= 60) {
+                const on = Math.floor(b.beam.t / 6) % 2 === 0;
+                ctx.fillStyle = on ? 'rgba(255,80,80,0.25)' : 'rgba(255,80,80,0.08)';
+                ctx.fillRect(b.beam.x - 40, b.y + 34, 80, BOSS_FLOOR - b.y - 34);
+                ctx.fillStyle = on ? '#ff5a5a' : '#ffb0b0'; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.ellipse(b.beam.x, BOSS_FLOOR + 2, 40, 7, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center'; ctx.fillText('!', b.beam.x, BOSS_FLOOR - 14);
+            } else {
+                const g = ctx.createLinearGradient(b.beam.x - 44, 0, b.beam.x + 44, 0);
+                g.addColorStop(0, 'rgba(90,255,200,0)'); g.addColorStop(0.3, 'rgba(90,255,200,0.7)'); g.addColorStop(0.5, 'rgba(240,255,250,0.98)'); g.addColorStop(0.7, 'rgba(90,255,200,0.7)'); g.addColorStop(1, 'rgba(90,255,200,0)');
+                ctx.fillStyle = g; ctx.fillRect(b.beam.x - 44, b.y + 30, 88, BOSS_FLOOR - b.y - 30);
+                for (let i = 0; i < 6; i++) { const yy = b.y + 40 + ((state.frame * 6 + i * 30) % (BOSS_FLOOR - b.y - 40)); ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(b.beam.x, yy, 30, 3, 0, 0, Math.PI * 2); ctx.fill(); }
             }
         }
         // the mothership
         ctx.save(); ctx.translate(b.x, b.y);
-        if (b.dead) ctx.rotate(Math.sin(b.deadT * 0.3) * 0.12);
-        ctx.fillStyle = 'rgba(125,211,252,0.55)'; ctx.beginPath(); ctx.ellipse(0, -22, 52, 34, 0, Math.PI, 0); ctx.fill();
-        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 2; ctx.stroke();
-        // a little green alien in the dome
-        ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.ellipse(0, -30, 12, 15, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.ellipse(-5, -32, 3.5, 5, -0.3, 0, Math.PI * 2); ctx.ellipse(5, -32, 3.5, 5, 0.3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = b.hitFlash > 0 ? '#fca5a5' : '#64748b'; ctx.beginPath(); ctx.ellipse(0, 0, 125, 34, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 4; ctx.stroke();
-        ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.ellipse(0, 12, 95, 18, 0, 0, Math.PI * 2); ctx.fill();
-        for (let i = 0; i < 10; i++) {
-            const a = (i / 10) * Math.PI * 2;
-            ctx.fillStyle = (Math.floor(state.frame / 8) + i) % 2 === 0 ? '#facc15' : '#ef4444';
-            ctx.beginPath(); ctx.arc(Math.cos(a) * 108, Math.sin(a) * 26, 6, 0, Math.PI * 2); ctx.fill();
-        }
+        if (b.dead) ctx.rotate(Math.sin(b.deadT * 0.3) * 0.15);
+        else ctx.rotate(Math.sin(b.t * 0.04) * 0.04);
+        drawMothership(ctx, b, state.frame);
         ctx.restore();
-        // bombs
-        for (const o of b.bombs) {
-            ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(o.x, o.y, 9, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#bbf7d0'; ctx.beginPath(); ctx.arc(o.x - 3, o.y - 3, 3, 0, Math.PI * 2); ctx.fill();
-        }
-        // Kai's lasers (pointing upwards)
-        for (const s of b.shots) drawLaser(ctx, s.x, s.y, 26, Math.atan2(s.vy, s.vx));
+        for (const o of b.bombs) drawPlasmaBomb(ctx, o.x, o.y, state.frame);
+        for (const s of b.shots) drawKaiLaser(ctx, s);
         // Kai (blinks after a hit)
         if (!(b.inv > 0 && Math.floor(b.inv / 5) % 2 === 0)) {
             drawStickman(ctx, state.selectedChar, b.kx, BOSS_FLOOR + b.ky - 25, state.frame,
                 b.ky < 0 ? 'JUMPING' : (b.moving ? 'RUNNING' : 'COASTING'), 0, '', false, b.face < 0, !!b.chargeAt);
         }
-        // explosions
+        // explosions: orange fire balls with a yellow core and a dark outline
         for (const e of b.booms) {
-            ctx.fillStyle = `rgba(251,146,60,${Math.max(0, e.life)})`; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = `rgba(254,240,138,${Math.max(0, e.life)})`; ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 0.5, 0, Math.PI * 2); ctx.fill();
+            const a = Math.max(0, e.life);
+            ctx.globalAlpha = a;
+            ctx.fillStyle = '#ff7a2e'; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#ffe14d'; ctx.beginPath(); ctx.arc(e.x - e.r * 0.15, e.y - e.r * 0.15, e.r * 0.55, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
         }
         // life bar of the mothership
-        const bw = Math.min(320, w * 0.5), bx = w / 2 - bw / 2;
-        ctx.fillStyle = 'rgba(15,23,42,0.85)'; ctx.fillRect(bx - 4, 34, bw + 8, 30);
-        ctx.fillStyle = '#f8fafc'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.fillText('MOTHERSHIP', w / 2, 46);
-        ctx.fillStyle = '#7f1d1d'; ctx.fillRect(bx, 51, bw, 8);
-        ctx.fillStyle = '#ef4444'; ctx.fillRect(bx, 51, bw * Math.max(0, b.hp) / BOSS_HP, 8);
+        const bw = Math.min(300, w * 0.46), bx = w / 2 - bw / 2;
+        ctx.fillStyle = 'rgba(27,22,48,0.85)'; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(bx - 8, 34, bw + 16, 32, 10); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.fillText('👾 MOTHERSHIP', w / 2, 48);
+        ctx.fillStyle = '#3a1830'; ctx.beginPath(); ctx.roundRect(bx, 53, bw, 8, 4); ctx.fill();
+        const hg = ctx.createLinearGradient(bx, 0, bx + bw, 0); hg.addColorStop(0, '#ff4d6d'); hg.addColorStop(1, '#ffb13b');
+        ctx.fillStyle = hg; ctx.beginPath(); ctx.roundRect(bx, 53, Math.max(0.01, bw * Math.max(0, b.hp) / BOSS_HP), 8, 4); ctx.fill();
         // on-screen buttons: ◀ ▶ ride, ⤒ jump (hold = higher), ✸ shoot
         const B = bossButtons(w);
         const btn = (c: any, label: string, color: string, on: boolean) => {
-            ctx.fillStyle = on ? color : 'rgba(15,23,42,0.45)'; ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
-            ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, c.x, c.y + 1);
+            // glossy round button (like the controller buttons in Level 2 – 4)
+            const g = ctx.createRadialGradient(c.x - c.r * 0.3, c.y - c.r * 0.4, 2, c.x, c.y, c.r);
+            g.addColorStop(0, on ? '#ffffff' : 'rgba(255,255,255,0.75)'); g.addColorStop(1, on ? color : 'rgba(40,50,80,0.55)');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = color; ctx.lineWidth = 3.5; ctx.stroke();
+            ctx.strokeStyle = 'rgba(27,22,48,0.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(c.x, c.y, c.r + 2, 0, Math.PI * 2); ctx.stroke();
+            ctx.fillStyle = '#ffffff'; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.strokeText(label, c.x, c.y + 1); ctx.fillText(label, c.x, c.y + 1);
             ctx.textBaseline = 'alphabetic';
         };
         const inp = state.bossInput || {};
@@ -1375,6 +1537,7 @@ export function useSkateGame() {
                         }
                     });
                     state.collectibles.forEach(c => c.x -= scrollAmount);
+                    updateFlags(scrollAmount, canvas.width);
                 }
 
                 // Garage entry is automatic: touching the garage with the Garage Key
@@ -2802,6 +2965,8 @@ if (state.player.y > 600) {
             }
         });
 
+        for (const f of state.flags) if (f.x > -60 && f.x < ctx.canvas.width + 60) drawCheckpointFlag(ctx, f, state.frame);
+
         if (state.status !== 'GAME_OVER' && state.world !== 'BEAM_DOWN' && state.status !== 'OXXO_SHOP') {
             const isHiddenInCar = state.player.state === 'ARRESTED' && state.arrestTimer > 40;
             
@@ -3344,6 +3509,11 @@ if (state.player.y > 600) {
         state.skillPractice = false;
         state.skillGameActive = false;
         state.skillGameDoneRun = false;
+        state.ufoBoss = null;
+        state.flags = [];
+        state.flagDist = 1200;
+        state.flagWorld = 'NORMAL';
+        state.cp = { world: 'NORMAL', score: 0 };
         state.status = 'PLAYING';
         state.score = 0;
         state.lives = 3;
@@ -3426,6 +3596,46 @@ if (state.player.y > 600) {
         getSoundManager().startMusic();
     };
 
+    // GAME OVER → "TRY AGAIN": start again at the last checkpoint flag (street, underworld, space or the mothership)
+    const continueFromCheckpoint = () => {
+        const cp = stateRef.current.cp;
+        startGame();
+        const state = stateRef.current;
+        if (!cp || cp.world === 'NORMAL') {
+            if (cp) { state.score = cp.score; setScore(cp.score); state.cp = cp; }
+            return;
+        }
+        state.score = cp.score; setScore(cp.score);
+        const canvas = canvasRef.current;
+        if (cp.world === 'UNDERWORLD') {
+            state.world = 'UNDERWORLD';
+            state.flagWorld = 'UNDERWORLD';
+            state.flagDist = FLAG_EVERY;
+            state.obstacles = [];
+            const safePlatY = BASE_FLOOR_Y - 50;
+            const safePlat = { id: Date.now(), x: 0, y: safePlatY, w: 1000, h: 20, type: 'platform' as ObstacleType, isGrindable: false, isGap: false, isPlatform: true, passed: false };
+            state.obstacles.push(safePlat);
+            state.player.platformId = safePlat.id;
+            state.currentFloorY = safePlatY;
+            state.player.y = 0;
+            state.player.vy = 0;
+            state.underworldTimer = cp.uwTimer || 0;
+            state.spawnedExit = false;
+            state.skillGameDoneRun = false;
+            state.nextObstacleDist = 0;
+            getSoundManager().playUnderworldMusic();
+        } else if (cp.world === 'SPACE') {
+            enterSpace();
+            state.flagWorld = 'SPACE';
+            state.flagDist = FLAG_EVERY;
+            state.spaceDuration = cp.spaceDuration || 0;
+        } else if (cp.world === 'BOSS') {
+            enterSpace();
+            startUfoBoss(canvas ? canvas.width : 800);
+        }
+        state.cp = cp;
+    };
+
     // level selection → "Basketball only": straight into the basketball challenge, round after round
     const startBasketball = () => {
         startGame();
@@ -3488,6 +3698,7 @@ if (state.player.y > 600) {
         toggleMute,
         startGame,
         startBasketball,
+        continueFromCheckpoint,
         handleTouchStart,
         handleTouchEnd,
         triggerAction,
