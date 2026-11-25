@@ -85,6 +85,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
         startGame,
         startBasketball,
         continueFromCheckpoint,
+        leaveToLevelSelection,
         handleTouchStart,
         handleTouchEnd,
         triggerAction,
@@ -327,7 +328,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                 toggleMute={toggleMute}
                 isPaused={isPaused}
                 togglePause={togglePause}
-                onExit={handleExit}
+                onExit={leaveToLevelSelection}
                 stats={stats}
                 showStats={uiState === "PLAYING"}
             />
@@ -383,7 +384,7 @@ export default function SkateGamePage({ onClose }: { onClose: () => void }) {
                                 PLAY AGAIN
                             </button>
                             <button
-                                onClick={handleExit}
+                                onClick={leaveToLevelSelection}
                                 className="border border-gray-500 hover:border-white text-gray-200 font-bold py-3 px-8 rounded-xl"
                             >
                                 EXIT

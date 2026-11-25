@@ -3599,6 +3599,20 @@ if (state.player.y > 600) {
         if (!quiet) getSoundManager().startMusic();
     };
 
+    // EXIT inside Level 1 → back to the level selection (the tiles), not out of the game
+    const leaveToLevelSelection = () => {
+        const state = stateRef.current;
+        state.status = 'MENU';
+        state.ufoBoss = null;
+        state.skillGameActive = false;
+        state.skillPractice = false;
+        saveHighScore(state.score);
+        try { getSoundManager().stopMusic(); } catch { /* ignore */ }
+        setLevelComplete(false);
+        setIsPaused(false);
+        setUiState('MENU');
+    };
+
     // GAME OVER → "TRY AGAIN": start again at the last checkpoint flag (street, underworld, space or the mothership)
     const continueFromCheckpoint = () => {
         const cp = stateRef.current.cp;
@@ -3702,6 +3716,7 @@ if (state.player.y > 600) {
         startGame,
         startBasketball,
         continueFromCheckpoint,
+        leaveToLevelSelection,
         handleTouchStart,
         handleTouchEnd,
         triggerAction,
