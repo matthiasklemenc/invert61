@@ -143,6 +143,7 @@ class SoundManager {
         
         try {
             await Tone.start();
+            if (this.currentMusicType !== 'MAIN') return;   // another music was started meanwhile – never play two at once
             if (Tone.Transport.state !== "started") Tone.Transport.start();
             Tone.Transport.bpm.value = 165; // Upbeat skate punk tempo
 
@@ -242,6 +243,7 @@ class SoundManager {
 
         try {
             await Tone.start();
+            if (this.currentMusicType !== 'SPACE') return;   // another music was started meanwhile – never play two at once
             if (Tone.Transport.state !== "started") Tone.Transport.start();
             
             // Increased from 92 to 108 for a slightly faster, driving feel
@@ -346,6 +348,7 @@ class SoundManager {
 
         try {
             await Tone.start();
+            if (this.currentMusicType !== 'UNDERWORLD') return;   // another music was started meanwhile – never play two at once
             if (Tone.Transport.state !== "started") Tone.Transport.start();
             Tone.Transport.bpm.value = 110; // Slower, menacing
 

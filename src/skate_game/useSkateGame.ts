@@ -837,10 +837,13 @@ export function useSkateGame() {
         // ---- the mothership ----
         const phase2 = b.hp <= BOSS_HP / 2;
         if (!b.dead) {
-            if (b.enter) { b.y += 2.2 * dt; if (b.y >= 132) { b.y = 132; b.enter = false; } }
+            if (b.enter) { b.y += 2.2 * dt; if (b.y >= 132) { b.y = 132; b.enter = false; b.mt = 0; } }
             else if (!b.beam || b.beam.t > 70) {
+                // own clock from the moment it arrived: it starts in the middle and floats smoothly to the sides
+                b.mt = (b.mt || 0) + dt * (phase2 ? 1.5 : 1);
                 const span = Math.max(80, canvasWidth / 2 - 130);
-                b.x = canvasWidth / 2 + Math.sin(b.t * (phase2 ? 0.02 : 0.013)) * span;
+                const tx = canvasWidth / 2 + Math.sin(b.mt * 0.013) * span;
+                b.x += (tx - b.x) * Math.min(1, 0.08 * dt);
                 b.y = 132 + Math.sin(b.t * 0.05) * 6;
             }
             if (!b.enter) {
@@ -3504,7 +3507,7 @@ if (state.player.y > 600) {
 
     }, [uiState, isPaused, triggerAction, trySecretInteraction, releaseSkillShot]);
 
-    const startGame = () => {
+    const startGame = (quiet: boolean = false) => {
         const state = stateRef.current;
         state.skillPractice = false;
         state.skillGameActive = false;
@@ -3593,13 +3596,13 @@ if (state.player.y > 600) {
         setUiState('PLAYING');
         setIsPaused(false);
         lastTimeRef.current = 0; 
-        getSoundManager().startMusic();
+        if (!quiet) getSoundManager().startMusic();
     };
 
     // GAME OVER → "TRY AGAIN": start again at the last checkpoint flag (street, underworld, space or the mothership)
     const continueFromCheckpoint = () => {
         const cp = stateRef.current.cp;
-        startGame();
+        startGame(!!cp && cp.world !== 'NORMAL');      // no street music when starting again in the underworld / space / boss
         const state = stateRef.current;
         if (!cp || cp.world === 'NORMAL') {
             if (cp) { state.score = cp.score; setScore(cp.score); state.cp = cp; }
