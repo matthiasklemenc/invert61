@@ -435,8 +435,18 @@ function updateKai(dt) {
     const ramp = k.ground ? S.objects.find(o => o.type === 'ramp' && !o.done && k.x >= o.x && k.x <= o.x + o.w) : null;
     if (ramp) launchFromRamp(ramp, 1);
     else if (k.rampGrace && k.rampGrace.t > 0) { const o = k.rampGrace.o; k.rampGrace = null; o.done = false; launchFromRamp(o, 1); }
-    else if (kaiGrounded() && !k.bossFly) jump();
+    else if (kaiGrounded() && !k.bossFly) {
+      // charged jump like Level 1: still held = crouch and charge (the jump comes when letting go), very quick tap = small hop at once
+      if (hold) k.chargeAt = performance.now() - (keyDown ? 0 : DECIDE_MS); else { jump(JUMP_V * 0.55); k.charged = true; }
+    }
     else if (!k.flipping) { k.flipping = true; k.flip = 0; Audio.play('trick'); }
+  }
+  // let go (or rolled off the edge while charging): jump now – the longer held, the higher and farther (max. as high as before)
+  if (k.chargeAt && (!hold || !kaiGrounded())) {
+    const f = 0.55 + 0.45 * chargeAmount(k); k.chargeAt = 0;
+    const ramp = k.ground ? S.objects.find(o => o.type === 'ramp' && !o.done && k.x >= o.x && k.x <= o.x + o.w) : null;
+    if (ramp) launchFromRamp(ramp, 1);
+    else if (kaiGrounded() || (k.vy >= 0 && k.vy < 3)) { jump(JUMP_V * f); k.charged = true; }
   }
   if (k.natas) { updateNatas(dt); return; }
   if (k.rampGrace) { k.rampGrace.t -= dt; if (k.rampGrace.t <= 0) k.rampGrace = null; }
@@ -459,7 +469,8 @@ function updateKai(dt) {
   }
   if (!k.platform && !k.ground) {
     if (k.ollieT !== null && k.ollieT !== undefined) k.ollieT += dt;
-    const g = hold && k.vy < 0 && !k.rampJump ? HOLD_GRAV : GRAV;
+    if (k.vy >= 0) k.charged = false;
+    const g = k.charged && k.vy < 0 && !k.rampJump ? HOLD_GRAV : GRAV;
     const prevY = k.y;
     k.vy = Math.min(k.vy + g * dt, 14);
     k.y += k.vy * dt;

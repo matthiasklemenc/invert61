@@ -88,7 +88,7 @@ function rockBlock(d) {
 function stomp(d) {
   const k = S.kai, top = dinoBox(d).y1;
   d.hp--; d.state = 'walk';
-  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
+  k.y = top; k.vy = (k.jumpHeld || k.btn) ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
   burst(k.x, top, '#ffd23a', 10, 3.5);
   S.shake = Math.max(S.shake, 3);
   if (d.hp <= 0) { d.dead = true; d.deadT = 0; d.stun = 0; Audio.play('stomp'); burst(d.x, top + 10, '#fbf3df', 12, 4); comboScore(PTS[d.type] || 100, d.x, top - 20); }
@@ -133,14 +133,19 @@ function steerBrake() { const k = S.kai; if (!playing()) return; k.dir = 0; Audi
 function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
 function steerJump(down) {
   const k = S.kai;
-  if (!playing()) return;
+  if (!down) k.btn = false;
+  if (!playing()) { if (!down) k.chargeAt = 0; return; }
   if (down) {
-    k.jumpHeld = true;
-    if (k.ground || k.coyote > 0) { k.vy = JUMP_V; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump'); }
-  } else {
-    k.jumpHeld = false;
-    if (k.vy < JUMP_CUT) k.vy = JUMP_CUT;          // short tap = small hop, hold = big jump
-  }
+    k.btn = true; k.jumpHeld = true;
+    if ((k.ground || k.coyote > 0) && !k.chargeAt) k.chargeAt = performance.now();   // hold = Kai crouches and charges
+  } else if (k.chargeAt) chargeGo();                                                // let go = jump (longer held = higher)
+  else { k.jumpHeld = false; if (k.vy < JUMP_CUT) k.vy = JUMP_CUT; }
+}
+// the charged jump: short tap = small hop, ~0.35 s held = full jump (as high as before, never higher)
+function chargeGo() {
+  const k = S.kai, f = 0.5 + 0.5 * chargeAmount(k); k.chargeAt = 0;
+  if (!(k.ground || k.coyote > 0)) return;
+  k.vy = JUMP_V * f; k.jumpHeld = true; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump');
 }
 const playing = () => S.phase === 'play' || S.phase === 'boss';
 const CTL = {
@@ -312,6 +317,8 @@ function updateKai(dt) {
   } else if (k.ground) {
     if (isTarAt(k.x)) { k.ground = false; k.coyote = 4; }
   }
+  if (k.btn && !k.chargeAt && k.ground) k.chargeAt = performance.now();        // button still held while landing: charge right away
+  if (k.chargeAt && !k.ground && k.coyote <= dt) chargeGo();                   // rolled off an edge while charging: jump at the last moment
   if (!k.ground) {
     if (k.coyote > 0) k.coyote -= dt;
     if (k.vy >= 0) k.jumpHeld = false;

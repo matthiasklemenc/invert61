@@ -339,7 +339,7 @@ function drawKai() {
   // the Magma-Board glows on lava
   if (k.onLava && k.ground) { ctx.fillStyle = `rgba(255,140,40,${0.4 + Math.sin(S.t * 0.4) * 0.2})`; ctx.beginPath(); ctx.ellipse(0, k.y - 4, 50, 10, 0, 0, Math.PI * 2); ctx.fill(); }
   ctx.save(); ctx.scale(fa, 1);
-  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
+  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.chargeAt ? chargeCrouch(k) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
     push, flip: 0, armsUp: air && k.shootT <= 0, ouch: k.hurtT > 0, wind: Math.min(1, Math.abs(k.vx) / SPEED), outfit: SAVE.outfit });
   if (k.shootT > 0) drawBomb(24, k.y - 64 - (14 - k.shootT) * 0.8, 0, 0.7);
   ctx.restore();

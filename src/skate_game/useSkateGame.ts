@@ -94,7 +94,11 @@ export function useSkateGame() {
         skillGameResultTimer: number,
         skillGameChargeStart: number,
         skillPointEarned: boolean,
-        skillGameShotWillHit: boolean
+        skillGameShotWillHit: boolean,
+        skillGameDoneRun: boolean,   // basketball already played in this underworld trip
+        skillPractice: boolean,      // "basketball only" from the level selection
+        ufoBoss: any,                // the mothership end boss in Space (null = no boss fight)
+        bossInput: any
     }>({
         status: 'MENU',
         score: 0,
@@ -187,7 +191,11 @@ export function useSkateGame() {
         skillGameResultTimer: 0,
         skillGameChargeStart: 0,
         skillPointEarned: false,
-        skillGameShotWillHit: false
+        skillGameShotWillHit: false,
+        skillGameDoneRun: false,
+        skillPractice: false,
+        ufoBoss: null,
+        bossInput: null
     });
 
     const [uiState, setUiState] = useState<GameState>('MENU');
@@ -449,6 +457,7 @@ export function useSkateGame() {
         state.touchSteerDirection = 0;
         state.touchSteerTimer = 0;
         state.spawnedExit = false;
+        state.skillGameDoneRun = false;     // the basketball comes again at the end of this trip
         getSoundManager().playMetalHit();
         getSoundManager().playUnderworldMusic();
     };
@@ -657,6 +666,7 @@ export function useSkateGame() {
 
     const fireLaser = () => {
         const state = stateRef.current;
+        if (state.ufoBoss) { bossFire(); return; }
         if (state.world !== 'SPACE' || state.player.state === 'CRASHED' || state.player.state === 'ABDUCTED' || state.abductionActive) return;
 
         if (state.powerups.has360Laser) {
@@ -688,13 +698,301 @@ export function useSkateGame() {
         getSoundManager().playLaunch(); 
     };
 
+
+    // =====================================================================
+    //  UFO END BOSS (Space): the mothership. The world stops, Kai rides
+    //  left / right on a long space platform, jumps (hold = higher) and
+    //  shoots upwards. Bombs and a beam come down. Defeated = back to Earth.
+    // =====================================================================
+    const BOSS_FLOOR = BASE_FLOOR_Y;
+    const BOSS_HP = 20;
+    const bossButtons = (w: number) => ({
+        left:  { x: 52,      y: 280, r: 28 },
+        right: { x: 124,     y: 280, r: 28 },
+        jump:  { x: w - 124, y: 280, r: 28 },
+        fire:  { x: w - 52,  y: 280, r: 28 },
+    });
+
+    const sfx = (f: () => void) => { try { f(); } catch { /* two sounds at the same moment – ignore */ } };
+    const startUfoBoss = (canvasWidth: number) => {
+        const state = stateRef.current;
+        state.obstacles = [];
+        state.collectibles = [];
+        state.projectiles = [];
+        state.ufoBoss = {
+            t: 0, hp: BOSS_HP, x: canvasWidth / 2, y: -120, enter: true,
+            kx: Math.min(200, canvasWidth * 0.25), ky: 0, kvy: 0, face: 1, moving: false,
+            chargeAt: 0, inv: 0, reload: 0, shots: [] as any[], bombs: [] as any[], booms: [] as any[],
+            bombT: 90, beamT: 360, beam: null as any, hitFlash: 0, dead: false, deadT: 0,
+        };
+        state.bossInput = { left: false, right: false, touches: {} as Record<string, string> };
+        addFloatingText(canvasWidth / 2 - 120, 160, 'MOTHERSHIP!', '#ef4444', 30);
+        sfx(() => getSoundManager().playLaunch());
+    };
+
+    const bossJumpPress = () => {
+        const b = stateRef.current.ufoBoss;
+        if (!b || b.dead || b.ky < 0 || b.chargeAt) return;
+        b.chargeAt = Date.now();                       // crouch and charge – the jump comes on release
+    };
+    const bossJumpRelease = () => {
+        const b = stateRef.current.ufoBoss;
+        if (!b || !b.chargeAt) return;
+        const charge = Math.min(1, (Date.now() - b.chargeAt) / 350);
+        b.chargeAt = 0;
+        if (b.ky < 0) return;
+        b.kvy = -9.5 * (0.5 + 0.5 * charge);         // short tap = small hop, held = full jump
+        sfx(() => getSoundManager().playJump());
+    };
+    const bossFire = () => {
+        const b = stateRef.current.ufoBoss;
+        if (!b || b.dead || b.reload > 0) return;
+        b.reload = 11;
+        b.shots.push({ x: b.kx + b.face * 10, y: BOSS_FLOOR + b.ky - 62, vx: b.face * 1.5, vy: -15 });
+        sfx(() => getSoundManager().playLaunch());
+    };
+
+    const bossHurt = () => {
+        const state = stateRef.current;
+        const b = state.ufoBoss;
+        if (!b || b.inv > 0 || b.dead) return;
+        b.inv = 100;
+        sfx(() => getSoundManager().playCrash());
+        state.lives--;
+        setLives(state.lives);
+        if (state.lives <= 0) {
+            state.ufoBoss = null;
+            state.status = 'GAME_OVER';
+            setUiState('GAME_OVER');
+            saveHighScore(state.score);
+            sfx(() => getSoundManager().stopMusic());
+        }
+    };
+
+    const updateUfoBoss = (dt: number, canvasWidth: number) => {
+        const state = stateRef.current;
+        const b = state.ufoBoss;
+        const inp = state.bossInput;
+        b.t += dt;
+        state.frame += dt;
+        state.totalScroll += 0.6 * dt;                 // the stars drift slowly
+        // ---- the mothership ----
+        const phase2 = b.hp <= BOSS_HP / 2;
+        if (!b.dead) {
+            if (b.enter) { b.y += 2.2 * dt; if (b.y >= 100) { b.y = 100; b.enter = false; } }
+            else if (!b.beam || b.beam.t > 70) {
+                const span = Math.max(80, canvasWidth / 2 - 130);
+                b.x = canvasWidth / 2 + Math.sin(b.t * (phase2 ? 0.02 : 0.013)) * span;
+                b.y = 100 + Math.sin(b.t * 0.05) * 8;
+            }
+            if (!b.enter) {
+                b.bombT -= dt;
+                if (b.bombT <= 0) {
+                    b.bombT = phase2 ? 48 : 75;
+                    const n = phase2 ? 2 : 1;
+                    for (let i = 0; i < n; i++) b.bombs.push({ x: b.x + (i - (n - 1) / 2) * 60, y: b.y + 30, vx: (b.kx - b.x) * 0.004 + (i - (n - 1) / 2), vy: 1 });
+                }
+                b.beamT -= dt;
+                if (b.beamT <= 0 && !b.beam) { b.beam = { x: b.kx, t: 0 }; b.beamT = phase2 ? 300 : 420; }
+            }
+        } else {
+            b.deadT += dt;
+            b.y += 0.8 * dt;
+            if (Math.random() < 0.4 * dt) b.booms.push({ x: b.x + (Math.random() - 0.5) * 220, y: b.y + (Math.random() - 0.5) * 60, r: 6, life: 1 });
+            if (b.deadT > 130) {
+                state.ufoBoss = null;
+                state.score += 5000;
+                fallFromSpace();
+                addFloatingText(150, 140, 'MOTHERSHIP DOWN! +5000', '#facc15', 28);
+                return;
+            }
+        }
+        if (b.hitFlash > 0) b.hitFlash -= dt;
+        // ---- beam: warning first (red stripe), then the beam comes down ----
+        if (b.beam) {
+            b.beam.t += dt;
+            if (b.beam.t > 110) b.beam = null;
+            else if (b.beam.t > 60 && Math.abs(b.kx - b.beam.x) < 40) bossHurt();
+            if (!state.ufoBoss) return;
+        }
+        // ---- Kai ----
+        const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+        b.moving = dir !== 0;
+        if (dir !== 0) b.face = dir;
+        b.kx = Math.max(30, Math.min(canvasWidth - 30, b.kx + dir * 5.2 * dt));
+        if (b.ky < 0 || b.kvy < 0) {
+            b.kvy += GRAVITY * 0.5 * dt;
+            b.ky += b.kvy * dt;
+            if (b.ky >= 0) { b.ky = 0; b.kvy = 0; }
+        }
+        if (b.inv > 0) b.inv -= dt;
+        if (b.reload > 0) b.reload -= dt;
+        // ---- Kai's lasers ----
+        for (const s of b.shots) {
+            s.x += s.vx * dt; s.y += s.vy * dt;
+            if (!b.dead && !b.enter && Math.pow((s.x - b.x) / 120, 2) + Math.pow((s.y - b.y) / 38, 2) < 1) {
+                s.y = -999; b.hp--; b.hitFlash = 6;
+                b.booms.push({ x: b.x + (Math.random() - 0.5) * 120, y: b.y + 20, r: 4, life: 0.7 });
+                state.score += 100;
+                sfx(() => getSoundManager().playMetalHit());
+                if (b.hp <= 0) { b.dead = true; b.bombs = []; b.beam = null; sfx(() => getSoundManager().playCrash()); }
+            }
+        }
+        b.shots = b.shots.filter((s: any) => s.y > -40 && s.x > -40 && s.x < canvasWidth + 40);
+        // ---- bombs ----
+        const kTop = BOSS_FLOOR + b.ky - 62, kBot = BOSS_FLOOR + b.ky;
+        for (const o of b.bombs) {
+            o.vy += 0.13 * dt; o.x += o.vx * dt; o.y += o.vy * dt;
+            if (Math.abs(o.x - b.kx) < 22 && o.y > kTop && o.y < kBot + 4) { o.y = 9999; b.booms.push({ x: o.x, y: kBot - 30, r: 8, life: 1 }); bossHurt(); if (!state.ufoBoss) return; }
+            else if (o.y >= BOSS_FLOOR - 6) { o.y = 9999; b.booms.push({ x: o.x, y: BOSS_FLOOR - 8, r: 8, life: 1 }); sfx(() => getSoundManager().playMetalHit()); }
+        }
+        b.bombs = b.bombs.filter((o: any) => o.y < 9000);
+        for (const e of b.booms) { e.life -= 0.04 * dt; e.r += 1.4 * dt; }
+        b.booms = b.booms.filter((e: any) => e.life > 0);
+    };
+
+    const drawUfoBoss = (ctx: CanvasRenderingContext2D, state: any) => {
+        const b = state.ufoBoss;
+        const w = ctx.canvas.width, h = ctx.canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        drawSpaceBackground(ctx, w, h, state.totalScroll, 0, false, false, state.frame, state.spaceEntryScroll);
+        // the long platform
+        ctx.fillStyle = '#475569'; ctx.fillRect(0, BOSS_FLOOR, w, 18);
+        ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, BOSS_FLOOR, w, 4);
+        ctx.fillStyle = '#1e293b'; for (let x = (-state.totalScroll % 60); x < w; x += 60) ctx.fillRect(x, BOSS_FLOOR + 8, 30, 4);
+        // beam warning / beam
+        if (b.beam) {
+            if (b.beam.t <= 60) { ctx.fillStyle = Math.floor(b.beam.t / 6) % 2 ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.12)'; ctx.fillRect(b.beam.x - 40, b.y + 30, 80, BOSS_FLOOR - b.y - 30); }
+            else {
+                const g = ctx.createLinearGradient(b.beam.x - 40, 0, b.beam.x + 40, 0);
+                g.addColorStop(0, 'rgba(74,222,128,0)'); g.addColorStop(0.5, 'rgba(190,255,200,0.95)'); g.addColorStop(1, 'rgba(74,222,128,0)');
+                ctx.fillStyle = g; ctx.fillRect(b.beam.x - 40, b.y + 20, 80, BOSS_FLOOR - b.y - 20);
+            }
+        }
+        // the mothership
+        ctx.save(); ctx.translate(b.x, b.y);
+        if (b.dead) ctx.rotate(Math.sin(b.deadT * 0.3) * 0.12);
+        ctx.fillStyle = 'rgba(125,211,252,0.55)'; ctx.beginPath(); ctx.ellipse(0, -22, 52, 34, 0, Math.PI, 0); ctx.fill();
+        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 2; ctx.stroke();
+        // a little green alien in the dome
+        ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.ellipse(0, -30, 12, 15, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.ellipse(-5, -32, 3.5, 5, -0.3, 0, Math.PI * 2); ctx.ellipse(5, -32, 3.5, 5, 0.3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = b.hitFlash > 0 ? '#fca5a5' : '#64748b'; ctx.beginPath(); ctx.ellipse(0, 0, 125, 34, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 4; ctx.stroke();
+        ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.ellipse(0, 12, 95, 18, 0, 0, Math.PI * 2); ctx.fill();
+        for (let i = 0; i < 10; i++) {
+            const a = (i / 10) * Math.PI * 2;
+            ctx.fillStyle = (Math.floor(state.frame / 8) + i) % 2 === 0 ? '#facc15' : '#ef4444';
+            ctx.beginPath(); ctx.arc(Math.cos(a) * 108, Math.sin(a) * 26, 6, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+        // bombs
+        for (const o of b.bombs) {
+            ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(o.x, o.y, 9, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#bbf7d0'; ctx.beginPath(); ctx.arc(o.x - 3, o.y - 3, 3, 0, Math.PI * 2); ctx.fill();
+        }
+        // Kai's lasers (pointing upwards)
+        for (const s of b.shots) drawLaser(ctx, s.x, s.y, 26, Math.atan2(s.vy, s.vx));
+        // Kai (blinks after a hit)
+        if (!(b.inv > 0 && Math.floor(b.inv / 5) % 2 === 0)) {
+            drawStickman(ctx, state.selectedChar, b.kx, BOSS_FLOOR + b.ky - 25, state.frame,
+                b.ky < 0 ? 'JUMPING' : (b.moving ? 'RUNNING' : 'COASTING'), 0, '', false, b.face < 0, !!b.chargeAt);
+        }
+        // explosions
+        for (const e of b.booms) {
+            ctx.fillStyle = `rgba(251,146,60,${Math.max(0, e.life)})`; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = `rgba(254,240,138,${Math.max(0, e.life)})`; ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 0.5, 0, Math.PI * 2); ctx.fill();
+        }
+        // life bar of the mothership
+        const bw = Math.min(320, w * 0.5), bx = w / 2 - bw / 2;
+        ctx.fillStyle = 'rgba(15,23,42,0.85)'; ctx.fillRect(bx - 4, 34, bw + 8, 30);
+        ctx.fillStyle = '#f8fafc'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.fillText('MOTHERSHIP', w / 2, 46);
+        ctx.fillStyle = '#7f1d1d'; ctx.fillRect(bx, 51, bw, 8);
+        ctx.fillStyle = '#ef4444'; ctx.fillRect(bx, 51, bw * Math.max(0, b.hp) / BOSS_HP, 8);
+        // on-screen buttons: ◀ ▶ ride, ⤒ jump (hold = higher), ✸ shoot
+        const B = bossButtons(w);
+        const btn = (c: any, label: string, color: string, on: boolean) => {
+            ctx.fillStyle = on ? color : 'rgba(15,23,42,0.45)'; ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
+            ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, c.x, c.y + 1);
+            ctx.textBaseline = 'alphabetic';
+        };
+        const inp = state.bossInput || {};
+        btn(B.left, '◀', '#38bdf8', !!inp.left);
+        btn(B.right, '▶', '#38bdf8', !!inp.right);
+        btn(B.jump, '⤒', '#a3e635', !!b.chargeAt);
+        btn(B.fire, '✸', '#f97316', b.reload > 6);
+        ctx.textAlign = 'left';
+        // floating texts
+        state.floatingTexts.forEach((ft: FloatingText) => {
+            ctx.globalAlpha = Math.max(0, ft.life / 60);
+            ctx.fillStyle = ft.color; ctx.font = `bold ${ft.fontSize || 24}px Arial`; ctx.fillText(ft.text, ft.x, ft.y);
+            ctx.globalAlpha = 1;
+        });
+    };
+
+    // touch / mouse in the boss fight (several fingers at once: ride + jump + shoot)
+    const bossButtonAt = (canvas: HTMLCanvasElement, clientX: number, clientY: number) => {
+        const r = canvas.getBoundingClientRect();
+        const x = (clientX - r.left) * canvas.width / r.width, y = (clientY - r.top) * canvas.height / r.height;
+        const B = bossButtons(canvas.width) as any;
+        for (const k of ['left', 'right', 'jump', 'fire']) { const c = B[k]; if (Math.hypot(x - c.x, y - c.y) < c.r + 14) return k; }
+        return 'jump';                                   // anywhere else = jump (like in the rest of Level 1)
+    };
+    const bossPress = (k: string) => {
+        const inp = stateRef.current.bossInput;
+        if (k === 'left') inp.left = true; else if (k === 'right') inp.right = true;
+        else if (k === 'jump') bossJumpPress(); else if (k === 'fire') bossFire();
+    };
+    const bossRelease = (k: string) => {
+        const inp = stateRef.current.bossInput;
+        if (k === 'left') inp.left = false; else if (k === 'right') inp.right = false;
+        else if (k === 'jump') bossJumpRelease();
+    };
+    const bossPointer = (e: React.TouchEvent | React.MouseEvent, down: boolean) => {
+        const canvas = canvasRef.current;
+        const state = stateRef.current;
+        if (!canvas || !state.bossInput) return;
+        const touches = state.bossInput.touches;
+        if ('changedTouches' in e) {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                const id = 't' + t.identifier;
+                if (down) { const k = bossButtonAt(canvas, t.clientX, t.clientY); touches[id] = k; bossPress(k); }
+                else if (touches[id]) { bossRelease(touches[id]); delete touches[id]; }
+            }
+        } else {
+            if (down) { const k = bossButtonAt(canvas, e.clientX, e.clientY); touches.mouse = k; bossPress(k); }
+            else if (touches.mouse) { bossRelease(touches.mouse); delete touches.mouse; }
+        }
+    };
+
+    // keyboard in the boss fight: ← → ride, ↑ / W jump (hold = higher), Space / X shoot
+    useEffect(() => {
+        const kd = (e: KeyboardEvent) => {
+            const state = stateRef.current;
+            if (!state.ufoBoss) return;
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') { e.preventDefault(); state.bossInput.left = true; }
+            else if (e.code === 'ArrowRight' || e.code === 'KeyD') { e.preventDefault(); state.bossInput.right = true; }
+            else if ((e.code === 'ArrowUp' || e.code === 'KeyW') && !e.repeat) { e.preventDefault(); bossJumpPress(); }
+            else if (e.code === 'KeyX') { e.preventDefault(); bossFire(); }
+        };
+        const ku = (e: KeyboardEvent) => {
+            const state = stateRef.current;
+            if (!state.ufoBoss) return;
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') state.bossInput.left = false;
+            else if (e.code === 'ArrowRight' || e.code === 'KeyD') state.bossInput.right = false;
+            else if (e.code === 'ArrowUp' || e.code === 'KeyW') bossJumpRelease();
+        };
+        window.addEventListener('keydown', kd);
+        window.addEventListener('keyup', ku);
+        return () => { window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); };
+    }, []);
+
     const startSkillGame = useCallback(() => {
         const state = stateRef.current;
-        if (state.skillPointEarned) {
-            exitUnderworld();
-            return;
-        }
         state.skillGameActive = true;
+        state.skillGameDoneRun = true;
         state.skillGameAttempts = 0;
         state.skillGameHits = 0;
         state.skillGameCharge = 0;
@@ -724,7 +1022,8 @@ export function useSkateGame() {
         state.skillGameShotActive = false;
         state.skillGameResult = '';
         state.skillGameResultTimer = 0;
-        if (success) {
+        if (success && !state.skillPointEarned) {
+            // first win ever: the skill point for the level
             state.skillPointEarned = true;
             setProgress(prev => {
                 let next = awardSkill(prev, 1);
@@ -732,11 +1031,17 @@ export function useSkateGame() {
                 return next;
             });
             addFloatingText(state.player.x, state.currentFloorY - 100, 'SKILL POINT +1', '#f59e0b');
+        } else if (success) {
+            // played again: a bonus instead of a second point
+            state.score += 1500;
+            addFloatingText(state.player.x, state.currentFloorY - 100, 'BONUS +1500', '#f59e0b');
         } else {
             addFloatingText(state.player.x, state.currentFloorY - 100, 'CHALLENGE FAILED', '#ef4444');
-            exitUnderworld();
         }
-    }, [exitUnderworld]);
+        // "basketball only": just start the next round
+        if (state.skillPractice) { startSkillGame(); return; }
+        exitUnderworld();
+    }, [exitUnderworld, startSkillGame]);
 
     const releaseSkillShot = useCallback(() => {
         const state = stateRef.current;
@@ -805,6 +1110,14 @@ export function useSkateGame() {
         const skillDt = state.skillGameActive && state.status === 'PLAYING' ? Math.min(deltaTimeMs / 16.667, 4.0) : 0;
         const dt = isPaused && !state.skillGameActive || state.status !== 'PLAYING' ? 0 : Math.min(deltaTimeMs / 16.667, 4.0);
 
+        if (state.ufoBoss && state.status === 'PLAYING') {
+            if (dt > 0) updateUfoBoss(dt, canvas.width);
+            state.floatingTexts.forEach(ft => { ft.life -= dt; ft.y -= 0.5 * dt; });
+            state.floatingTexts = state.floatingTexts.filter(ft => ft.life > 0);
+            draw(ctx, state);
+            requestRef.current = requestAnimationFrame(loop);
+            return;
+        }
         if (state.skillGameActive && state.status === 'PLAYING') {
             state.frame += skillDt;
             if (state.skillGameCharging) {
@@ -1128,17 +1441,11 @@ export function useSkateGame() {
                      state.spaceDuration += dt / 60; 
 
                                                                                             if (state.spaceDuration > 25 && !state.spaceSignalActive && !state.abductionActive) {
-                             // The large UFO arrives after a longer, calmer stretch of Space gameplay. It automatically abducts the skater.
-                             state.abductionActive = true;
-                             state.beamDownTimer = 0;
-                             state.obstacles.push({
-                                 id: Date.now(),
-                                 x: canvas.width + 200,
-                                 y: 70,
-                                 w: 300, h: 120,
-                                 type: 'big_ufo', isGrindable: false, isGap: false, isPlatform: false, passed: false
-                             });
-                             addFloatingText(canvas.width - 100, 200, "UFO INCOMING!", "#ef4444");
+                             // After a longer stretch of Space the mothership comes: the end boss of Level 1.
+                             startUfoBoss(canvas.width);
+                             draw(ctx, state);
+                             requestRef.current = requestAnimationFrame(loop);
+                             return;
                          }
 
                          if (state.abductionActive) {
@@ -1598,7 +1905,7 @@ if (state.player.y > 600) {
                         if (activePlatform) {
                             if (playerX < activePlatform.x || playerX > activePlatform.x + activePlatform.w) {
                                 if (activePlatform.type === 'mega_ramp' && playerX > activePlatform.x + activePlatform.w) {
-                                    if (state.skillPointEarned) {
+                                    if (state.skillGameDoneRun) {
                                         exitUnderworld();
                                     } else {
                                         startSkillGame();
@@ -2394,6 +2701,10 @@ if (state.player.y > 600) {
             drawSkillGame(ctx, state);
             return;
         }
+        if (state.ufoBoss) {
+            drawUfoBoss(ctx, state);
+            return;
+        }
         let viewOffsetY = state.transitionY; 
         if (state.player.y < -150) {
             viewOffsetY = -state.player.y - 150; 
@@ -2622,7 +2933,7 @@ if (state.player.y > 600) {
         if (uiState !== 'PLAYING' || isPaused) return;
 
         const state = stateRef.current;
-        if (state.skillGameActive) return;
+        if (state.skillGameActive || state.ufoBoss) return;
         if (state.spaceSignalActive) return;
         if (state.player.state === 'ARRESTED' || state.player.state === 'ABDUCTED' || state.abductionActive) return;
         if (state.player.state === 'JUMPING' || state.player.state === 'NATAS_SPIN') return;
@@ -2686,7 +2997,7 @@ if (state.player.y > 600) {
         if (uiState !== 'PLAYING' || isPaused) return false;
 
         const state = stateRef.current;
-        if (state.skillGameActive || state.spaceSignalActive) return false;
+        if (state.skillGameActive || state.spaceSignalActive || state.ufoBoss) return false;
         if (state.player.state === 'ARRESTED' || state.player.state === 'ABDUCTED' || state.abductionActive) return false;
 
         // Match the existing mouse jump: keydown only starts the charge.
@@ -2726,6 +3037,7 @@ if (state.player.y > 600) {
         if (uiState !== 'PLAYING' || isPaused) return;
 
         const state = stateRef.current;
+        if (state.ufoBoss) return;
         if ((state.world as string) === 'SPACE') {
             // Space keeps its existing bounce behavior, but only after keyup.
             if (state.player.platformId) {
@@ -2826,6 +3138,10 @@ if (state.player.y > 600) {
             startSkillCharge();
             return;
         }
+        if (state.ufoBoss) {
+            if (!isPaused) bossPointer(e, true);
+            return;
+        }
         if (isPaused) return;
         
         if (state.player.state === 'ARRESTED' || state.player.state === 'ABDUCTED' || state.abductionActive) return; 
@@ -2882,6 +3198,10 @@ if (state.player.y > 600) {
 
          if (state.skillGameActive) {
              releaseSkillShot();
+             return;
+         }
+         if (state.ufoBoss) {
+             bossPointer(e, false);
              return;
          }
          if (isPaused) return;
@@ -3021,6 +3341,9 @@ if (state.player.y > 600) {
 
     const startGame = () => {
         const state = stateRef.current;
+        state.skillPractice = false;
+        state.skillGameActive = false;
+        state.skillGameDoneRun = false;
         state.status = 'PLAYING';
         state.score = 0;
         state.lives = 3;
@@ -3103,6 +3426,16 @@ if (state.player.y > 600) {
         getSoundManager().startMusic();
     };
 
+    // level selection → "Basketball only": straight into the basketball challenge, round after round
+    const startBasketball = () => {
+        startGame();
+        const state = stateRef.current;
+        state.skillPractice = true;
+        state.world = 'UNDERWORLD';
+        startSkillGame();
+        getSoundManager().playUnderworldMusic();
+    };
+
     const playAgainFromLevelOne = useCallback(() => {
         resetGameProgress();
         const state = stateRef.current;
@@ -3154,6 +3487,7 @@ if (state.player.y > 600) {
         togglePause,
         toggleMute,
         startGame,
+        startBasketball,
         handleTouchStart,
         handleTouchEnd,
         triggerAction,

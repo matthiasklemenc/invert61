@@ -78,16 +78,24 @@ function steerStop() { if (S.phase === 'game') { hook('gameDir', 0); return; } c
 function steerJump(down) {
   if (S.phase === 'game') { if (down) hook('gameShoot'); return; }
   const k = S.kai;
-  if (!playing()) return;
+  if (!down) k.btn = false;
+  if (!playing()) { if (!down) k.chargeAt = 0; return; }
   if (S.fly) { S.fly.up = down; return; }
   if (down) {
-    k.jumpHeld = true;
-    if (k.ground || k.coyote > 0) { k.vy = k.flip ? -JUMP_V : JUMP_V; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump'); }
-  } else {
+    k.btn = true; k.jumpHeld = true;
+    if ((k.ground || k.coyote > 0) && !k.chargeAt) k.chargeAt = performance.now();   // hold = Kai crouches and charges
+  } else if (k.chargeAt) chargeGo();                                                // let go = jump (longer held = higher)
+  else {
     k.jumpHeld = false;
     if (!k.flip && k.vy < JUMP_CUT) k.vy = JUMP_CUT;
     if (k.flip && k.vy > -JUMP_CUT) k.vy = -JUMP_CUT;
   }
+}
+// the charged jump: short tap = small hop, ~0.35 s held = full jump (as high as before, never higher)
+function chargeGo() {
+  const k = S.kai, f = 0.5 + 0.5 * chargeAmount(k); k.chargeAt = 0;
+  if (!(k.ground || k.coyote > 0)) return;
+  k.vy = (k.flip ? -JUMP_V : JUMP_V) * f; k.jumpHeld = true; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump');
 }
 const superShot = () => !!(WEAPON.super && SAVE.items[WEAPON.super] && SAVE.weapon[WKEY] !== WEAPON.item);
 function shoot() {
@@ -288,6 +296,8 @@ function updateKai(dt) {
   } else if (k.ground) {
     if (k.flip ? !ceilAt(k.x) : !groundAt(k.x)) { k.ground = false; k.coyote = 6; }
   }
+  if (k.btn && !k.chargeAt && k.ground) k.chargeAt = performance.now();        // button still held while landing: charge right away
+  if (k.chargeAt && !k.ground && k.coyote <= dt) chargeGo();                   // rolled off an edge while charging: jump at the last moment
   if (!k.ground) {
     if (k.coyote > 0) k.coyote -= dt;
     if (k.flip) {
@@ -327,7 +337,7 @@ const walkerBox = c => ({ x1: c.x - 26, x2: c.x + 26, y1: FLOOR - 46, y2: FLOOR 
 const flyerBox = p => { const s = p.baby ? 0.65 : 1; return { x1: p.x - 34 * s, x2: p.x + 34 * s, y1: p.y - 20 * s, y2: p.y + 20 * s }; };
 function stompBounce(top) {
   const k = S.kai;
-  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : JUMP_V * 0.7; k.ground = false; k.platform = null; k.coyote = 0;
+  k.y = top; k.vy = (k.jumpHeld || k.btn) ? JUMP_V * 0.95 : JUMP_V * 0.7; k.ground = false; k.platform = null; k.coyote = 0;
   S.shake = Math.max(S.shake, 3);
 }
 function updateWalkers(dt) {

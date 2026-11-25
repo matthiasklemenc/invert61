@@ -6,6 +6,12 @@ import { CharacterType } from './GameTypes';
 import { formatScore, GAME_LOGO_URL, CHARACTER_IMAGE_URLS } from './GameConstants';
 import LevelTiles, { getGameLang } from './LevelTiles';
 
+const L1TXT = {
+    street: { de: 'GANZES LEVEL SPIELEN', en: 'PLAY THE WHOLE LEVEL', es: 'JUGAR EL NIVEL ENTERO' },
+    ball: { de: 'NUR BASKETBALL', en: 'BASKETBALL ONLY', es: 'SOLO BALONCESTO' },
+    back: { de: 'Zurück', en: 'Back', es: 'Volver' },
+};
+
 interface GameMenuProps {
     highScore: number;
     userName: string;
@@ -13,6 +19,7 @@ interface GameMenuProps {
     character: CharacterType;
     setCharacter: (char: CharacterType) => void;
     startGame: () => void;
+    onBasketball?: () => void;
     onExit: () => void;
     level2Unlocked?: boolean;
     onLevel2?: () => void;
@@ -31,6 +38,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
     character,
     setCharacter,
     startGame,
+    onBasketball,
     onExit,
     level2Unlocked,
     onLevel2,
@@ -42,6 +50,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
     onStartOver
 }) => {
     const [confirmStartOver, setConfirmStartOver] = useState(false);
+    const [pickL1, setPickL1] = useState(false);   // Level 1 tile: whole Street level or only the basketball game
     const [lang] = useState(getGameLang);
     const currentCharacterInfo = CHARACTERS.find(c => c.id === character);
     const defaultName = currentCharacterInfo ? currentCharacterInfo.defaultName.toUpperCase() : "PLAYER";
@@ -119,7 +128,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
             <LevelTiles
                 lang={lang}
                 tiles={[
-                    { level: 1, state: 'open', done: !!level2Unlocked, onPlay: startGame },
+                    { level: 1, state: 'open', done: !!level2Unlocked, onPlay: onBasketball ? () => setPickL1(true) : startGame },
                     { level: 2, state: level2Unlocked ? 'open' : 'locked', done: !!level3Unlocked, onPlay: onLevel2 },
                     { level: 3, state: level3Unlocked ? 'open' : 'locked', done: !!level3Done, onPlay: onLevel3 },
                     { level: 4, state: level3Done ? 'open' : 'locked', done: !!level4Done, onPlay: onLevel4 },
@@ -137,6 +146,29 @@ const GameMenu: React.FC<GameMenuProps> = ({
                 </div>
             )}
             </div>
+
+            {pickL1 && (
+                <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setPickL1(false)}>
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="text-white font-black text-xl mb-4">LEVEL 1 – STREET</div>
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => { setPickL1(false); startGame(); }}
+                                className="bg-[#c52323] hover:bg-[#e03030] text-white font-black py-3 px-5 rounded-xl tracking-wider"
+                            >
+                                🛹 {L1TXT.street[lang]}
+                            </button>
+                            <button
+                                onClick={() => { setPickL1(false); onBasketball && onBasketball(); }}
+                                className="bg-orange-500 hover:bg-orange-400 text-white font-black py-3 px-5 rounded-xl tracking-wider"
+                            >
+                                🏀 {L1TXT.ball[lang]}
+                            </button>
+                            <button onClick={() => setPickL1(false)} className="text-gray-400 hover:text-white text-sm font-bold py-1">{L1TXT.back[lang]}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {confirmStartOver && onStartOver && (
                 <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setConfirmStartOver(false)}>

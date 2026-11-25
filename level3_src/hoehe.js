@@ -99,14 +99,19 @@ function steerBrake() {
 function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
 function steerJump(down) {
   const k = S.kai;
-  if (!playing()) return;
+  if (!down) k.btn = false;
+  if (!playing()) { if (!down) k.chargeAt = 0; return; }
   if (down) {
-    k.jumpHeld = true;
-    if (k.ground || k.coyote > 0) { k.vy = JUMP_V; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump'); }
-  } else {
-    k.jumpHeld = false;
-    if (k.vy < JUMP_CUT) k.vy = JUMP_CUT;
-  }
+    k.btn = true; k.jumpHeld = true;
+    if ((k.ground || k.coyote > 0) && !k.chargeAt) k.chargeAt = performance.now();   // hold = Kai crouches and charges
+  } else if (k.chargeAt) chargeGo();                                                // let go = jump (longer held = higher)
+  else { k.jumpHeld = false; if (k.vy < JUMP_CUT) k.vy = JUMP_CUT; }
+}
+// the charged jump: short tap = small hop, ~0.35 s held = full jump (as high as before, never higher)
+function chargeGo() {
+  const k = S.kai, f = 0.5 + 0.5 * chargeAmount(k); k.chargeAt = 0;
+  if (!(k.ground || k.coyote > 0)) return;
+  k.vy = JUMP_V * f; k.jumpHeld = true; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump');
 }
 // the slingshot: a stone flies in an arc in the direction Kai looks. The Super-Schleuder shoots two at once, faster.
 const superSling = () => !!SAVE.items.sling2 && SAVE.weapon.hoehe !== 'sling';
@@ -314,6 +319,8 @@ function updateKai(dt) {
   } else if (k.ground) {
     if (!groundAt(k.x)) { k.ground = false; k.coyote = 6; }
   }
+  if (k.btn && !k.chargeAt && k.ground) k.chargeAt = performance.now();        // button still held while landing: charge right away
+  if (k.chargeAt && !k.ground && k.coyote <= dt) chargeGo();                   // rolled off an edge while charging: jump at the last moment
   if (!k.ground) {
     if (k.coyote > 0) k.coyote -= dt;
     if (k.vy >= 0) k.jumpHeld = false;
@@ -340,7 +347,7 @@ function landOn(pl, top) {
 // ---------------- enemies ----------------
 function stompBounce(top) {
   const k = S.kai;
-  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
+  k.y = top; k.vy = (k.jumpHeld || k.btn) ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
   S.shake = Math.max(S.shake, 3);
 }
 function updateCompys(dt) {

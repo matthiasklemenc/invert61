@@ -92,14 +92,19 @@ function steerBrake() { const k = S.kai; if (!playing()) return; k.dir = 0; if (
 function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
 function steerJump(down) {
   const k = S.kai;
-  if (!playing()) return;
+  if (!down) k.btn = false;
+  if (!playing()) { if (!down) k.chargeAt = 0; return; }
   if (down) {
-    k.jumpHeld = true;
-    if (k.ground || k.coyote > 0) { k.vy = JUMP_V; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false; Audio.play('jump'); }
-  } else {
-    k.jumpHeld = false;
-    if (k.vy < JUMP_CUT) k.vy = JUMP_CUT;
-  }
+    k.btn = true; k.jumpHeld = true;
+    if ((k.ground || k.coyote > 0) && !k.chargeAt) k.chargeAt = performance.now();   // hold = Kai crouches and charges
+  } else if (k.chargeAt) chargeGo();                                                // let go = jump (longer held = higher)
+  else { k.jumpHeld = false; if (k.vy < JUMP_CUT) k.vy = JUMP_CUT; }
+}
+// the charged jump: short tap = small hop, ~0.35 s held = full jump (as high as before, never higher)
+function chargeGo() {
+  const k = S.kai, f = 0.5 + 0.5 * chargeAmount(k); k.chargeAt = 0;
+  if (!(k.ground || k.coyote > 0)) return;
+  k.vy = JUMP_V * f; k.jumpHeld = true; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false; Audio.play('jump');
 }
 // WATER BOMB: thrown in an arc in the direction Kai looks
 function throwBomb() {
@@ -285,6 +290,8 @@ function updateKai(dt) {
     if (Math.random() < 0.4 * dt) S.particles.push({ x: k.x + rand(-30, 30), y: LAVA_Y - 4, vx: rand(-0.5, 0.5), vy: rand(-2, -1), r: rand(2, 4), color: Math.random() < 0.5 ? '#ff7a1a' : '#ffd23a', life: 0.8, g: -0.02 });
     if (k.heat > HEAT_MAX) burnOut();
   } else k.heat = Math.max(0, k.heat - 1.5 * dt);
+  if (k.btn && !k.chargeAt && k.ground) k.chargeAt = performance.now();        // button still held while landing: charge right away
+  if (k.chargeAt && !k.ground && k.coyote <= dt) chargeGo();                   // rolled off an edge while charging: jump at the last moment
   if (!k.ground) {
     if (k.coyote > 0) k.coyote -= dt;
     if (k.vy >= 0) k.jumpHeld = false;
@@ -308,7 +315,7 @@ function landOn(pl, top) {
 }
 function stompBounce(top) {
   const k = S.kai;
-  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false;
+  k.y = top; k.vy = (k.jumpHeld || k.btn) ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false;
   S.shake = Math.max(S.shake, 3);
 }
 

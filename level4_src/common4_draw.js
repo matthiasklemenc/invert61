@@ -127,7 +127,7 @@ function drawKai() {
   // a hovering board floats a little above the ground – a soft glow below it
   if (!air) { ctx.fillStyle = 'rgba(54,198,244,0.18)'; ctx.beginPath(); ctx.ellipse(0, -1, 46, 5, 0, 0, Math.PI * 2); ctx.fill(); }
   const bob = Math.sin(S.t * 0.15) * 1.5;
-  drawKaiFigure({ x: 0, y: -4 + bob, tilt: air ? (up < 0 ? -0.06 : 0.06) : 0, crouch: air ? (up < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : 0,
+  drawKaiFigure({ x: 0, y: -4 + bob, tilt: air ? (up < 0 ? -0.06 : 0.06) : 0, crouch: air ? (up < 0 ? 6 : 4) : k.chargeAt ? chargeCrouch(k) : k.landT > 0 ? 3 + k.landT * 0.6 : 0,
     push, flip: 0, armsUp: air && k.shootT <= 0, ouch: k.hurtT > 0, wind: Math.min(1, Math.abs(k.vx) / SPEED), outfit: SAVE.outfit, hover: true, space: SPACE_HELMET });
   if (k.shootT > 0) drawHandWeapon(26, -56 + bob);
   ctx.restore();

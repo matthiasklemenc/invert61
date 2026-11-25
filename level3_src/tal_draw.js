@@ -292,7 +292,7 @@ function drawKai() {
   const air = !k.ground, push = k.ground && k.pushT > 0 && k.pushT < 34 ? k.pushT / 34 : 0;
   let fa = k.faceAnim; if (Math.abs(fa) < 0.14) fa = 0.14 * (Math.sign(fa) || 1);
   ctx.save(); ctx.translate(sx, 0); ctx.scale(fa, 1);
-  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
+  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.chargeAt ? chargeCrouch(k) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
     push, flip: 0, armsUp: air, ouch: k.hurtT > 0, wind: Math.min(1, Math.abs(k.vx) / SPEED), outfit: SAVE.outfit });
   ctx.restore();
 }

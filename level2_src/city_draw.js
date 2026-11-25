@@ -700,7 +700,7 @@ function draw() {
       const txt = '↻ ' + Math.min(k.natas.spins + 1, Math.round(k.natas.target / (Math.PI * 2))) + ' / ' + Math.round(k.natas.target / (Math.PI * 2));
       ctx.strokeText(txt, k.x, k.y - 132); ctx.fillText(txt, k.x, k.y - 132); ctx.restore();
     } else
-    drawKaiFigure({ x: k.x, y: k.y, tilt, boardAngle: pose.boardAngle, boardLift: pose.boardLift, slide: pose.slide, straightBack: pose.straightBack, crouch: pose.crouch != null ? pose.crouch : air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0, push, flip: k.flip, armsUp: air, ouch: k.hitTimer > 50, wind: 1, outfit: SAVE.outfit, wings: S.phase === 'ascend' ? k.wing : undefined });
+    drawKaiFigure({ x: k.x, y: k.y, tilt, boardAngle: pose.boardAngle, boardLift: pose.boardLift, slide: pose.slide, straightBack: pose.straightBack, crouch: pose.crouch != null ? pose.crouch : air ? (k.vy < 0 ? 6 : 4) : k.chargeAt ? chargeCrouch(k) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0, push, flip: k.flip, armsUp: air, ouch: k.hitTimer > 50, wind: 1, outfit: SAVE.outfit, wings: S.phase === 'ascend' ? k.wing : undefined });
   } else if (S.phase === 'start') drawKaiFigure({ x: k.x, y: k.y, tilt: 0, crouch: 0, push: 0, flip: 0, wind: 0.4, outfit: SAVE.outfit });
   if (S.rescue) drawRescueBoat(S.rescue);
   if (S.party || S.pin) drawPinataGame();

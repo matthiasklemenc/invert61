@@ -863,3 +863,9 @@ function readClick(p) {
 }
 // reading mode ON: the messages stay longer on the screen (called every frame by the controller)
 function readSlowMessages(dt) { if (READ.mode && typeof CUR !== 'undefined' && CUR && CUR.S && CUR.S.msgTimer > 0) CUR.S.msgTimer += dt * 0.66; }
+
+// ================= CHARGED JUMP (like Level 1) =================
+// hold the jump button = Kai crouches and charges; let go = he jumps. Short tap = small hop, ~0.35 s hold = full jump (never higher).
+const CHARGE_MS = 350;
+function chargeAmount(k) { return k.chargeAt ? Math.min(1, (performance.now() - k.chargeAt) / CHARGE_MS) : 0; }
+function chargeCrouch(k) { return k.chargeAt ? 2 + chargeAmount(k) * 9 : 0; }   // extra crouch while charging (for drawing)

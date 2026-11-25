@@ -884,6 +884,12 @@ function readClick(p) {
 }
 // reading mode ON: the messages stay longer on the screen (called every frame by the controller)
 function readSlowMessages(dt) { if (READ.mode && typeof CUR !== 'undefined' && CUR && CUR.S && CUR.S.msgTimer > 0) CUR.S.msgTimer += dt * 0.66; }
+
+// ================= CHARGED JUMP (like Level 1) =================
+// hold the jump button = Kai crouches and charges; let go = he jumps. Short tap = small hop, ~0.35 s hold = full jump (never higher).
+const CHARGE_MS = 350;
+function chargeAmount(k) { return k.chargeAt ? Math.min(1, (performance.now() - k.chargeAt) / CHARGE_MS) : 0; }
+function chargeCrouch(k) { return k.chargeAt ? 2 + chargeAmount(k) * 9 : 0; }   // extra crouch while charging (for drawing)
 // ================= AUDIO (Web Audio, everything generated – no files needed) =================
 const Audio = (() => {
   let ac = null, master, musicGain, sfxGain, musicFilter, delay, delayFb, noiseBuf;
@@ -1712,7 +1718,7 @@ function rockBlock(d) {
 function stomp(d) {
   const k = S.kai, top = dinoBox(d).y1;
   d.hp--; d.state = 'walk';
-  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
+  k.y = top; k.vy = (k.jumpHeld || k.btn) ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
   burst(k.x, top, '#ffd23a', 10, 3.5);
   S.shake = Math.max(S.shake, 3);
   if (d.hp <= 0) { d.dead = true; d.deadT = 0; d.stun = 0; Audio.play('stomp'); burst(d.x, top + 10, '#fbf3df', 12, 4); comboScore(PTS[d.type] || 100, d.x, top - 20); }
@@ -1757,14 +1763,19 @@ function steerBrake() { const k = S.kai; if (!playing()) return; k.dir = 0; Audi
 function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
 function steerJump(down) {
   const k = S.kai;
-  if (!playing()) return;
+  if (!down) k.btn = false;
+  if (!playing()) { if (!down) k.chargeAt = 0; return; }
   if (down) {
-    k.jumpHeld = true;
-    if (k.ground || k.coyote > 0) { k.vy = JUMP_V; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump'); }
-  } else {
-    k.jumpHeld = false;
-    if (k.vy < JUMP_CUT) k.vy = JUMP_CUT;          // short tap = small hop, hold = big jump
-  }
+    k.btn = true; k.jumpHeld = true;
+    if ((k.ground || k.coyote > 0) && !k.chargeAt) k.chargeAt = performance.now();   // hold = Kai crouches and charges
+  } else if (k.chargeAt) chargeGo();                                                // let go = jump (longer held = higher)
+  else { k.jumpHeld = false; if (k.vy < JUMP_CUT) k.vy = JUMP_CUT; }
+}
+// the charged jump: short tap = small hop, ~0.35 s held = full jump (as high as before, never higher)
+function chargeGo() {
+  const k = S.kai, f = 0.5 + 0.5 * chargeAmount(k); k.chargeAt = 0;
+  if (!(k.ground || k.coyote > 0)) return;
+  k.vy = JUMP_V * f; k.jumpHeld = true; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump');
 }
 const playing = () => S.phase === 'play' || S.phase === 'boss';
 const CTL = {
@@ -1936,6 +1947,8 @@ function updateKai(dt) {
   } else if (k.ground) {
     if (isTarAt(k.x)) { k.ground = false; k.coyote = 4; }
   }
+  if (k.btn && !k.chargeAt && k.ground) k.chargeAt = performance.now();        // button still held while landing: charge right away
+  if (k.chargeAt && !k.ground && k.coyote <= dt) chargeGo();                   // rolled off an edge while charging: jump at the last moment
   if (!k.ground) {
     if (k.coyote > 0) k.coyote -= dt;
     if (k.vy >= 0) k.jumpHeld = false;
@@ -2614,7 +2627,7 @@ function drawKai() {
   const air = !k.ground, push = k.ground && k.pushT > 0 && k.pushT < 34 ? k.pushT / 34 : 0;
   let fa = k.faceAnim; if (Math.abs(fa) < 0.14) fa = 0.14 * (Math.sign(fa) || 1);
   ctx.save(); ctx.translate(sx, 0); ctx.scale(fa, 1);
-  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
+  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.chargeAt ? chargeCrouch(k) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
     push, flip: 0, armsUp: air, ouch: k.hurtT > 0, wind: Math.min(1, Math.abs(k.vx) / SPEED), outfit: SAVE.outfit });
   ctx.restore();
 }
@@ -3109,14 +3122,19 @@ function steerBrake() {
 function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
 function steerJump(down) {
   const k = S.kai;
-  if (!playing()) return;
+  if (!down) k.btn = false;
+  if (!playing()) { if (!down) k.chargeAt = 0; return; }
   if (down) {
-    k.jumpHeld = true;
-    if (k.ground || k.coyote > 0) { k.vy = JUMP_V; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump'); }
-  } else {
-    k.jumpHeld = false;
-    if (k.vy < JUMP_CUT) k.vy = JUMP_CUT;
-  }
+    k.btn = true; k.jumpHeld = true;
+    if ((k.ground || k.coyote > 0) && !k.chargeAt) k.chargeAt = performance.now();   // hold = Kai crouches and charges
+  } else if (k.chargeAt) chargeGo();                                                // let go = jump (longer held = higher)
+  else { k.jumpHeld = false; if (k.vy < JUMP_CUT) k.vy = JUMP_CUT; }
+}
+// the charged jump: short tap = small hop, ~0.35 s held = full jump (as high as before, never higher)
+function chargeGo() {
+  const k = S.kai, f = 0.5 + 0.5 * chargeAmount(k); k.chargeAt = 0;
+  if (!(k.ground || k.coyote > 0)) return;
+  k.vy = JUMP_V * f; k.jumpHeld = true; k.ground = false; k.platform = null; k.coyote = 0; Audio.play('jump');
 }
 // the slingshot: a stone flies in an arc in the direction Kai looks. The Super-Schleuder shoots two at once, faster.
 const superSling = () => !!SAVE.items.sling2 && SAVE.weapon.hoehe !== 'sling';
@@ -3324,6 +3342,8 @@ function updateKai(dt) {
   } else if (k.ground) {
     if (!groundAt(k.x)) { k.ground = false; k.coyote = 6; }
   }
+  if (k.btn && !k.chargeAt && k.ground) k.chargeAt = performance.now();        // button still held while landing: charge right away
+  if (k.chargeAt && !k.ground && k.coyote <= dt) chargeGo();                   // rolled off an edge while charging: jump at the last moment
   if (!k.ground) {
     if (k.coyote > 0) k.coyote -= dt;
     if (k.vy >= 0) k.jumpHeld = false;
@@ -3350,7 +3370,7 @@ function landOn(pl, top) {
 // ---------------- enemies ----------------
 function stompBounce(top) {
   const k = S.kai;
-  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
+  k.y = top; k.vy = (k.jumpHeld || k.btn) ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0;
   S.shake = Math.max(S.shake, 3);
 }
 function updateCompys(dt) {
@@ -4151,7 +4171,7 @@ function drawKai() {
     drawKaiFigure({ x: 0, y: k.y, tilt: 0, crouch: 4, push: 0, flip: 0, armsUp: true, wind: 0, outfit: SAVE.outfit });
     ctx.restore(); return;
   }
-  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
+  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.chargeAt ? chargeCrouch(k) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
     push, flip: 0, armsUp: air && k.shootT <= 0, ouch: k.hurtT > 0, wind: Math.min(1, Math.abs(k.vx) / SPEED), outfit: SAVE.outfit });
   if (k.shootT > 0) drawSling(26, k.y - 52, k.shootT / 14);
   ctx.restore();
@@ -4461,14 +4481,19 @@ function steerBrake() { const k = S.kai; if (!playing()) return; k.dir = 0; if (
 function steerStop() { const k = S.kai; if (!playing()) return; k.dir = 0; }
 function steerJump(down) {
   const k = S.kai;
-  if (!playing()) return;
+  if (!down) k.btn = false;
+  if (!playing()) { if (!down) k.chargeAt = 0; return; }
   if (down) {
-    k.jumpHeld = true;
-    if (k.ground || k.coyote > 0) { k.vy = JUMP_V; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false; Audio.play('jump'); }
-  } else {
-    k.jumpHeld = false;
-    if (k.vy < JUMP_CUT) k.vy = JUMP_CUT;
-  }
+    k.btn = true; k.jumpHeld = true;
+    if ((k.ground || k.coyote > 0) && !k.chargeAt) k.chargeAt = performance.now();   // hold = Kai crouches and charges
+  } else if (k.chargeAt) chargeGo();                                                // let go = jump (longer held = higher)
+  else { k.jumpHeld = false; if (k.vy < JUMP_CUT) k.vy = JUMP_CUT; }
+}
+// the charged jump: short tap = small hop, ~0.35 s held = full jump (as high as before, never higher)
+function chargeGo() {
+  const k = S.kai, f = 0.5 + 0.5 * chargeAmount(k); k.chargeAt = 0;
+  if (!(k.ground || k.coyote > 0)) return;
+  k.vy = JUMP_V * f; k.jumpHeld = true; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false; Audio.play('jump');
 }
 // WATER BOMB: thrown in an arc in the direction Kai looks
 function throwBomb() {
@@ -4654,6 +4679,8 @@ function updateKai(dt) {
     if (Math.random() < 0.4 * dt) S.particles.push({ x: k.x + rand(-30, 30), y: LAVA_Y - 4, vx: rand(-0.5, 0.5), vy: rand(-2, -1), r: rand(2, 4), color: Math.random() < 0.5 ? '#ff7a1a' : '#ffd23a', life: 0.8, g: -0.02 });
     if (k.heat > HEAT_MAX) burnOut();
   } else k.heat = Math.max(0, k.heat - 1.5 * dt);
+  if (k.btn && !k.chargeAt && k.ground) k.chargeAt = performance.now();        // button still held while landing: charge right away
+  if (k.chargeAt && !k.ground && k.coyote <= dt) chargeGo();                   // rolled off an edge while charging: jump at the last moment
   if (!k.ground) {
     if (k.coyote > 0) k.coyote -= dt;
     if (k.vy >= 0) k.jumpHeld = false;
@@ -4677,7 +4704,7 @@ function landOn(pl, top) {
 }
 function stompBounce(top) {
   const k = S.kai;
-  k.y = top; k.vy = k.jumpHeld ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false;
+  k.y = top; k.vy = (k.jumpHeld || k.btn) ? JUMP_V * 0.95 : -9; k.ground = false; k.platform = null; k.coyote = 0; k.onLava = false;
   S.shake = Math.max(S.shake, 3);
 }
 
@@ -5516,7 +5543,7 @@ function drawKai() {
   // the Magma-Board glows on lava
   if (k.onLava && k.ground) { ctx.fillStyle = `rgba(255,140,40,${0.4 + Math.sin(S.t * 0.4) * 0.2})`; ctx.beginPath(); ctx.ellipse(0, k.y - 4, 50, 10, 0, 0, Math.PI * 2); ctx.fill(); }
   ctx.save(); ctx.scale(fa, 1);
-  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
+  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.chargeAt ? chargeCrouch(k) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
     push, flip: 0, armsUp: air && k.shootT <= 0, ouch: k.hurtT > 0, wind: Math.min(1, Math.abs(k.vx) / SPEED), outfit: SAVE.outfit });
   if (k.shootT > 0) drawBomb(24, k.y - 64 - (14 - k.shootT) * 0.8, 0, 0.7);
   ctx.restore();

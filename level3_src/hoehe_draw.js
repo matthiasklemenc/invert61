@@ -350,7 +350,7 @@ function drawKai() {
     drawKaiFigure({ x: 0, y: k.y, tilt: 0, crouch: 4, push: 0, flip: 0, armsUp: true, wind: 0, outfit: SAVE.outfit });
     ctx.restore(); return;
   }
-  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
+  drawKaiFigure({ x: 0, y: k.y, tilt: air ? (k.vy < 0 ? -0.06 : 0.06) : 0, crouch: air ? (k.vy < 0 ? 6 : 4) : k.chargeAt ? chargeCrouch(k) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0,
     push, flip: 0, armsUp: air && k.shootT <= 0, ouch: k.hurtT > 0, wind: Math.min(1, Math.abs(k.vx) / SPEED), outfit: SAVE.outfit });
   if (k.shootT > 0) drawSling(26, k.y - 52, k.shootT / 14);
   ctx.restore();
