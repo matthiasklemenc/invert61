@@ -300,6 +300,11 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  'IN DIE TIEFSEE?': ['DOWN TO THE DEEP SEA?', '¿BAJAR AL MAR PROFUNDO?'], 'IN DEN HIMMEL?': ['UP INTO THE SKY?', '¿SUBIR AL CIELO?'],
+  'Die Tiefsee hast du schon geschafft.': ['You already finished the deep sea.', 'Ya terminaste el mar profundo.'], 'Den Himmel hast du schon geschafft.': ['You already finished the sky.', 'Ya terminaste el cielo.'],
+  'Willst du trotzdem nochmal hinunter?': ['Do you want to go down again anyway?', '¿Quieres bajar otra vez de todos modos?'], 'Willst du trotzdem nochmal hinauf?': ['Do you want to go up again anyway?', '¿Quieres subir otra vez de todos modos?'],
+  'JA, HINUNTER': ['YES, GO DOWN', 'SÍ, BAJAR'], 'JA, HINAUF': ['YES, GO UP', 'SÍ, SUBIR'], 'NEIN, WEITERFAHREN': ['NO, KEEP RIDING', 'NO, SEGUIR'],
+  'Zur Level-Auswahl': ['Level selection', 'Elegir nivel'],
   // ---------- points ----------
   'PUNKTE': ['POINTS', 'PUNTOS'], 'NEUER REKORD!': ['NEW RECORD!', '¡NUEVO RÉCORD!'],
   'Punkte: {p}   ·   Rekord: {r}': ['Points: {p}   ·   Record: {r}', 'Puntos: {p}   ·   Récord: {r}'],
@@ -317,6 +322,9 @@ const TR = {
   'SEGEL-BOING! +20': ['SAIL BOING! +20', '¡BOING EN LA VELA! +20'], '{n}× SEGEL-BOING! +20': ['{n}× SAIL BOING! +20', '¡{n}× BOING EN LA VELA! +20'],
   'Ahoi, Kapitän Kai!': ['Ahoy, Captain Kai!', '¡Ahoy, capitán Kai!'],
   'HAFEN-SPRUNG! +10': ['HARBOR JUMP! +10', '¡SALTO DEL MUELLE! +10'], 'Ab in die Tiefsee!': ['Into the deep sea!', '¡Al mar profundo!'],
+  'Plitsch! Das Rettungsboot kommt!': ['Splash! The rescue boat is coming!', '¡Plaf! ¡Viene el bote salvavidas!'],
+  'Gerettet! Nochmal zur Engelsrampe!': ['Rescued! Back to the angel ramp!', '¡Rescatado! ¡Otra vez a la rampa de ángel!'],
+  'RETTUNG': ['RESCUE', 'RESCATE'],
   'Alle Bosse besiegt!': ['All bosses beaten!', '¡Todos los jefes vencidos!'],
   'Alle Bosse besiegt! Ab zum Hafen – spring ins Wasser!': ['All bosses beaten! On to the harbor – jump into the water!', '¡Todos los jefes vencidos! Al puerto – ¡salta al agua!'],
   'Alle 3 Leben sind weg. Nochmal versuchen?': ['All 3 lives are gone. Try again?', 'Se acabaron las 3 vidas. ¿Intentar de nuevo?'],

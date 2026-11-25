@@ -241,6 +241,8 @@ function toMainMenu() {
   MENU.open = true; CUR.S.noHud = true; Audio.play('tink');
 }
 // ganz raus: back to the start page of the Invert app (music and the other areas)
+// back to the level selection of the Invert app (the tiles Level 1 – 4)
+function goToLevels() { writeSave(); Audio.pauseBg(true); location.href = new URL('./?open=skate-game', location.href).href; }
 function goToApp() { writeSave(); Audio.pauseBg(true); location.href = new URL('./', location.href).href; }
 function mButton(b, label, c1, c2, small) {
   ctx.save(); const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, c1); g.addColorStop(1, c2);
@@ -261,16 +263,18 @@ function drawMenu() {
   const stars = ['alien', 'foto'].filter(m => SAVE.mini[m] === true).length;
   ctx.fillStyle = '#ffd23a'; ctx.fillText('★ ' + stars + '/2', W / 2 + 110, cy - 26);
   ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial';
-  if (stars === 2 && allBossesDone()) ctx.fillText(tx('100 % – POKAL! Alles geschafft!'), W / 2, cy + (hasProgress() ? 186 : 146));
-  ctx.fillText(tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score || 0), r: fmtNum(SAVE.best || 0) }), W / 2, cy + (hasProgress() ? 166 : 126));
+  if (stars === 2 && allBossesDone()) ctx.fillText(tx('100 % – POKAL! Alles geschafft!'), W / 2, cy + (hasProgress() ? 222 : 182));
+  ctx.fillText(tx('Punkte: {p}   ·   Rekord: {r}', { p: fmtNum(SAVE.score || 0), r: fmtNum(SAVE.best || 0) }), W / 2, cy + (hasProgress() ? 202 : 162));
   ctx.restore();
   const prog = hasProgress();
   MENU.btns.cont = { x: W / 2 - 150, y: cy + 4, w: 300, h: 54 };
   MENU.btns.reset = prog ? { x: W / 2 - 110, y: cy + 70, w: 220, h: 30 } : null;
-  MENU.btns.app = { x: W / 2 - 130, y: cy + (prog ? 112 : 72), w: 260, h: 36 };
+  MENU.btns.levels = { x: W / 2 - 150, y: cy + (prog ? 110 : 70), w: 300, h: 40 };
+  MENU.btns.app = { x: W / 2 - 110, y: cy + (prog ? 158 : 118), w: 220, h: 28 };
   mButton(MENU.btns.cont, '▶  ' + tx(prog ? 'WEITERSPIELEN' : 'SPIELEN'), '#34c759', '#1f8f3c');
   if (prog) mButton(MENU.btns.reset, tx('Komplett neu anfangen'), 'rgba(200,60,50,0.55)', 'rgba(150,30,25,0.55)', true);
-  mButton(MENU.btns.app, '◀  ' + tx('Zurück zur Invert-App'), '#4a6fa5', '#2c4a78');
+  mButton(MENU.btns.levels, '▦  ' + tx('Zur Level-Auswahl'), '#ff9a1a', '#d8650c');
+  mButton(MENU.btns.app, '◀  ' + tx('Zurück zur Invert-App'), 'rgba(74,111,165,0.8)', 'rgba(44,74,120,0.8)', true);
   // WHO RIDES? Kai on the left, Bali on the right of the buttons – tap to choose
   ctx.save();
   ctx.fillStyle = '#bfe6ff'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -519,6 +523,7 @@ canvas.addEventListener('pointerdown', e => {
     e.stopImmediatePropagation(); e.preventDefault(); Audio.init();
     if (inB(p, MENU.btns.cont)) continueGame();
     else if (inB(p, MENU.btns.reset)) askNewGame();
+    else if (inB(p, MENU.btns.levels)) goToLevels();
     else if (inB(p, MENU.btns.app)) goToApp();
     else if (inB(p, MENU.btns.kai)) { setCharacter('kai'); Audio.play('flip'); }
     else if (inB(p, MENU.btns.bali)) { setCharacter('bali'); Audio.play('flip'); }

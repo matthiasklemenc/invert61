@@ -158,6 +158,20 @@ function drawWater(x0) {
   ctx.strokeStyle = 'rgba(255,255,255,0.5)';
   for (let i = 0; i < 18; i++) { const wx = ((i * 83 - S.scroll * 0.6) % (W + 120) + W + 120) % (W + 120) - 40, wy = WATER_Y + 9 + (i % 2) * 7; if (wx < x0) continue; ctx.beginPath(); ctx.moveTo(wx, wy); ctx.quadraticCurveTo(wx + 9, wy - 3, wx + 18, wy); ctx.stroke(); }
 }
+// small red-white rescue boat with a lifebuoy (picks Kai out of the harbor water)
+function drawRescueBoat(r) {
+  const x = r.bx, y = WATER_Y + Math.sin(S.t * 0.15) * 2;
+  ctx.save(); ctx.strokeStyle = OUT; ctx.lineWidth = 2.5;
+  ctx.fillStyle = '#e23b3b'; ctx.beginPath(); ctx.moveTo(x - 70, y - 18); ctx.lineTo(x + 78, y - 18); ctx.lineTo(x + 56, y + 14); ctx.lineTo(x - 56, y + 14); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 64, y - 10, 136, 7); ctx.strokeRect(x - 64, y - 10, 136, 7);
+  ctx.fillStyle = '#f4efe6'; ctx.beginPath(); ctx.roundRect(x + 22, y - 52, 40, 34, 5); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#7fd6ef'; ctx.fillRect(x + 30, y - 45, 24, 12); ctx.strokeRect(x + 30, y - 45, 24, 12);
+  // lifebuoy on the cabin
+  ctx.lineWidth = 7; ctx.strokeStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - 44, y - 30, 11, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = '#e23b3b'; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(x - 44, y - 30, 11, i * Math.PI / 2, i * Math.PI / 2 + 0.6); ctx.stroke(); }
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.fillText(tx('RETTUNG'), x - 2, y + 7);
+  ctx.restore();
+}
 function drawHarbor(o) {
   const x = o.x, end = x + o.w, x0 = Math.max(-20, x), top = FLOOR - 8;
   if (x0 < W + 20) drawWater(x0);
@@ -636,6 +650,11 @@ function drawScreens() {
       drawLangPicker();
   }
   if (S.phase === 'gameover') { panel(tx('KEINE LEBEN MEHR!'), [tx('Alle 3 Leben sind weg. Nochmal versuchen?'), tx('Strecke: {p}%   ·   Münzen: {c}', { p: Math.floor(clamp(S.dist / LEVEL_LENGTH, 0, 1) * 100), c: S.coins })], '#ff7a6a'); button(BTN.goYes, tx('NOCHMAL VERSUCHEN'), '#36c6f4', '#1677a8'); button(BTN.goNo, tx('NEIN – ZUM MENÜ'), '#8a96a8', '#5d6878'); }
+  if (S.phase === 'askGo' && S.askGo) {
+    const sea = S.askGo.kind === 'pipe';
+    panel(sea ? tx('IN DIE TIEFSEE?') : tx('IN DEN HIMMEL?'), [sea ? tx('Die Tiefsee hast du schon geschafft.') : tx('Den Himmel hast du schon geschafft.'), sea ? tx('Willst du trotzdem nochmal hinunter?') : tx('Willst du trotzdem nochmal hinauf?')], '#7fe0ff');
+    button(BTN.goYes, sea ? tx('JA, HINUNTER') : tx('JA, HINAUF'), '#34c759', '#1f8f3c'); button(BTN.goNo, tx('NEIN, WEITERFAHREN'), '#8a96a8', '#5d6878');
+  }
   if (S.phase === 'victory') { panel(tx('GESCHAFFT!'), [tx('Der Müllwagen ist erledigt!'), tx('Münzen: {c}   ·   Herzen: {h}', { c: S.coins, h: S.hearts })], '#ffd23a'); button(BTN.again, tx('NOCHMAL SPIELEN'), '#34c759', '#1f8f3c'); }
 }
 
@@ -683,6 +702,7 @@ function draw() {
     } else
     drawKaiFigure({ x: k.x, y: k.y, tilt, boardAngle: pose.boardAngle, boardLift: pose.boardLift, slide: pose.slide, straightBack: pose.straightBack, crouch: pose.crouch != null ? pose.crouch : air ? (k.vy < 0 ? 6 : 4) : k.landT > 0 ? 3 + k.landT * 0.6 : push ? 3 : 0, push, flip: k.flip, armsUp: air, ouch: k.hitTimer > 50, wind: 1, outfit: SAVE.outfit, wings: S.phase === 'ascend' ? k.wing : undefined });
   } else if (S.phase === 'start') drawKaiFigure({ x: k.x, y: k.y, tilt: 0, crouch: 0, push: 0, flip: 0, wind: 0.4, outfit: SAVE.outfit });
+  if (S.rescue) drawRescueBoat(S.rescue);
   if (S.party || S.pin) drawPinataGame();
   for (const p of S.particles) {
     ctx.globalAlpha = Math.max(0, Math.min(1, p.life)); ctx.fillStyle = p.color;
@@ -692,6 +712,8 @@ function draw() {
     else { ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
   }
   ctx.globalAlpha = 1;
+  const fade = S.rescue ? S.rescue.fade : (S.fadeIn || 0);
+  if (fade > 0) { ctx.fillStyle = 'rgba(8,20,40,' + fade + ')'; ctx.fillRect(-40, -DY - 40, W + 80, H + DY + 80); }
   ctx.restore();
   if (S.noHud) return;
   ctx.save(); ctx.translate(0, -DY); drawHUD(); ctx.restore();

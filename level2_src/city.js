@@ -102,6 +102,8 @@ function startHarbor() {
   // sailboats in the open water after the pier – about one ramp jump / one sail bounce apart
   S.harbor = addObject('boardwalk', x, { w: len, boats: [270, 600, 930].map((d, i) => ({ d: len + d, i: i + 1, hits: 0, rock: 0 })) });
   const r = addObject('ramp', x + len - 96); r.pierRamp = true;           // the ramp sits right at the end of the pier
+  // a second angel-wing ramp in the middle of the pier: one more chance to fly up to the sky
+  if (wingsActive()) { const w2 = addObject('ramp', x + Math.round(len * 0.5) - 48); w2.wings = true; }
   for (let i = 0; i < 3; i++) addCoinArc(x + 260 + i * 440, FLOOR - 40, 5, 0, 34);
   addCoinArc(x + len + 10, FLOOR - 150, 5, 50, 42);                     // coins over the water: only reachable with the ramp jump
   addCoinArc(x + len + 330, FLOOR - 230, 5, 40, 44);                    // high up: only reachable with a sail bounce
@@ -143,8 +145,31 @@ function splashIntoWater() {
   for (let i = 0; i < 44; i++) S.particles.push({ x: k.x + rand(-24, 24), y: WATER_Y, vx: rand(-5, 5), vy: rand(-11, -3), r: rand(2, 6), color: i % 3 ? '#7fd6ef' : '#ffffff', life: 1.5, g: 0.35 });
   saveProgress();
   if (allBossesDone()) { S.finalAfter = 55; flash(tx('Alle Bosse besiegt!'), 90); return; }      // everything done: the big final screen
+  // the deep sea is already done: no forced trip down – a rescue boat fishes Kai out and brings him back (the wing ramp comes again)
+  if (SAVE.done.sea) { S.rescue = { t: 0, bx: W + 140, picked: false, fade: 0 }; flash(tx('Plitsch! Das Rettungsboot kommt!'), 120); return; }
   flash(tx('Ab in die Tiefsee!'), 90);
   goToWorld('tiefsee.html', 'from=stadt&splash=1');             // the camera follows Kai under water
+}
+// RESCUE BOAT (deep sea already done): Kai bobs in the water, the boat picks him up, short fade, back to the street before the harbor
+function updateRescue(dt) {
+  const k = S.kai, r = S.rescue; r.t += dt; S.scroll += 0.4 * dt;
+  if (!r.picked) {
+    // Kai sinks a little, then bobs at the surface
+    k.vy = Math.min(k.vy + 0.5 * dt, 3); k.y = Math.min(k.y + k.vy * dt, WATER_Y + 26 + Math.sin(r.t * 0.12) * 3);
+    if (r.t > 30) r.bx -= 7 * dt;
+    if (r.bx <= k.x + 10) { r.picked = true; r.t = 0; Audio.play('chime'); flash(tx('Gerettet! Nochmal zur Engelsrampe!'), 120); }
+  } else {
+    k.y = WATER_Y - 14; k.x += 4 * dt; r.bx = k.x - 10;
+    if (r.t > 50) r.fade = Math.min(1, r.fade + 0.05 * dt);
+    if (r.fade >= 1) backToHarborStart();
+  }
+}
+function backToHarborStart() {
+  const k = S.kai;
+  S.rescue = null; S.objects = []; S.projectiles = []; S.harbor = null; S.overWater = false; S.splashed = false;
+  S.pierSpawned = false; S.wingSpawned = false; S.outroDist = Math.max(0, OUTRO.wing - 450); S.nextSpawn = 380; S.outroIdx = 0;
+  Object.assign(k, { x: 250, y: FLOOR, vy: 0, vx: 0, ground: true, platform: null, grind: false, rampJump: false, flip: 0, flipping: false, combo: 0 });
+  S.phase = 'play'; S.fadeIn = 1; holding = false; keyDown = false; pressQueued = false;
 }
 function startAscend() {
   const k = S.kai;
@@ -155,8 +180,19 @@ function startAscend() {
   saveProgress();
   goToWorld('himmel.html', 'from=stadt');      // camera lifts Kai up into the sky (continuous)
 }
-function enterPipe(o) {
+// a world that is already done: ask first before Kai is sent there again (no accidental trips)
+function askGo(kind, yes, no) {
+  S.askGo = { kind, yes, no, prev: S.phase }; S.phase = 'askGo'; holding = false; keyDown = false; pressQueued = false; Audio.play('chime');
+}
+function answerGo(ok) {
+  const a = S.askGo; if (!a) return;
+  S.askGo = null; S.phase = a.prev === 'askGo' ? 'play' : a.prev; holding = false; keyDown = false; pressQueued = false;
+  if (ok) a.yes(); else { Audio.play('tink'); if (a.no) a.no(); }
+}
+function enterPipe(o, sure) {
   const k = S.kai;
+  // the deep sea is already done: ask first (every time) – maybe Kai only wanted to jump over the tube
+  if (SAVE.done.sea && !sure && SAVE.items.harpoon) { askGo('pipe', () => enterPipe(o, true)); return; }
   // the tube always stays open – also when the deep sea is already done (play it again)
   if (!SAVE.items.harpoon) {
     // no harpoon yet: the tube stays closed
@@ -210,6 +246,7 @@ canvas.addEventListener('pointerdown', e => {
   const mp = { x: p.x, y: p.y + DY / 2 };      // menus are drawn centred on the tall screen
   if (S.phase === 'start') { if (!langPickerClick(mp)) beginWorld(); return; }
   if (S.phase === 'gameover') { if (inRect(mp, BTN.goYes)) resetGame(); else if (inRect(mp, BTN.goNo)) { resetGame(); toMainMenu(); } return; }
+  if (S.phase === 'askGo') { if (inRect(mp, BTN.goYes)) answerGo(true); else if (inRect(mp, BTN.goNo)) answerGo(false); return; }
   if (S.phase === 'victory') { if (inRect(mp, BTN.again)) resetGame(); return; }
   if (S.phase === 'ascend' || S.phase === 'dive' || S.phase === 'pipe') return;
   if (S.phase.startsWith('pinata') && pinataInput(p)) return;
@@ -236,6 +273,7 @@ const rel = e => {
 window.addEventListener('pointerup', rel); window.addEventListener('pointercancel', rel);
 let keyDown = false;
 window.addEventListener('keydown', e => {
+  if (S.phase === 'askGo') { if (e.code === 'Enter') answerGo(true); else if (e.code === 'Escape') answerGo(false); if (e.code === 'Space') e.preventDefault(); return; }
   if (e.code === 'KeyX') { e.preventDefault(); Audio.init(); if (!e.repeat) action(); return; }
   if (e.code !== 'Space' && e.code !== 'ArrowUp') { if (e.code === 'KeyM') Audio.toggleMusic(); return; }
   e.preventDefault(); Audio.init(); Audio.setTheme('city');
@@ -373,7 +411,11 @@ function landed(surface) {
 function launchFromRamp(o, boost) {
   const k = S.kai;
   o.riding = false; o.done = true;
-  if (o.wings) { startAscend(); return; }
+  if (o.wings) {
+    // the sky is already done: ask first – NO = a normal big ramp jump
+    if (SAVE.done.heaven && !o.askedGo) { o.askedGo = true; askGo('sky', () => startAscend(), () => { o.askedGo = false; o.wings = false; launchFromRamp(o, boost); o.wings = true; }); return; }
+    startAscend(); return;
+  }
   if (o.pierRamp) {
     // big jump off the end of the pier into the water: +10 coins
     jump(RAMP_V * 1.08); k.rampJump = true; S.coins += 10; gainPts(PTS.trick, k.x, k.y - 130);
@@ -618,7 +660,7 @@ function update(dt) {
   if (S.shake > 0) S.shake = Math.max(0, S.shake - dt);
   if (S.heartFlash > 0) S.heartFlash = Math.max(0, S.heartFlash - dt); else if (S.heartFlash < 0) S.heartFlash = Math.min(0, S.heartFlash + dt);
   if (S.msgTimer > 0) S.msgTimer -= dt;
-  if (S.phase === 'start' || S.phase === 'gameover' || S.phase === 'victory') { S.scroll += (S.phase === 'start' ? 1 : 0) * dt; updateParticles(dt); return; }
+  if (S.phase === 'start' || S.phase === 'gameover' || S.phase === 'victory' || S.phase === 'askGo') { S.scroll += (S.phase === 'start' ? 1 : 0) * dt; updateParticles(dt); return; }
 
   if (!(S.party && !S.partyDone && S.party.x <= 150)) S.speed += ((S.kai.natas ? 0 : SPEED) - S.speed) * Math.min(1, (S.kai.natas ? 0.35 : 0.08) * dt);
   if (S.phase === 'ascend') {
@@ -629,6 +671,8 @@ function update(dt) {
   if (S.phase === 'pipe') { updateParticles(dt); return; }
   if (S.harbor) for (const b of S.harbor.boats) if (b.rock > 0) b.rock = Math.max(0, b.rock - 0.012 * dt);
   if (S.ahoiT > 0) S.ahoiT -= dt;
+  if (S.fadeIn > 0) S.fadeIn = Math.max(0, S.fadeIn - 0.04 * dt);
+  if (S.phase === 'dive' && S.rescue) { updateRescue(dt); updateParticles(dt); return; }
   if (S.phase === 'dive') {
     const k = S.kai; S.diveT += dt; k.vy += 0.5 * dt; k.y += k.vy * dt; k.x += 1.2 * dt;
     if (S.finalAfter) { S.finalAfter -= dt; if (S.finalAfter <= 0) { S.finalAfter = 0; goToWorld('tiefsee.html', 'final=1'); } }
@@ -639,7 +683,7 @@ function update(dt) {
   if (S.phase === 'pinataAsk' || S.phase === 'pinataPick') { updateParticles(dt); return; }
   if (S.phase === 'pinata') { updatePinata(dt); return; }
   const partyStop = S.party && !S.partyDone && S.party.x <= 150;
-  if (partyStop) { S.speed += (0 - S.speed) * Math.min(1, 0.3 * dt); if (S.speed < 0.15 && kaiGrounded() && !S.kai.natas) { S.speed = 0; S.phase = 'pinataAsk'; pointers.clear(); keyDown = false; pressQueued = false; return; } }
+  if (partyStop) { S.speed += (0 - S.speed) * Math.min(1, 0.3 * dt); if (S.speed < 0.15 && kaiGrounded() && !S.kai.natas) { S.speed = 0; S.phase = 'pinataAsk'; pointers.clear(); holding = false; keyDown = false; pressQueued = false; return; } }
   const move = S.speed * dt;
   S.scroll += move;
   if (S.phase === 'play' && S.mode === 'main') S.dist += move;

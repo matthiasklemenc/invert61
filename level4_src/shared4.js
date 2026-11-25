@@ -354,6 +354,7 @@ const QUERY = new URLSearchParams(location.search);
 // German text is the key; English and Spanish translations below. {n} = placeholder.
 const LANGS = ['de', 'en', 'es'];
 const TR = {
+  'Zur Level-Auswahl': ['Level selection', 'Elegir nivel'],
   'So geht\'s: Tippe auf ein Feld = graben. Findest du keinen Knochen, zeigt eine Zahl,': ['How it works: tap a field = dig. If there is no bone, a number shows', 'Así se juega: toca un campo = excavar. Si no hay hueso, un número muestra'],
   'wie viele Knochen in den 8 Feldern rundherum liegen (auch schräg). 0 = rundherum ist nichts.': ['how many bones lie in the 8 fields around it (diagonals too). 0 = nothing around.', 'cuántos huesos hay en los 8 campos de alrededor (también en diagonal). 0 = nada alrededor.'],
   'Im Sand liegen 6 Knochen eines Dino-Skeletts versteckt. Du hast 15 Grabungen.': ['6 bones of a dino skeleton are hidden in the sand. You have 15 digs.', 'En la arena hay 6 huesos de un esqueleto escondidos. Tienes 15 excavaciones.'],

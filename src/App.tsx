@@ -203,12 +203,19 @@ const FirstStartInfo: React.FC<{ onClose: () => void }> = ({ onClose }) => (
 
 const App: React.FC = () => {
   // ---------- App State ----------
-  const [currentPage, setCurrentPage] = useState<Page>('home');
+  // ?open=skate-game (from the "Zur Level-Auswahl" button in Level 2 – 4): open the game's level tiles directly
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    try { return new URLSearchParams(window.location.search).get('open') === 'skate-game' ? 'skate-game' : 'home'; } catch { return 'home'; }
+  });
   const [pageBeforeDisclaimer, setPageBeforeDisclaimer] = useState<Page>('home');
 
   // ---------- History Navigation ----------
   useEffect(() => {
-    if (!window.history.state) {
+    if (new URLSearchParams(window.location.search).get('open') === 'skate-game') {
+      // clean the address again; "back" from the game leads to the games page as usual
+      window.history.replaceState({ page: 'games' }, '', window.location.pathname);
+      window.history.pushState({ page: 'skate-game' }, '', window.location.pathname);
+    } else if (!window.history.state) {
       window.history.replaceState({ page: 'home' }, '', '');
     }
     const onPopState = (event: PopStateEvent) => {
